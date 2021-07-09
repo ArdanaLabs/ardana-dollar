@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               plutus-starter
+name:               ardana-dollar
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -59,7 +59,7 @@ test-suite plutus-example-projects-test
     plutus-tx-plugin,
     plutus-contract -any,
     plutus-ledger -any,
-    plutus-starter -any
+    ardana-dollar -any
   build-depends:
     base >=4.9 && <5,
     tasty -any,
@@ -75,7 +75,7 @@ executable plutus-starter-pab
     base >= 4.9 && < 5,
     plutus-contract -any,
     plutus-pab -any,
-    plutus-starter -any,
+    ardana-dollar -any,
     aeson -any,
     freer-simple -any,
     prettyprinter -any,
