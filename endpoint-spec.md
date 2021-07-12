@@ -30,18 +30,21 @@ at launch time, the `Init-Vault` endpoint will be replaced with:
   governance will also include reward pooling/ stake pooling for DANA holders
    
    
-there can only ever be a single governance contract instance, otherwise there is a vulnerability
+There can only ever be a single governance contract instance, otherwise there is a vulnerability
+
+The governance contract will need to keep track of a `minCollateralRatio` for each token type (this might just be a single value globally) - this may be something that DANA token holders will be able to update through a democratic process, which will need to adjust all vaults currently running as well as future vaults when changed
+
 
 ### Init-Vault
 
 prerequisite: none
 
 input: 
-VaultConfig :: { supportedToken :: AssetClass, minCollateralRatio :: Rational }
+VaultConfig :: { supportedToken :: AssetClass }
 
 expected behaviour: 
 
-calling this endpoint instantiates a Vault Contract with `VaultConfig` as its config params, such that the user can then activate the Vault Contract with their Wallet and immediately call `MintUSD`
+calling this endpoint instantiates a Vault Contract for the user's address with `VaultConfig` as its config params (one vault per `supportedToken`, per user), such that the user can then activate the Vault Contract with their Wallet and immediately call `MintUSD`
 
 this is a temporary convenience endpoint that will be removed from the public interface prior to launch.
 
@@ -53,7 +56,8 @@ however the underlying code will be recycled as an initial configuration to run 
 The Vault contract a single supported collateral type whose value can be obtained through a reliable oracle. Which collateral types are supported is decided by the Governance system.  for now this can be stubbed out as some configuration used in the contract, which can be changed.  
 Vault Config values:
 supportedToken :: AssetClass - tokens permitted for collateral use.
-minCollateralRatio :: Rational - default: 2/3 - the minimum borrow/collateral value ratio permitted before liquidating an account's assets
+minCollateralRatio :: Rational - default: (120%) - the minimum collateral/borrow value ratio permitted before liquidating an account's assets (ie the user can borrow 100 Ada worth of dUSD for every 120 Ada supplied as collateral)
+userAddress :: Address - the user address this vault is 'for'
 (other config values may be added for fee calculations, etc)
 
 In practice, Collaterial Ratios are encouraged to be much higher than the minimum, more like 1:3 - 1:10. This insulates borrowers from price volatility and prevents liquidation events.
