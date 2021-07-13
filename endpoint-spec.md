@@ -2,7 +2,7 @@
 
 This document describes the endpoint interfaces and properties for the ardana-dollar project.
 
-This allows us to describe the behaviors seen in the Solidity source implementation (MakerDAI), and create a simple plutus interface to match
+This allows us to describe the behaviors seen in the Solidity source implementation (MakerDAO), and create a simple plutus interface to match
 
 As endpoints are implemented, we will add additional information including graph-viz state machine diagrams, example calls and expected outputs, etc.
 
