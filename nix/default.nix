@@ -1,3 +1,18 @@
+/*
+{ system ? builtins.currentSystem
+, crossSystem ? null
+, config ? { }
+, overlays ? [ ]
+, sourcesOverride ? { }
+, sources
+, isInFlake
+, haskellNix
+*/
+{ checkMaterialization ? false
+/*
+, enableHaskellProfiling ? false
+*/
+}:
 let
   # Pratically, the only needed dependency is the plutus repository.
   sources = import ./sources.nix { inherit pkgs; };
