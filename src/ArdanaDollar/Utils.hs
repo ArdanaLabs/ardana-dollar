@@ -6,7 +6,7 @@ import qualified Prelude as Haskell
 import PlutusTx.Prelude
 import qualified PlutusTx.Ratio as R
 import PlutusTx.Ratio (Rational)
-import ArdanaDollar.Types -- TODO
+import ArdanaDollar.Types (CollaterizationRatio(Zero, Finite, Infinity))
 
 
 {-# INLINABLE collaterizationRatio #-}
