@@ -31,6 +31,7 @@ import           Plutus.PAB.Types                    (PABError (..))
 import qualified Plutus.PAB.Webserver.Server         as PAB.Server
 import           Plutus.Contracts.Game               as Game
 import           Wallet.Emulator.Types               (Wallet (..))
+import           Data.Default                        (Default (def))
 
 main :: IO ()
 main = void $ Simulator.runSimulationWith handlers $ do
@@ -88,6 +89,6 @@ handleStarterContract = Builtin.handleBuiltin getSchema getContract where
 
 handlers :: SimulatorEffectHandlers (Builtin StarterContracts)
 handlers =
-    Simulator.mkSimulatorHandlers @(Builtin StarterContracts) [GameContract]
+    Simulator.mkSimulatorHandlers @(Builtin StarterContracts) def [GameContract]
     $ interpret handleStarterContract
 

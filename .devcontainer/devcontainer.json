@@ -13,11 +13,17 @@
 
     "settings": {
         // Note: don't change from bash so it runs .bashrc
-        "terminal.integrated.shell.linux": "/bin/bash"
+        "terminal.integrated.profiles.linux": {
+            "Bash": {
+                "path": "/bin/bash",
+                "args": ["--login"]
+            }
+        },
+        "terminal.integrated.defaultProfile.linux" : "Bash"
     },
-    
+
     // IDs of extensions inside container
     "extensions": [
         "haskell.haskell"
-    ],
+    ]
 }

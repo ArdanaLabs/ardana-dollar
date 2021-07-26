@@ -1,14 +1,26 @@
 {
+    "nixpkgs": {
+        "branch": "nixpkgs-unstable",
+        "description": "Nix Packages collection",
+        "homepage": "",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "7d71001b796340b219d1bfa8552c81995017544a",
+        "sha256": "09fv5rhnq6m770wy0wyyp8anhqsn2dyrk4c4gmka02r5600kbaiw",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs/archive/7d71001b796340b219d1bfa8552c81995017544a.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "plutus": {
         "branch": "master",
         "description": "The Plutus language implementation and tools",
         "homepage": "",
         "owner": "input-output-hk",
         "repo": "plutus",
-        "rev": "plutus-starter-devcontainer/v1.0.6",
-        "sha256": "1jzbcsdrv0b43dj7bwbd1fbk71f7gph6zzb8y29n9cn3j8illnyc",
+        "rev": "4551bba244a2f3ff890c4d2fd12a105692126d8d",
+        "sha256": "0s3ycmfrpgylxjqk51rkdnj7acp7xq42zmahykbrdmvgmqfllg4f",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus/archive/plutus-starter-devcontainer/v1.0.6.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus/archive/4551bba244a2f3ff890c4d2fd12a105692126d8d.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

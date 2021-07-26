@@ -1,10 +1,8 @@
-########################################################################
-# default.nix -- The top-level nix build file for plutus-starter.
-#
-# This file defines various attributes that are used for building and
-# developing plutus-starter.
-#
-########################################################################
+{ checkMaterialization ? false
+, system ? builtins.currentSystem
+, sourcesOverride ? { }
+, sources ? import ./nix/sources.nix { inherit system; } // sourcesOverride
+}:
 
 let
   # Here a some of the various attributes for the variable 'packages':
@@ -22,7 +20,9 @@ let
   #     haskell-language-server
   #   }
   # }
-  packages = import ./nix;
+  packages = import ./nix {
+    inherit checkMaterialization;
+  };
 
   inherit (packages) pkgs plutus-starter;
   project = plutus-starter.haskell.project;
@@ -31,4 +31,5 @@ in
   inherit pkgs plutus-starter;
 
   inherit project;
+  inherit packages;
 }
