@@ -13,4 +13,4 @@ data CollaterizationRatio
   = Zero             -- ^ if collateral == 0 and stablecoin == 0 (unused vault)
   | Finite Rational
   | Infinity         -- ^ if only collateral == zero
-  deriving stock (Haskell.Show)
+  deriving stock (Haskell.Show, Haskell.Eq)

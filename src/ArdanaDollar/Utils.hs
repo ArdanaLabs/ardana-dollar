@@ -67,9 +67,10 @@ minCollateralRequired exr liqRatio debt =
 liquidationPrice :: Rational -- ^ liquidation ratio (or the minimum collaterization ratio)
                  -> Integer  -- ^ amount of collateral in the vault (>= 0)
                  -> Integer  -- ^ current total debt of the vault (>= 0)
-                 -> Rational
-liquidationPrice liqRatio coll debt =
-  R.fromInteger debt * liqRatio * (1 R.% coll)
+                 -> Maybe Rational
+liquidationPrice liqRatio coll debt
+  | coll == 0 = Nothing
+  | otherwise = Just (R.fromInteger debt * liqRatio * (1 R.% coll))
 
 {-# INLINABLE availableToGenerate #-}
 -- | The max stablecoin amount that is additionaly available to mint
