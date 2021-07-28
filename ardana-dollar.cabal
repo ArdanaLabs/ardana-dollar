@@ -25,6 +25,8 @@ library
     exposed-modules:
       MyModule
       Plutus.Contracts.Game
+      ArdanaDollar.Types
+      ArdanaDollar.Utils
     build-depends:
       base >= 4.9 && < 5,
       aeson,
