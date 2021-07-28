@@ -47,6 +47,8 @@ library
 test-suite ardana-dollar-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
+  other-modules:
+    Test.ArdanaDollar.Utils
   hs-source-dirs: test
   default-language: Haskell2010
   ghc-options: -Wall -Wnoncanonical-monad-instances
