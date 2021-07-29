@@ -1,4 +1,6 @@
-module MyModule where
+module MyModule (hello, main) where
+
+import Prelude
 
 hello :: String
 hello = "hello"
