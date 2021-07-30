@@ -21,65 +21,101 @@ maintainer:         Your email
 -- category:
 -- extra-source-files: CHANGELOG.md
 
+common lang
+  default-language: Haskell2010
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    HexFloatLiterals
+    InstanceSigs
+    ImportQualifiedPost
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NoImplicitPrelude
+    NumericUnderscores
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
+    -Wmissing-export-lists -Werror -Wincomplete-record-updates
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
+
+common deps
+  build-depends:
+    , base                     >=4.9 && <5
+    , aeson
+    , bytestring
+    , containers
+    , freer-extras
+    , playground-common
+    , plutus-contract
+    , plutus-core
+    , plutus-tx-plugin
+    , plutus-tx
+    , plutus-ledger
+    , record-dot-preprocessor
+    , record-hasfield
+
+common test-deps
+  import:        deps
+  build-depends:
+    , tasty
+    , tasty-hunit
+
 library
-    exposed-modules:
-      MyModule
-      Plutus.Contracts.Game
-      ArdanaDollar.Types
-      ArdanaDollar.Utils
-    build-depends:
-      base >= 4.9 && < 5,
-      aeson,
-      bytestring,
-      containers,
-      freer-extras,
-      playground-common,
-      plutus-contract,
-      plutus-tx-plugin,
-      plutus-tx,
-      plutus-ledger
-    hs-source-dirs: src examples/src
-    default-language: Haskell2010
-    ghc-options:
-            -- See Plutus Tx readme
-            -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+  import:           lang
+  import:           deps
+  exposed-modules:
+    MyModule
+    Plutus.Contracts.Game
+    ArdanaDollar.Types
+    ArdanaDollar.Utils
+  hs-source-dirs: src examples/src
 
 test-suite ardana-dollar-test
+  import:           lang
+  import:           deps
+  import:           test-deps
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
     Test.ArdanaDollar.Utils
   hs-source-dirs: test
-  default-language: Haskell2010
-  ghc-options: -Wall -Wnoncanonical-monad-instances
-              -Wincomplete-uni-patterns -Wincomplete-record-updates
-              -Wredundant-constraints -Widentities -rtsopts
-              -- See Plutus Tx readme
-              -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-  build-depends:
-    plutus-tx -any,
-    plutus-tx-plugin,
-    plutus-contract -any,
-    plutus-ledger -any,
-    ardana-dollar -any
-  build-depends:
-    base >=4.9 && <5,
-    tasty -any,
-    tasty-hunit -any,
+  ghc-options: -Wnoncanonical-monad-instances -Widentities -rtsopts
+  build-depends: ardana-dollar
 
 executable plutus-starter-pab
+  import:           lang
+  import:           deps
   main-is: Main.hs
   hs-source-dirs: pab
   ghc-options:
     -threaded
   build-depends:
-    base >= 4.9 && < 5,
-    plutus-contract -any,
-    plutus-pab -any,
-    ardana-dollar -any,
-    aeson -any,
-    freer-simple -any,
-    prettyprinter -any,
-    freer-extras -any,
-    plutus-ledger -any,
-    data-default
+    , ardana-dollar
+    , data-default
+    , plutus-pab
+    , freer-simple
+    , prettyprinter

@@ -1,16 +1,16 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
-module ArdanaDollar.Types where
+module ArdanaDollar.Types (CollaterizationRatio (Zero, Finite, Infinity)) where
 
-import qualified Prelude as Haskell
-import qualified PlutusTx.Ratio as R
 import PlutusTx.Ratio (Rational)
-
+import Prelude qualified as Haskell
 
 -- | This type represents collateral/stablecoin ratio value of a vault
 data CollaterizationRatio
-  = Zero             -- ^ if collateral == 0 and stablecoin == 0 (unused vault)
+  = -- | if collateral == 0 and stablecoin == 0 (unused vault)
+    Zero
   | Finite Rational
-  | Infinity         -- ^ if only collateral == zero
+  | -- | if only collateral == zero
+    Infinity
   deriving stock (Haskell.Show, Haskell.Eq)
