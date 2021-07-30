@@ -1,11 +1,9 @@
 module Main (main) where
 
 import Test.Tasty (defaultMain, testGroup)
-import Prelude
+import Test.ArdanaDollar.Utils (vaultUnitTests)
+
 
 main :: IO ()
-main =
-  defaultMain $
-    testGroup
-      "tests"
-      []
+main = defaultMain $ testGroup "tests"
+  [ vaultUnitTests ]
