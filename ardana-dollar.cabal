@@ -67,6 +67,7 @@ common deps
     , base                     >=4.9 && <5
     , aeson
     , bytestring
+    , text
     , containers
     , freer-extras
     , playground-common
@@ -75,6 +76,7 @@ common deps
     , plutus-tx-plugin
     , plutus-tx
     , plutus-ledger
+    , plutus-use-cases
     , record-dot-preprocessor
     , record-hasfield
 
@@ -92,6 +94,7 @@ library
     Plutus.Contracts.Game
     ArdanaDollar.Types
     ArdanaDollar.Utils
+    ArdanaDollar.Vault
   hs-source-dirs: src examples/src
 
 test-suite ardana-dollar-test

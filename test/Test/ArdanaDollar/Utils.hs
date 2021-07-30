@@ -1,9 +1,13 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Test.ArdanaDollar.Utils where
+module Test.ArdanaDollar.Utils (
+  vaultUnitTests,
+) where
 
 import qualified PlutusTx.Ratio as R
 import Test.Tasty (TestTree, testGroup)
+import Prelude (($))
+import Data.Maybe (Maybe(Nothing, Just))
 import Test.Tasty.HUnit
 import ArdanaDollar.Types
 import ArdanaDollar.Utils
