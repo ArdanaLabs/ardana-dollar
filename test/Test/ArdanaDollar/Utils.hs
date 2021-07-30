@@ -1,5 +1,3 @@
-{-# LANGUAGE NumericUnderscores #-}
-
 module Test.ArdanaDollar.Utils (
   vaultUnitTests,
 ) where

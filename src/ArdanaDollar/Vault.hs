@@ -1,12 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module ArdanaDollar.Vault (

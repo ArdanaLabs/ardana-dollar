@@ -1,6 +1,3 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-
 module ArdanaDollar.Types (CollaterizationRatio (Zero, Finite, Infinity)) where
 
 import PlutusTx.Prelude

@@ -1,5 +1,3 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-
 module ArdanaDollar.Utils (
   collaterizationRatio,
   maxDebtAllowed,
