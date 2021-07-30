@@ -112,7 +112,7 @@ test-suite ardana-dollar-test
   ghc-options: -Wnoncanonical-monad-instances -Widentities -rtsopts
   build-depends: ardana-dollar
 
-executable plutus-starter-pab
+executable ardana-pab
   import:           lang
   import:           deps
   main-is: Main.hs
@@ -121,6 +121,9 @@ executable plutus-starter-pab
     -threaded
   build-depends:
     , ardana-dollar
+    , data-default
+    , plutus-extra
+    , plutus-ledger-api
     , plutus-pab
     , freer-simple
     , prettyprinter

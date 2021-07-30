@@ -40,6 +40,7 @@ let
       "https://github.com/input-output-hk/Win32-network"."94153b676617f8f33abe8d8182c37377d2784bd1" = "0pb7bg0936fldaa5r08nqbxvi2g8pcy4w3c7kdcg7pdgmimr30ss";
       "https://github.com/input-output-hk/hedgehog-extras"."8bcd3c9dc22cc44f9fcfe161f4638a384fc7a187" = "12viwpahjdfvlqpnzdgjp40nw31rvyznnab1hml9afpaxd6ixh70";
       "https://github.com/input-output-hk/goblins"."cde90a2b27f79187ca8310b6549331e59595e7ba" = "17c88rbva3iw82yg9srlxjv2ia5wjb9cyqw44hik565f5v9svnyg";
+      "https://github.com/Liqwid-Labs/plutus-extra.git"."7d933c0189d84b77888fc6b598f8eaec384c8df0" = "0aiv6cdh9q548rn13fhhsdg7amnbrcf5bq3hgliyfmc72fz6r474";
     };
 
     modules = [
