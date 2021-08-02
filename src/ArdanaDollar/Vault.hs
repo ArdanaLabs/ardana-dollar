@@ -101,10 +101,7 @@ inputHasToken tok sc = case findOwnInput sc of
 
 {-# INLINABLE ownOutput #-}
 ownOutput :: ScriptContext -> Maybe TxOut
-ownOutput sc = case [ o
-                    | o <- getContinuingOutputs sc
-                    , txOutDatumHash o == Just (snd $ ownHashes sc)
-                    ] of
+ownOutput sc = case getContinuingOutputs sc of
   [output] -> Just output
   _ -> Nothing
 
@@ -127,9 +124,9 @@ nextDatum tok sc = do
 {-# INLINABLE nextDatum' #-}
 nextDatum' :: PlutusTx.IsData a => ScriptContext -> Maybe a
 nextDatum' sc = do
-  Datum datum <- case map snd (txInfoData (scriptContextTxInfo sc)) of
-    [] -> Nothing
-    (d : _) -> Just d
+  output <- ownOutput sc
+  dh <- txOutDatumHash output
+  Datum datum <- AssocMap.lookup dh $ AssocMap.fromList $ txInfoData (scriptContextTxInfo sc)
   PlutusTx.fromBuiltinData datum
 
 {-# INLINABLE mkDUSDMintingPolicy #-}
@@ -169,7 +166,7 @@ mkVaultValidator dusd user vd vr sc@ScriptContext{scriptContextTxInfo=txInfo} =
           case compare collDiff 0 of
             -- withdrawCollateral, pay to the user
             LT -> traceIfFalse "wrong withdrawal amount"
-              (Value.assetClassValueOf (valuePaidTo txInfo user) collAsset == (negate collDiff)) &&
+              ((Value.assetClassValueOf (valuePaidTo txInfo user) collAsset) == (negate collDiff)) &&
               traceIfFalse "cannot withdraw this much" cRatioOk
             EQ -> traceIfFalse "CollateralRedeemer transaction does not modify collateral" False
             -- depositCollateral, pay to the script
@@ -231,10 +228,11 @@ initializeVault = do
          Currency.mintContract pkh [(tok, 1)]
   let initialDatum = VaultDatum 0 0
       inst = vaultInst pkh
+      lookups = Constraints.typedValidatorLookups inst
       tx = Constraints.mustPayToTheScript
              initialDatum
              (Value.assetClassValue (Value.AssetClass (cs, tok)) 1)
-  ledgerTx <- submitTxConstraints inst tx
+  ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ txId ledgerTx
   logInfo @Haskell.String $ printf "started vault for user %s at address %s"
                               (Haskell.show pkh) (Haskell.show $ vaultAddress pkh)
@@ -303,7 +301,7 @@ mintDUSD amount = do
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer) Haskell.<>
+                 (Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
                Constraints.mustMintValue dusdValue Haskell.<>
                Constraints.mustPayToPubKey pkh dusdValue
       ledgerTx <- submitTxConstraintsWith lookups tx
@@ -329,9 +327,8 @@ repayDUSD amount = do
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer) Haskell.<>
-               Constraints.mustMintValue (negate dusdValue) Haskell.<>
-               Constraints.mustPayToPubKey pkh dusdValue
+                 (Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
+               Constraints.mustMintValue (negate dusdValue)
       ledgerTx <- submitTxConstraintsWith lookups tx
       void $ awaitTxConfirmed $ txId ledgerTx
       logInfo @Haskell.String $ printf "user %s repaid %s dUSD"
