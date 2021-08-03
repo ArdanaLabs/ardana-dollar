@@ -70,6 +70,8 @@ common deps
     , text
     , containers
     , freer-extras
+    , data-default
+    , row-types
     , playground-common
     , plutus-contract
     , plutus-core
@@ -95,6 +97,7 @@ library
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
+    ArdanaDollar.Trace
   hs-source-dirs: src examples/src
 
 test-suite ardana-dollar-test
@@ -118,7 +121,6 @@ executable plutus-starter-pab
     -threaded
   build-depends:
     , ardana-dollar
-    , data-default
     , plutus-pab
     , freer-simple
     , prettyprinter

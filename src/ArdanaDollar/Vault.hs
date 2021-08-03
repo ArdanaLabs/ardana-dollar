@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module ArdanaDollar.Vault (
@@ -32,19 +33,22 @@ module ArdanaDollar.Vault (
 ) where
 
 import Data.Kind (Type)
+import Data.Row (Row)
 import PlutusTx.Prelude
 import qualified Prelude as Haskell
 import Data.Text (Text, pack)
 import Text.Printf (printf)
 import Control.Monad (forever, guard, void)
-import Data.Monoid (First(..))
+import Data.Monoid (First(First, getFirst), Last(Last))
 import qualified Data.Map.Strict as Map
+import GHC.Generics (Generic)
+import qualified Data.Aeson as JSON
 import qualified PlutusTx
 import qualified PlutusTx.AssocMap as AssocMap
 import qualified PlutusTx.Ratio as R
 import qualified Ledger.Value as Value
 import Ledger.Ada as Ada
-import Ledger hiding (Finite) -- TODO
+import qualified Ledger
 import qualified Ledger.Typed.Scripts as Scripts
 import qualified Ledger.Constraints as Constraints
 import Plutus.Contract -- TODO
@@ -57,6 +61,8 @@ data VaultDatum = VaultDatum
   { vaultCollateral :: Integer
   , vaultDebt :: Integer
   }
+  deriving stock (Haskell.Show, Generic)
+  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''VaultDatum [('VaultDatum, 0)]
 
 data VaultRedeemer
@@ -82,75 +88,82 @@ dUSDTokenName :: Value.TokenName
 dUSDTokenName = Value.TokenName "dUSD"
 
 {-# INLINABLE vaultTokenName #-}
-vaultTokenName :: PubKeyHash -> Value.TokenName
-vaultTokenName pkh = Value.TokenName (getPubKeyHash pkh)
+vaultTokenName :: Ledger.PubKeyHash -> Value.TokenName
+vaultTokenName pkh = Value.TokenName (Ledger.getPubKeyHash pkh)
 
 {-# INLINABLE valueWithin #-}
-valueWithin :: TxInInfo -> Value
-valueWithin = txOutValue . txInInfoResolved
+valueWithin :: Ledger.TxInInfo -> Ledger.Value
+valueWithin = Ledger.txOutValue . Ledger.txInInfoResolved
 
 {-# INLINABLE isUnity #-}
-isUnity :: Value -> Value.AssetClass -> Bool
+isUnity :: Ledger.Value -> Value.AssetClass -> Bool
 isUnity v a = Value.assetClassValueOf v a == 1
 
 {-# INLINABLE inputHasToken #-}
-inputHasToken :: Value.AssetClass -> ScriptContext -> Bool
-inputHasToken tok sc = case findOwnInput sc of
+inputHasToken :: Value.AssetClass -> Ledger.ScriptContext -> Bool
+inputHasToken tok sc = case Ledger.findOwnInput sc of
   Nothing -> False
   Just input -> isUnity (valueWithin input) tok
 
 {-# INLINABLE ownOutput #-}
-ownOutput :: ScriptContext -> Maybe TxOut
-ownOutput sc = case getContinuingOutputs sc of
+ownOutput :: Ledger.ScriptContext -> Maybe Ledger.TxOut
+ownOutput sc = case Ledger.getContinuingOutputs sc of
   [output] -> Just output
   _ -> Nothing
 
 {-# INLINABLE outputHasToken #-}
-outputHasToken :: Value.AssetClass -> ScriptContext -> Bool
+outputHasToken :: Value.AssetClass -> Ledger.ScriptContext -> Bool
 outputHasToken tok sc = case ownOutput sc of
-  Just output -> isUnity (txOutValue output) tok
+  Just output -> isUnity (Ledger.txOutValue output) tok
   Nothing -> traceIfFalse "expected exactly one output with script's datum" False
 
 {-# INLINABLE nextDatum #-}
-nextDatum :: PlutusTx.IsData a => Value.AssetClass -> ScriptContext -> Maybe a
+nextDatum :: forall (a :: Type). PlutusTx.IsData a => Value.AssetClass -> Ledger.ScriptContext -> Maybe a
 nextDatum tok sc = do
   output <- ownOutput sc
-  guard (Value.assetClassValueOf (txOutValue output) tok == 1)
-  dh <- txOutDatumHash output
-  Datum datum <- AssocMap.lookup dh $ AssocMap.fromList $ txInfoData (scriptContextTxInfo sc)
+  guard (Value.assetClassValueOf (Ledger.txOutValue output) tok == 1)
+  dh <- Ledger.txOutDatumHash output
+  Ledger.Datum datum <- AssocMap.lookup dh $ AssocMap.fromList $
+                          Ledger.txInfoData (Ledger.scriptContextTxInfo sc)
   PlutusTx.fromBuiltinData datum
 
 -- a stub before we will figure out usage of vaults' state tokens
 {-# INLINABLE nextDatum' #-}
-nextDatum' :: PlutusTx.IsData a => ScriptContext -> Maybe a
+nextDatum' :: forall (a :: Type). PlutusTx.IsData a => Ledger.ScriptContext -> Maybe a
 nextDatum' sc = do
   output <- ownOutput sc
-  dh <- txOutDatumHash output
-  Datum datum <- AssocMap.lookup dh $ AssocMap.fromList $ txInfoData (scriptContextTxInfo sc)
+  dh <- Ledger.txOutDatumHash output
+  Ledger.Datum datum <- AssocMap.lookup dh $ AssocMap.fromList $
+                          Ledger.txInfoData (Ledger.scriptContextTxInfo sc)
   PlutusTx.fromBuiltinData datum
 
 {-# INLINABLE mkDUSDMintingPolicy #-}
-mkDUSDMintingPolicy :: Value.TokenName -> () -> ScriptContext -> Bool
-mkDUSDMintingPolicy dusdToken _ ScriptContext{scriptContextTxInfo=txInfo} =
-  (map (\(_, tokenName, _) -> tokenName) (Value.flattenValue (txInfoForge txInfo))) == [dusdToken]
+mkDUSDMintingPolicy :: Value.TokenName -> () -> Ledger.ScriptContext -> Bool
+mkDUSDMintingPolicy dusdToken _ Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
+  (map (\(_, tokenName, _) -> tokenName) (Value.flattenValue (Ledger.txInfoForge txInfo))) == [dusdToken]
 
 {-# INLINABLE dUSDMintingPolicy #-}
-dUSDMintingPolicy :: MintingPolicy
+dUSDMintingPolicy :: Ledger.MintingPolicy
 dUSDMintingPolicy = Ledger.mkMintingPolicyScript $
   $$(PlutusTx.compile [|| \t -> Scripts.wrapMintingPolicy (mkDUSDMintingPolicy t) ||])
     `PlutusTx.applyCode` PlutusTx.liftCode dUSDTokenName
 
 {-# INLINABLE dUSDCurrency #-}
 dUSDCurrency :: Value.CurrencySymbol
-dUSDCurrency = scriptCurrencySymbol dUSDMintingPolicy
+dUSDCurrency = Ledger.scriptCurrencySymbol dUSDMintingPolicy
 
 {-# INLINABLE dUSDAsset #-}
 dUSDAsset :: Value.AssetClass
 dUSDAsset = Value.AssetClass (dUSDCurrency, dUSDTokenName)
 
 {-# INLINABLE mkVaultValidator #-}
-mkVaultValidator :: Value.AssetClass -> PubKeyHash -> VaultDatum -> VaultRedeemer -> ScriptContext -> Bool
-mkVaultValidator dusd user vd vr sc@ScriptContext{scriptContextTxInfo=txInfo} =
+mkVaultValidator :: Value.AssetClass
+                 -> Ledger.PubKeyHash
+                 -> VaultDatum
+                 -> VaultRedeemer
+                 -> Ledger.ScriptContext
+                 -> Bool
+mkVaultValidator dusd user vd vr sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
   let outm = ownOutput sc
       ndm = nextDatum' sc
   in case (outm, ndm) of
@@ -161,20 +174,20 @@ mkVaultValidator dusd user vd vr sc@ScriptContext{scriptContextTxInfo=txInfo} =
       in case vr of
         CollateralRedeemer ->
           let collDiff = vaultCollateral nd - vaultCollateral vd
-          in traceIfFalse "user signature missing" (txSignedBy txInfo user) &&
+          in traceIfFalse "user signature missing" (Ledger.txSignedBy txInfo user) &&
           traceIfFalse "CollateralRedeemer transaction modifies debt" (vaultDebt vd == vaultDebt nd) &&
           case compare collDiff 0 of
             -- withdrawCollateral, pay to the user
             LT -> traceIfFalse "wrong withdrawal amount"
-              ((Value.assetClassValueOf (valuePaidTo txInfo user) collAsset) == (negate collDiff)) &&
+              ((Value.assetClassValueOf (Ledger.valuePaidTo txInfo user) collAsset) == (negate collDiff)) &&
               traceIfFalse "cannot withdraw this much" cRatioOk
             EQ -> traceIfFalse "CollateralRedeemer transaction does not modify collateral" False
             -- depositCollateral, pay to the script
             GT -> traceIfFalse "wrong deposit amount" $
-              Value.assetClassValueOf (valueLockedBy txInfo (ownHash sc)) collAsset == collDiff
+              Value.assetClassValueOf (Ledger.valueLockedBy txInfo (Ledger.ownHash sc)) collAsset == collDiff
         DebtRedeemer ->
           let debtDiff = vaultDebt nd - vaultDebt vd
-          in traceIfFalse "wrong dUSD mint amount" (txInfoForge txInfo == Value.assetClassValue dusd debtDiff) &&
+          in traceIfFalse "wrong dUSD mint amount" (Ledger.txInfoForge txInfo == Value.assetClassValue dusd debtDiff) &&
             traceIfFalse "cannot borrow this much" cRatioOk
 
 data Vaulting
@@ -182,7 +195,7 @@ instance Scripts.ValidatorTypes Vaulting where
   type instance DatumType Vaulting = VaultDatum
   type instance RedeemerType Vaulting = VaultRedeemer
 
-vaultInst :: PubKeyHash -> Scripts.TypedValidator Vaulting
+vaultInst :: Ledger.PubKeyHash -> Scripts.TypedValidator Vaulting
 vaultInst user = Scripts.mkTypedValidator @Vaulting
     ($$(PlutusTx.compile [|| mkVaultValidator ||])
       `PlutusTx.applyCode` PlutusTx.liftCode dUSDAsset
@@ -191,11 +204,11 @@ vaultInst user = Scripts.mkTypedValidator @Vaulting
   where
     wrap = Scripts.wrapValidator @VaultDatum @VaultRedeemer
 
-vaultValidator :: PubKeyHash -> Validator
+vaultValidator :: Ledger.PubKeyHash -> Ledger.Validator
 vaultValidator = Scripts.validatorScript . vaultInst
 
-vaultAddress :: PubKeyHash -> Ledger.Address
-vaultAddress = scriptAddress . vaultValidator
+vaultAddress :: Ledger.PubKeyHash -> Ledger.Address
+vaultAddress = Ledger.scriptAddress . vaultValidator
 
 type VaultSchema =
   Endpoint "initializeVault" ()
@@ -204,13 +217,15 @@ type VaultSchema =
     .\/ Endpoint "mintDUSD" Integer
     .\/ Endpoint "repayDUSD" Integer
 
-getDatumOffChain :: forall (a :: Type). PlutusTx.IsData a => TxOutTx -> Maybe a
+getDatumOffChain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
 getDatumOffChain outTx = do
-  dh <- txOutDatumHash $ txOutTxOut outTx
-  Datum datum <- Map.lookup dh $ txData $ txOutTxTx outTx
+  dh <- Ledger.txOutDatumHash $ Ledger.txOutTxOut outTx
+  Ledger.Datum datum <- Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx outTx
   PlutusTx.fromBuiltinData datum
 
-findUtxo :: Ledger.Address -> Contract w s Text (Maybe (TxOutRef, TxOutTx, VaultDatum))
+findUtxo :: forall (w :: Type) (s :: Row Type).
+            Ledger.Address
+         -> Contract w s Text (Maybe (Ledger.TxOutRef, Ledger.TxOutTx, VaultDatum))
 findUtxo addr = do
   utxos <- utxoAt addr
   -- pick the first utxo with a `VaultDatum`
@@ -219,9 +234,9 @@ findUtxo addr = do
         Map.toAscList utxos
   return ud
 
-initializeVault :: Contract w s Text ()
+initializeVault :: forall (s :: Row Type). Contract (Last VaultDatum) s Text ()
 initializeVault = do
-  pkh <- pubKeyHash <$> ownPubKey
+  pkh <- Ledger.pubKeyHash <$> ownPubKey
   let tok = vaultTokenName pkh
   cs  <- fmap Currency.currencySymbol $
          mapError (pack . Haskell.show @Currency.CurrencyError) $
@@ -233,42 +248,45 @@ initializeVault = do
              initialDatum
              (Value.assetClassValue (Value.AssetClass (cs, tok)) 1)
   ledgerTx <- submitTxConstraintsWith lookups tx
-  void $ awaitTxConfirmed $ txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
   logInfo @Haskell.String $ printf "started vault for user %s at address %s"
                               (Haskell.show pkh) (Haskell.show $ vaultAddress pkh)
+  tell $ Last $ Just initialDatum
 
-depositCollateral :: Integer -> Contract w s Text ()
+depositCollateral :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 depositCollateral amount = do
-  pkh <- pubKeyHash <$> ownPubKey
+  pkh <- Ledger.pubKeyHash <$> ownPubKey
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum{ vaultCollateral = vc }) -> do
       let newDatum = vaultDatum { vaultCollateral = vc + amount }
-          valueToScript = txOutValue (txOutTxOut o) Haskell.<> Value.assetClassValue collAsset amount
+          valueToScript = Ledger.txOutValue (Ledger.txOutTxOut o) Haskell.<>
+                          Value.assetClassValue collAsset amount
           lookups = Constraints.typedValidatorLookups (vaultInst pkh) Haskell.<>
                     Constraints.otherScript (vaultValidator pkh) Haskell.<>
                     Constraints.unspentOutputs (Map.singleton oref o) Haskell.<>
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum valueToScript Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer)
+                 (Ledger.Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer)
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
       logInfo @Haskell.String $ printf "user %s deposited %s collateral"
                                   (Haskell.show pkh) (Haskell.show amount)
+      tell $ Last $ Just newDatum
 
-withdrawCollateral :: Integer -> Contract w s Text ()
+withdrawCollateral :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 withdrawCollateral amount = do
-  pkh <- pubKeyHash <$> ownPubKey
+  pkh <- Ledger.pubKeyHash <$> ownPubKey
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum{ vaultCollateral = vc }) -> do
       let newDatum = vaultDatum { vaultCollateral = vc - amount }
-          stateTokenValue = txOutValue (txOutTxOut o)
+          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
           collateralValue = Value.assetClassValue collAsset amount
           lookups = Constraints.typedValidatorLookups (vaultInst pkh) Haskell.<>
                     Constraints.otherScript (vaultValidator pkh) Haskell.<>
@@ -276,23 +294,26 @@ withdrawCollateral amount = do
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer) Haskell.<>
+                 (Ledger.Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer) Haskell.<>
                Constraints.mustPayToPubKey pkh collateralValue
+          tx' = Constraints.mkTx @Vaulting lookups tx
+      logInfo @Haskell.String $ printf "sending transaction: %s" (Haskell.show tx')
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
       logInfo @Haskell.String $ printf "user %s withdrew %s collateral"
                                   (Haskell.show pkh) (Haskell.show amount)
+      tell $ Last $ Just newDatum
 
-mintDUSD :: Integer -> Contract w s Text ()
+mintDUSD :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 mintDUSD amount = do
-  pkh <- pubKeyHash <$> ownPubKey
+  pkh <- Ledger.pubKeyHash <$> ownPubKey
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum{ vaultDebt = dc }) -> do
       let newDatum = vaultDatum { vaultDebt = dc + amount }
-          stateTokenValue = txOutValue (txOutTxOut o)
+          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
           dusdValue = Value.assetClassValue dUSDAsset amount
           lookups = Constraints.typedValidatorLookups (vaultInst pkh) Haskell.<>
                     Constraints.otherScript (vaultValidator pkh) Haskell.<>
@@ -301,24 +322,25 @@ mintDUSD amount = do
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
+                 (Ledger.Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
                Constraints.mustMintValue dusdValue Haskell.<>
                Constraints.mustPayToPubKey pkh dusdValue
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
       logInfo @Haskell.String $ printf "user %s minted %s dUSD"
                                   (Haskell.show pkh) (Haskell.show amount)
+      tell $ Last $ Just newDatum
 
-repayDUSD :: Integer -> Contract w s Text ()
+repayDUSD :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 repayDUSD amount = do
-  pkh <- pubKeyHash <$> ownPubKey
+  pkh <- Ledger.pubKeyHash <$> ownPubKey
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum{ vaultDebt = dc }) -> do
       let newDatum = vaultDatum { vaultDebt = dc - amount }
-          stateTokenValue = txOutValue (txOutTxOut o)
+          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
           dusdValue = Value.assetClassValue dUSDAsset amount
           lookups = Constraints.typedValidatorLookups (vaultInst pkh) Haskell.<>
                     Constraints.otherScript (vaultValidator pkh) Haskell.<>
@@ -327,14 +349,15 @@ repayDUSD amount = do
                     Constraints.ownPubKeyHash pkh
           tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
                Constraints.mustSpendScriptOutput oref
-                 (Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
+                 (Ledger.Redeemer $ PlutusTx.toBuiltinData DebtRedeemer) Haskell.<>
                Constraints.mustMintValue (negate dusdValue)
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
       logInfo @Haskell.String $ printf "user %s repaid %s dUSD"
                                   (Haskell.show pkh) (Haskell.show amount)
+      tell $ Last $ Just newDatum
 
-vaultContract :: Contract w VaultSchema Text ()
+vaultContract :: Contract (Last VaultDatum) VaultSchema Text ()
 vaultContract = forever $
   (endpoint @"initializeVault" >> initializeVault) `select`
   (endpoint @"depositCollateral" >>= depositCollateral) `select`
