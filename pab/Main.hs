@@ -1,8 +1,11 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Main (main) where
 
 --------------------------------------------------------------------------------
 
 import Data.Kind (Type)
+import Data.Semigroup qualified as Semigroup
 import GHC.Generics (Generic)
 import Prelude
 
@@ -12,13 +15,12 @@ import Control.Monad (void, when, (>=>))
 import Control.Monad.Freer (Eff, Member, interpret, type (~>))
 import Control.Monad.Freer.Error (Error)
 import Control.Monad.Freer.Extras.Log (LogMsg)
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.Aeson (
-  FromJSON (..),
-  Options (tagSingleConstructors),
-  ToJSON (..),
-  defaultOptions,
-  genericParseJSON,
-  genericToJSON,
+  FromJSON,
+  Result (Success),
+  ToJSON,
+  fromJSON,
  )
 import Data.ByteString (ByteString)
 import Data.Default (Default (def))
@@ -33,6 +35,7 @@ import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
 --------------------------------------------------------------------------------
 
 import Playground.Contract (FormSchema, FunctionSchema)
+import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
 import Plutus.PAB.Effects.Contract (ContractEffect (..))
 import Plutus.PAB.Effects.Contract.Builtin (Builtin, SomeBuiltin (..))
@@ -50,8 +53,34 @@ import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
 
+import ArdanaDollar.Treasury.Endpoints
+import ArdanaDollar.Treasury.Types (Treasury)
 import ArdanaDollar.Vault
+
+import Plutus.PAB.OutputBus
 import Plutus.PAB.PrettyLogger
+
+getBus ::
+  forall w.
+  (FromJSON w) =>
+  ContractInstanceId ->
+  Simulator.Simulation (Builtin ArdanaContracts) w
+getBus cId = flip Simulator.waitForState cId $ \json -> case fromJSON json of
+  Success ob -> case getOutputBus ob of
+    Just (Semigroup.Last s) -> Just s
+    _ -> Nothing
+  _ -> Nothing
+
+waitAndCallEndpoint ::
+  forall (t :: Type).
+  ContractInstanceId ->
+  String ->
+  Integer ->
+  Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
+waitAndCallEndpoint cid endpoint i = do
+  Simulator.waitForEndpoint cid endpoint
+  _ <- Simulator.callEndpointOnInstance @Integer cid endpoint i
+  Simulator.waitNSlots 10
 
 main :: IO ()
 main = void $
@@ -62,38 +91,38 @@ main = void $
 
     logTitleSequence
 
-    cVaultId <- Simulator.activateContract (Wallet 1) VaultContract <* Simulator.waitNSlots 2
+    cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
     logCurrentBalances_
-
-    let callEndpoint endpoint i =
-          Simulator.callEndpointOnInstance @Integer cVaultId endpoint i >> Simulator.waitNSlots 3
 
     -- Init a vault
-    logBlueString "Init a vault"
+    let callVaultEndpoint = waitAndCallEndpoint cVaultId
+    logBlueString "Mint dUSD"
     Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
+    callVaultEndpoint "depositCollateral" 113_000_000
+    callVaultEndpoint "mintDUSD" 100
     logCurrentBalances_
 
-    -- MintUSD from the vault (depositing Ada)
-    Simulator.waitForEndpoint cVaultId "depositCollateral"
-    logBlueString "Deposit Ada as a collateral"
-    callEndpoint "depositCollateral" 113_000_000
-
-    Simulator.waitForEndpoint cVaultId "mintDUSD"
-    logBlueString "Mint dUSD from the vault"
-    callEndpoint "mintDUSD" 100
+    logBlueString "Init treasury"
+    cTreasuryId <- Simulator.activateContract (Wallet 1) (TreasuryStart dUSDAsset)
+    Simulator.waitNSlots 10
+    treasury <- getBus @Treasury cTreasuryId
+    logBlueString (show treasury)
     logCurrentBalances_
 
-    -- Repay USD to the vault
-    Simulator.waitForEndpoint cVaultId "repayDUSD"
-    logBlueString "Repay dUSD to the vault"
-    callEndpoint "repayDUSD" 100
+    cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury) <* Simulator.waitNSlots 2
     logCurrentBalances_
 
-    -- -- Withdraw Ada from the vault
-    Simulator.waitForEndpoint cVaultId "withdrawCollateral"
-    logBlueString "Withdraw Ada from the vault"
-    callEndpoint "withdrawCollateral" 113_000_000 >> Simulator.waitNSlots 10
+    let callTreasuryEndpoint = waitAndCallEndpoint cTreasuryUserId
+
+    logBlueString "Debt auction"
+    callTreasuryEndpoint "debtAuction" 2
     logCurrentBalances_
+
+    logBlueString "Surplus auction"
+    callTreasuryEndpoint "surplusAuction" 50
+    logCurrentBalances_
+
+    void $ liftIO getLine
 
     logBlueString "Balances at the end of the simulation:"
     logCurrentBalances_
@@ -101,7 +130,7 @@ main = void $
     shutdown
   where
     wallets :: [Wallet]
-    wallets = Wallet <$> [1]
+    wallets = Wallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " ++ s) >> logNewLine
@@ -112,20 +141,12 @@ main = void $
       let balancesList = Map.toList balancesMap
       traverse_ (uncurry $ logWalletBalance wallets) balancesList
 
-data ArdanaContracts = VaultContract deriving stock (Show, Generic)
-
-instance ToJSON ArdanaContracts where
-  toJSON =
-    genericToJSON
-      defaultOptions
-        { tagSingleConstructors = True
-        }
-instance FromJSON ArdanaContracts where
-  parseJSON =
-    genericParseJSON
-      defaultOptions
-        { tagSingleConstructors = True
-        }
+data ArdanaContracts
+  = VaultContract
+  | TreasuryContract Treasury
+  | TreasuryStart Value.AssetClass
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 instance Pretty ArdanaContracts where
   pretty = viaShow
@@ -142,10 +163,14 @@ handleArdanaContract = Builtin.handleBuiltin getSchema getContract
     getSchema :: ArdanaContracts -> [FunctionSchema FormSchema]
     getSchema = \case
       VaultContract -> Builtin.endpointsToSchemas @VaultSchema
+      TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
+      TreasuryStart _ -> Builtin.endpointsToSchemas @EmptySchema
 
     getContract :: ArdanaContracts -> SomeBuiltin
     getContract = \case
       VaultContract -> SomeBuiltin vaultContract
+      TreasuryContract t -> SomeBuiltin (treasuryContract @() @ContractError t)
+      TreasuryStart dac -> SomeBuiltin (treasuryStartContract dac)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)
 handlers =
@@ -194,7 +219,7 @@ formatValue (Value.Value m) =
 
     formatFirstToken :: [(Value.TokenName, Integer)] -> String
     formatFirstToken (token : _) = formatTokenValue token
-    formatFirstToken [] = "\n"
+    formatFirstToken [] = ""
 
     formatTokenValue :: (Value.TokenName, Integer) -> String
     formatTokenValue (name, value)

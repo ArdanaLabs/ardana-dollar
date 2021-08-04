@@ -13,6 +13,7 @@ module ArdanaDollar.Vault (
   valueWithin,
   isUnity,
   inputHasToken,
+  getDatumOffChain,
   ownOutput,
   outputHasToken,
   nextDatum,

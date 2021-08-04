@@ -73,7 +73,9 @@ common deps
     , playground-common
     , plutus-contract
     , plutus-core
+    , plutus-extra
     , plutus-ledger
+    , plutus-ledger-api
     , plutus-tx
     , plutus-tx-plugin
     , plutus-use-cases
@@ -85,6 +87,7 @@ common deps
 common test-deps
   import:        deps
   build-depends:
+    , lens
     , tasty
     , tasty-hunit
 
@@ -93,6 +96,10 @@ library
   import:          deps
   exposed-modules:
     ArdanaDollar.Trace
+    ArdanaDollar.Treasury.Endpoints
+    ArdanaDollar.Treasury.OffChain
+    ArdanaDollar.Treasury.OnChain
+    ArdanaDollar.Treasury.Types
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
@@ -107,7 +114,9 @@ test-suite ardana-dollar-test
   import:         test-deps
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
-  other-modules:  Test.ArdanaDollar.Utils
+  other-modules:
+    Test.ArdanaDollar.TreasuryTraceTest
+    Test.ArdanaDollar.Utils
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
   build-depends:  ardana-dollar
