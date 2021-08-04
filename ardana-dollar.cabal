@@ -67,14 +67,18 @@ common deps
     , base                     >=4.9 && <5
     , aeson
     , bytestring
+    , text
     , containers
     , freer-extras
+    , data-default
+    , row-types
     , playground-common
     , plutus-contract
     , plutus-core
     , plutus-tx-plugin
     , plutus-tx
     , plutus-ledger
+    , plutus-use-cases
     , record-dot-preprocessor
     , record-hasfield
 
@@ -92,6 +96,8 @@ library
     Plutus.Contracts.Game
     ArdanaDollar.Types
     ArdanaDollar.Utils
+    ArdanaDollar.Vault
+    ArdanaDollar.Trace
   hs-source-dirs: src examples/src
 
 test-suite ardana-dollar-test
@@ -115,7 +121,6 @@ executable plutus-starter-pab
     -threaded
   build-depends:
     , ardana-dollar
-    , data-default
     , plutus-pab
     , freer-simple
     , prettyprinter
