@@ -81,6 +81,7 @@ common deps
     , plutus-use-cases
     , record-dot-preprocessor
     , record-hasfield
+    , mtl
 
 common test-deps
   import:        deps
@@ -92,13 +93,16 @@ library
   import:           lang
   import:           deps
   exposed-modules:
-    MyModule
-    Plutus.Contracts.Game
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
     ArdanaDollar.Trace
-  hs-source-dirs: src examples/src
+    ArdanaDollar.DanaStakePool.Contracts
+    ArdanaDollar.DanaStakePool.DanaCurrency
+    ArdanaDollar.DanaStakePool.Endpoints
+    ArdanaDollar.DanaStakePool.Utils
+    ArdanaDollar.DanaStakePool.Validators
+  hs-source-dirs: src
 
 test-suite ardana-dollar-test
   import:           lang
@@ -108,6 +112,7 @@ test-suite ardana-dollar-test
   main-is: Main.hs
   other-modules:
     Test.ArdanaDollar.Utils
+    Test.ArdanaDollar.DanaStakePoolTest
   hs-source-dirs: test
   ghc-options: -Wnoncanonical-monad-instances -Widentities -rtsopts
   build-depends: ardana-dollar
