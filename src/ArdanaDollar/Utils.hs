@@ -6,12 +6,18 @@ module ArdanaDollar.Utils (
   liquidationPrice,
   availableToGenerate,
   availableToWithdraw,
+  scriptInputsAt,
+  valueUnlockedBy,
+  pubKeyInputsAt,
+  valuePaidBy,
 ) where
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import PlutusTx.Prelude
-import PlutusTx.Ratio qualified as R
-import Prelude qualified as Haskell
+import qualified PlutusTx.Ratio as R
+import qualified Prelude as Haskell
+import qualified Ledger
+import Ledger.Credential (Credential(PubKeyCredential, ScriptCredential))
 
 {-# INLINEABLE collaterizationRatio #-}
 
@@ -138,3 +144,49 @@ availableToWithdraw ::
   Integer
 availableToWithdraw exr liqRatio coll debt =
   coll - minCollateralRequired exr liqRatio debt
+
+{-# INLINEABLE scriptInputsAt #-}
+
+{- | The values of UTXO inputs being spent
+ from the script address in the pending transaction -}
+scriptInputsAt :: Ledger.ValidatorHash -> Ledger.TxInfo -> [Ledger.Value]
+scriptInputsAt h txInfo =
+  [ value
+  | Ledger.TxInInfo
+      { Ledger.txInInfoResolved = Ledger.TxOut
+        { Ledger.txOutAddress = Ledger.Address (ScriptCredential s) _
+        , Ledger.txOutValue = value
+        }
+      } <- Ledger.txInfoInputs txInfo,
+    s == h
+  ]
+
+
+{-# INLINEABLE valueUnlockedBy #-}
+
+{- | The total value unlocked by the given validator in this transaction -}
+valueUnlockedBy :: Ledger.TxInfo -> Ledger.ValidatorHash -> Ledger.Value
+valueUnlockedBy txInfo h = mconcat (scriptInputsAt h txInfo)
+
+{-# INLINEABLE pubKeyInputsAt #-}
+
+{-| The values of UTXO inputs paid by a public key address
+ in a pending transaction -}
+pubKeyInputsAt :: Ledger.PubKeyHash -> Ledger.TxInfo -> [Ledger.Value]
+pubKeyInputsAt pk txInfo =
+  [ value
+  | Ledger.TxInInfo
+      { Ledger.txInInfoResolved = Ledger.TxOut
+        { Ledger.txOutAddress = Ledger.Address (PubKeyCredential pk') _
+        , Ledger.txOutValue = value
+        }
+      } <- Ledger.txInfoInputs txInfo,
+    pk == pk'
+  ]
+
+{-# INLINEABLE valuePaidBy #-}
+
+{-| Get the total value paid by a public key address
+ in a pending transaction -}
+valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
+valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)

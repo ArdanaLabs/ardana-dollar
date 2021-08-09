@@ -54,7 +54,7 @@ import qualified Ledger.Constraints as Constraints
 import Plutus.Contract -- TODO
 import qualified Plutus.Contracts.Currency as Currency
 import ArdanaDollar.Types (CollaterizationRatio(Finite))
-import ArdanaDollar.Utils (collaterizationRatio)
+import ArdanaDollar.Utils (collaterizationRatio, valuePaidBy, valueUnlockedBy)
 
 
 data VaultDatum = VaultDatum
@@ -179,16 +179,22 @@ mkVaultValidator dusd user vd vr sc@Ledger.ScriptContext{scriptContextTxInfo=txI
           case compare collDiff 0 of
             -- withdrawCollateral, pay to the user
             LT -> traceIfFalse "wrong withdrawal amount"
-              ((Value.assetClassValueOf (Ledger.valuePaidTo txInfo user) collAsset) == (negate collDiff)) &&
+              (let value = Ledger.valuePaidTo txInfo user
+                             - valuePaidBy txInfo user
+                             + Ledger.txInfoFee txInfo
+               in (Value.assetClassValueOf value collAsset) == (negate collDiff)) &&
               traceIfFalse "cannot withdraw this much" cRatioOk
             EQ -> traceIfFalse "CollateralRedeemer transaction does not modify collateral" False
             -- depositCollateral, pay to the script
             GT -> traceIfFalse "wrong deposit amount" $
-              Value.assetClassValueOf (Ledger.valueLockedBy txInfo (Ledger.ownHash sc)) collAsset == collDiff
+              let value = Ledger.valueLockedBy txInfo (Ledger.ownHash sc)
+                            - valueUnlockedBy txInfo (Ledger.ownHash sc)
+              in Value.assetClassValueOf value collAsset == collDiff
         DebtRedeemer ->
           let debtDiff = vaultDebt nd - vaultDebt vd
-          in traceIfFalse "wrong dUSD mint amount" (Ledger.txInfoForge txInfo == Value.assetClassValue dusd debtDiff) &&
-            traceIfFalse "cannot borrow this much" cRatioOk
+          in traceIfFalse "wrong dUSD mint amount"
+               (Ledger.txInfoForge txInfo == Value.assetClassValue dusd debtDiff) &&
+             traceIfFalse "cannot borrow this much" cRatioOk
 
 data Vaulting
 instance Scripts.ValidatorTypes Vaulting where
@@ -292,12 +298,11 @@ withdrawCollateral amount = do
                     Constraints.otherScript (vaultValidator pkh) Haskell.<>
                     Constraints.unspentOutputs (Map.singleton oref o) Haskell.<>
                     Constraints.ownPubKeyHash pkh
-          tx = Constraints.mustPayToTheScript newDatum stateTokenValue Haskell.<>
+          tx = Constraints.mustPayToTheScript newDatum
+                 (stateTokenValue <> (negate collateralValue)) Haskell.<>
                Constraints.mustSpendScriptOutput oref
                  (Ledger.Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer) Haskell.<>
                Constraints.mustPayToPubKey pkh collateralValue
-          tx' = Constraints.mkTx @Vaulting lookups tx
-      logInfo @Haskell.String $ printf "sending transaction: %s" (Haskell.show tx')
       ledgerTx <- submitTxConstraintsWith lookups tx
       void $ awaitTxConfirmed $ Ledger.txId ledgerTx
       logInfo @Haskell.String $ printf "user %s withdrew %s collateral"
