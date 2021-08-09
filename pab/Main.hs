@@ -8,7 +8,7 @@ import Prelude
 
 --------------------------------------------------------------------------------
 
-import Control.Monad (void, (>=>))
+import Control.Monad (void, when, (>=>))
 import Control.Monad.Freer (Eff, Member, interpret, type (~>))
 import Control.Monad.Freer.Error (Error)
 import Control.Monad.Freer.Extras.Log (LogMsg)
@@ -24,8 +24,10 @@ import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Foldable (traverse_)
 import Data.List (intercalate)
+import Data.Map qualified as Map
 import Data.Text qualified as Text (unpack)
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (decodeUtf8')
+import Data.Text.Encoding.Error (UnicodeException)
 import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
 
 --------------------------------------------------------------------------------
@@ -55,7 +57,7 @@ main :: IO ()
 main = void $
   Simulator.runSimulationWith handlers $ do
     Simulator.logString @(Builtin ArdanaContracts)
-      "Starting plutus-starter PAB webserver on port 8080. Press enter to exit."
+      "Starting Ardana demo PAB webserver on port 8080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
     logTitleSequence
@@ -67,37 +69,48 @@ main = void $
           Simulator.callEndpointOnInstance @Integer cVaultId endpoint i >> Simulator.waitNSlots 3
 
     -- Init a vault
-    Simulator.logString @(Builtin ArdanaContracts) "Init a vault"
+    logBlueString "Init a vault"
     Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
     logCurrentBalances_
 
     -- MintUSD from the vault (depositing Ada)
     Simulator.waitForEndpoint cVaultId "depositCollateral"
-    Simulator.logString @(Builtin ArdanaContracts) "Mint USD from the vault (depositing Ada)"
-    callEndpoint "depositCollateral" 113_000_000 >> Simulator.waitForEndpoint cVaultId "mintDUSD"
+    logBlueString "Deposit Ada as a collateral"
+    callEndpoint "depositCollateral" 113_000_000
+
+    Simulator.waitForEndpoint cVaultId "mintDUSD"
+    logBlueString "Mint dUSD from the vault"
     callEndpoint "mintDUSD" 100
     logCurrentBalances_
 
     -- Repay USD to the vault
     Simulator.waitForEndpoint cVaultId "repayDUSD"
-    Simulator.logString @(Builtin ArdanaContracts) "Repay USD to the vault"
+    logBlueString "Repay dUSD to the vault"
     callEndpoint "repayDUSD" 100
     logCurrentBalances_
 
     -- -- Withdraw Ada from the vault
     Simulator.waitForEndpoint cVaultId "withdrawCollateral"
-    Simulator.logString @(Builtin ArdanaContracts) "Withdraw Ada from the vault"
+    logBlueString "Withdraw Ada from the vault"
     callEndpoint "withdrawCollateral" 113_000_000 >> Simulator.waitNSlots 10
     logCurrentBalances_
 
-    Simulator.logString @(Builtin ArdanaContracts) "Balances at the end of the simulation:"
+    logBlueString "Balances at the end of the simulation:"
     logCurrentBalances_
 
     shutdown
   where
+    wallets :: [Wallet]
     wallets = Wallet <$> [1]
+
+    logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
+    logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " ++ s) >> logNewLine
+
+    logCurrentBalances_ :: Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logCurrentBalances_ = do
-      traverse_ logWalletBalance wallets
+      balancesMap <- Simulator.currentBalances
+      let balancesList = Map.toList balancesMap
+      traverse_ (uncurry $ logWalletBalance wallets) balancesList
 
 data ArdanaContracts = VaultContract deriving stock (Show, Generic)
 
@@ -149,22 +162,28 @@ logTitleSequence = do
     ardanaName = "Ardana"
     titleWidth = 60
     spaceWidth = (titleWidth - length ardanaName) `div` 2
-    spaceStr = [' ' | _ <- [0 .. spaceWidth]]
+    spaceStr = [' ' | _ <- [0 .. spaceWidth - 1]]
 
     logWithBg = logPrettyBgColor titleWidth (Vibrant Blue) (Standard White) >=> const logNewLine
 
 logWalletBalance ::
   forall (t :: Type).
-  Wallet ->
+  [Wallet] ->
+  Wallet.Entity ->
+  Value.Value ->
   Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
-logWalletBalance w = do
-  val <- Simulator.valueAt (Wallet.walletAddress w)
-  logNewLine
-  logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " ++ show w ++ "  ")
-  logNewLine
-  logPrettyColor (Standard Blue) (formatValue val)
-  logNewLine
-  logNewLine
+logWalletBalance availableWallets w val = case w of
+  Wallet.WalletEntity w' -> when (w' `elem` availableWallets) logWalletBalance'
+  Wallet.ScriptEntity _ -> logWalletBalance'
+  _ -> return ()
+  where
+    logWalletBalance' = do
+      logNewLine
+      logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " ++ show w ++ "  ")
+      logNewLine
+      logPrettyColor (Standard Blue) (formatValue val)
+      logNewLine
+      logNewLine
 
 formatValue :: Value.Value -> String
 formatValue (Value.Value m) =
@@ -181,8 +200,16 @@ formatValue (Value.Value m) =
     formatTokenValue (name, value)
       | value == 0 = ""
       | otherwise = case name of
-        "" -> padRight ' ' 4 "ADA" ++ " : " ++ show value
-        Value.TokenName n -> padRight ' ' 7 (bsToString n) ++ " : " ++ show value
+        "" -> padRight ' ' 10 "ADA" ++ " : " ++ show value
+        tn -> padRight ' ' 10 (safeTokenNameToString tn) ++ " : " ++ show value
 
-    bsToString :: ByteString -> String
-    bsToString = Text.unpack . decodeUtf8
+    safeTokenNameToString :: Value.TokenName -> String
+    safeTokenNameToString tn@(Value.TokenName n) = case bsToString n of
+      Right str -> str
+      Left _ -> trimHash (show tn) -- it is a hash of a generated token
+    bsToString :: ByteString -> Either UnicodeException String
+    bsToString = fmap Text.unpack . decodeUtf8'
+
+    trimHash :: String -> String
+    trimHash ('0' : 'x' : rest) = "0x" ++ take 7 rest
+    trimHash hash = hash
