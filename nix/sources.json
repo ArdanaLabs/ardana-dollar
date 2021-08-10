@@ -22,5 +22,12 @@
         "type": "tarball",
         "url": "https://github.com/input-output-hk/plutus/archive/4551bba244a2f3ff890c4d2fd12a105692126d8d.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "plutus-extra": {
+        "rev": "7d933c0189d84b77888fc6b598f8eaec384c8df0",
+        "sha256": "0aiv6cdh9q548rn13fhhsdg7amnbrcf5bq3hgliyfmc72fz6r474",
+        "type": "file",
+        "url": "https://github.com/Liqwid-Labs/plutus-extra.git",
+        "url_template": "https://github.com/Liqwid-Labs/plutus-extra.git"
     }
 }
