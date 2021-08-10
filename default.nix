@@ -1,8 +1,6 @@
-{ checkMaterialization ? false
-, system ? builtins.currentSystem
+{ checkMaterialization ? false, system ? builtins.currentSystem
 , sourcesOverride ? { }
-, sources ? import ./nix/sources.nix { inherit system; } // sourcesOverride
-}:
+, sources ? import ./nix/sources.nix { inherit system; } // sourcesOverride }:
 
 let
   # Here a some of the various attributes for the variable 'packages':
@@ -20,14 +18,11 @@ let
   #     haskell-language-server
   #   }
   # }
-  packages = import ./nix {
-    inherit checkMaterialization;
-  };
+  packages = import ./nix { inherit checkMaterialization; };
 
   inherit (packages) pkgs plutus-starter;
   project = plutus-starter.haskell.project;
-in
-{
+in {
   inherit pkgs plutus-starter;
 
   inherit project;

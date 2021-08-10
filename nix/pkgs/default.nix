@@ -1,10 +1,5 @@
-{ pkgs
-, sources
-, plutus
-, haskell-nix
-, checkMaterialization ? false
-, enableHaskellProfiling ? false
-}:
+{ pkgs, sources, plutus, haskell-nix, checkMaterialization ? false
+, enableHaskellProfiling ? false }:
 let
   gitignore-nix = pkgs.callPackage plutus.plutus.lib.gitignore-nix { };
 
@@ -17,7 +12,7 @@ let
     inherit checkMaterialization;
     inherit agdaWithStdlib;
     inherit gitignore-nix sources haskell-nix;
-#    inherit compiler-nix-name; # Use the same GHC version as plutus
+    #    inherit compiler-nix-name; # Use the same GHC version as plutus
   };
 
   hlint = plutus.plutus.hlint;
@@ -30,8 +25,7 @@ let
 
   cardano-repo-tool = plutus.plutus.cardano-repo-tool;
 
-in
-{
+in {
   inherit haskell;
   inherit hlint;
   inherit cabal-install;
