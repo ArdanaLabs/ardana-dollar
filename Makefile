@@ -22,6 +22,8 @@ usage:
 	@echo "  ghci                -- Run stack ghci"
 	@echo "  format              -- Apply source code formatting with fourmolu"
 	@echo "  format_check        -- Check source code formatting without making changes"
+	@echo "  cabalfmt            -- Apply cabal formatting with cabal-fmt"
+	@echo "  cabalfmt_check      -- Check cabal files for formatting errors without making changes"
 	@echo "  nixfmt              -- Apply nix formatting with nixfmt"
 	@echo "  nixfmt_check        -- Check nix files for format errors"
 	@echo "  lint                -- Check the sources with hlint"
@@ -61,6 +63,14 @@ format: requires_nix_shell
 # Check formatting (without making changes)
 format_check: requires_nix_shell
 	fourmolu --mode check --check-idempotence $(FORMAT_EXTENSIONS) $(FORMAT_SOURCES)
+
+CABAL_SOURCES := $(shell git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.cabal' )
+
+cabalfmt: requires_nix_shell
+	cabal-fmt --inplace $(CABAL_SOURCES)
+
+cabalfmt_check: requires_nix_shell
+	cabal-fmt --check $(CABAL_SOURCES)
 
 # Nix files to format
 NIX_SOURCES := $(shell git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.nix' )

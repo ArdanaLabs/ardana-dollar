@@ -83,4 +83,4 @@ jobs:
           key: ${{ runner.os }}-cabal
       
       - name: Build the full CI
-        run: nix-build ./ci.nix
+        run: nix-build ./nix/ci.nix

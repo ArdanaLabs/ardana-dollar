@@ -1,18 +1,7 @@
-/* { system ? builtins.currentSystem
-   , crossSystem ? null
-   , config ? { }
-   , overlays ? [ ]
-   , sourcesOverride ? { }
-   , sources
-   , isInFlake
-   , haskellNix
-*/
-{ checkMaterialization ? false
-  # , enableHaskellProfiling ? false
-}:
-let
+{ checkMaterialization ? false, sourcesFile ? ./sources.json
+, system ? builtins.currentSystem }: rec {
   # Pratically, the only needed dependency is the plutus repository.
-  sources = import ./sources.nix { inherit pkgs; };
+  sources = import ./sources.nix { inherit sourcesFile system; };
 
   # We're going to get everything from the main plutus repository. This ensures
   # we're using the same version of multiple dependencies such as nipxkgs,
@@ -21,7 +10,5 @@ let
   pkgs = plutus.pkgs;
 
   haskell-nix = pkgs.haskell-nix;
-
-  plutus-starter = import ./pkgs { inherit pkgs haskell-nix sources plutus; };
-
-in { inherit pkgs plutus-starter; }
+  pab = import ./pab.nix { inherit plutus; };
+}
