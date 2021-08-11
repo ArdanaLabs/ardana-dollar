@@ -16,12 +16,30 @@ These contracts will distribute, Mint,  two main tokens:
 
 it should be noted that both of these tokens run a 6 decimal place system similar to Ada/Lovelace
 
-There is also an Ardana Decentralized Exchange effort, which will support many other stablecoins.
+There is also an Ardana Decentralized Exchange (DEX) effort, which will support many other stablecoins.
+
+note: in general Ardana-Dollar is modelled on systems in MakerDAO, However, unlike MakerDAO:
+- There will be a fixed number of DANA tokens Minted for all time
+- Liquidation 'auctions' will run automatically in sync with Oracle updates with prices determined algorithmicly based on previous sales
+- the role of keepers will be reduced in scope, instead these actions will be invoked by the oracle itself.
+
+
+TODO
+
+- Stability fee rates
+- buffer
+- auction algorithm
+- upgrade procedure
+- oracle bot spec
+- DAI Savings deposits
+- emergency shutdown
+- reserve funds
 
 ## DanaStakePool Contract
 
 This contract is used to distribute rewards to users and, later, determine their voting power.
 
+the democratic actions themselves can and will be delegated to other contracts and systems such that the Ardana Dex may integreate with this contract.
 
 ### Deposit
 
@@ -32,6 +50,9 @@ input: { amount :: Integer }
 behaviors:
 reduce wallet balance by `amount`, lock this value in script.
 update any internal state necessary to track the relative amount (increasing)
+
+added August 11:
+upon deposit, we should mint a token internally called xDANA
 
 invariant behaviors
 under no circumstances can the contract script-locked DANA reduce from interacting with this endpoint.
@@ -69,18 +90,6 @@ invariant behaviors:
 
 if the address is malformed, error out. (should happen automatically)
 
-### Query RewardBalance
-
-prerequisite: none/contract is instantiated
-
-input: (none)
-
-returns PlutusTx.Value
-
-behaviors
-query endpoint returning a Value representing all tokens held as reward for a particular address,  may need to calculate all rewards accrued since the last WithdrawRewards call from this user.
-
-this can only use the address of the caller, this cannot be queried for arbitrary addresses.
 
 ### WithdrawRewards
 preprequisites: None, the contract must be instantiated.
@@ -106,21 +115,44 @@ when the next Epoch completes, this will be dispersed to stakers as rewards, at 
 
 If there are no stakers when the epoch completes, then the funds are preserved until an epoch completes and there are stakers.
 
+## RewardPool
 
-## Governance Contract
+the reward pool manages pending reward funds and the amount pending for each account.
 
-The Governance Contract defines the types of actions the DAO can take and the democratic systems that drive it.
+importantly, rewards must be claimed by presenting xDANA tokens minted during the deposit stage.
+
+### Query RewardBalance
+
+prerequisite: none/contract is instantiated
+
+input: (none)
+
+returns PlutusTx.Value
+
+behaviors
+query endpoint returning a Value representing all tokens held as reward for a particular address,  may need to calculate all rewards accrued since the last WithdrawRewards call from this user.
+
+this can only use the address of the caller, this cannot be queried for arbitrary addresses.
+
+### ClaimReward
+prerequisite: none
+
+input: none/()
+
+behaviors:
+if there are rewards pending for the user calling the endpoint in question, send them from the contract to the user.
+
+if there are no rewards, error out.
+
+## Admin Contract
+
+The Admin Contract defines the types of actions that administrators might take to steer the stablecoin configuration
 
 for now, it will directly instantiate Vaults.
 
-at launch time, the `Init-Vault` endpoint will be replaced with:
-  i) initialization that will run once at launch
-  %% ii) voting systems which, when successful, can update contract parameters and perform  other tasks
-  %% (voting systems will be part of a v2)
-  
-There can only ever be a single governance contract instance, otherwise there is a vulnerability
+There can only ever be a single Admin contract instance, otherwise there is a vulnerability
 
-The governance contract will need to keep track of a `minCollateralRatio` for each token type (this might just be a single value globally) - this may be something that DANA token holders will be able to update through a democratic process, which will need to adjust all vaults currently running as well as future vaults when changed
+The Admin contract will need to keep track of a `minCollateralRatio` for each token type (this might just be a single value globally) - this may be something that DANA token holders will be able to update through a democratic process, which will need to adjust all vaults currently running as well as future vaults when changed
 
 The Governance contract will need to integrate with the DanaStakePool contract, for the purpose of sending rewards
 
@@ -135,17 +167,22 @@ expected behaviour:
 
 calling this endpoint instantiates a Vault Contract for the user's address with `VaultConfig` as its config params (one vault per `supportedToken`, per user), such that the user can then activate the Vault Contract with their Wallet and immediately call `MintUSD`
 
-this is a temporary convenience endpoint that will be removed from the public interface prior to launch.
-
-however the underlying code will be recycled as an initial configuration to run at deployment time,
-
 ### UpdateVaultParams
 
 prerequisite:  the user's address must match a hardcoded value
 
-input: [VaultConfig]
+input: { configs :: [(VaultConfig, Rational)], -- asset class and the default stability fee multiplier for dUSD loans backed by that asset class
+       , liquidationBenefitCap :: Rational
+       , liquidationBenefitFloor :: Rational
+       , minCollateralRatio :: Rational
+       }
 
 behavior: updates collateralRatio and other critical config for all existing vaults, as well any new vaults will use the supplied configs.
+
+VaultConfig assetClasses must ALL be supported by the Oracle Price feed
+(Ada is a special case since all other pricing will be converted to lovelace as a base currency for the system)
+
+`liquidationBenefitCap` must be greater than `liquidationBenefitFloor` and neither can have a zero in the denominator position, or be negative.
 
 ### QueryAllVaults
 returns all vaults for the user
@@ -195,6 +232,7 @@ if removing this amount would bring the user's overall collateralRatio below the
 otherwise, move `amount` of the Vault's assetClass from the script to the user.
 
 error out if `amount` is negative
+
 ### AddBorrow
 
 prerequisites: Vault for token must be instantiated, 
@@ -229,7 +267,9 @@ error out if the user does not have `amount` of dUSD
 
 error out if `amount` is negative.
 
-a portion of the stabilityfee is paid out the the DANAStakePool as a reward, the rest will be sent to an Ardana-controlled wallet, and a third amount is used for liquidity in Surplus Auctions
+it's important to track the principal of a given dUSD loan, and the portion which comes from stability fees, as a portion of the stabilityfee is paid out the the DANAStakePool as a reward, the rest will be sent to an Ardana-controlled wallet which is used to manage costs associated with the protocol.
+
+if a loan is taken out and repaid between Oracle.SetPrice calls, then there is no stability fee
 
 ## Oracle
 
@@ -243,16 +283,37 @@ input: { oraclePK :: Crypto.PubKey, oracleMsg :: Oracle.SignedMessage(Oracle.Obs
 where `a` is sufficient info to gain the time-weight averaged price of USD in lovelace.
 
 updates prices used for transactions, 
-triggers liquidation auction.
+applies stabilityFee to vaults - any seizures will include stabilityFee in their calculations
+triggers liquidation seizures, making these funds available to callers of the LiquidationPurchase Endpoint.
 
-this will rely on a bot which polls a centralized server, and controls a wallet to submit this information on-chain
+liquidation seizures claim the equivalent amount of collateral necessary to bring the user back to a safe collateralRatio for the given Vault (Plus liquidationBenefitCap as a percentage) 
+
+let loanAmountInAda = dUSDLoanTotal * DUSD:Ada price
+let collateralTotalInAda = totalCollateral * Collateral:Ada price
+let currentRatio = collateralTotalInAda / loanAmountInAda
+let liquidationMultiplier = (1 + liquidationBenefitCap)
+let nearestSafeLoanAmountInAda = (collateralTotalInAda / maximumCollateralRatio) / liquidationMultiplier
+let seizedAmount = (loanAmountInAda - nearestSafeLoanAmountInAda) * liquidationMultiplier
+let newCollateralAmountInAda = collateralTotalInAda - seizedAmount
+when a seizure occurs, 
+ the user's principle borrow is now equal to the `nearestSafeLoanAmountInAda` / DUSD:Ada Price
+ the user's collateral is now `newCollateralAmountInAda` (converted back to the underlying currency)
+ if this results in the user's collateral Ratio being less than `minimumCollateralRatio` we need to adjust this formula.
+
+this endpoint will rely on a bot which polls a centralized server, and controls a wallet to submit this information on-chain
+
+calculating stability fees:
+- each oracle call will calculate the POSIXTimeRange since the previous oracle call
+- the stability fee Per vault will calculate the amount of interest against the principle to charge such that at the end of 1 year, the loan amount will be equal to the principal * (1 + `stabilityForAssetClass`) - this stabilityForAssetClass is the Ratio supplied along with VaultConfigs.
+- this must always use the CURRENT stabilityFee, regardless of the one that was in place when the vault was created.
+
+No Matter how many times `SetPrice` is called, this endpoint should only execute every 10 minutes
 
 ## LiquidationModule
 The LiquidationModule algorithmicly runs an 'auction' to sell off collateral when a user falls below the minimumCollateralRatio
 
-algorithm details need to be worked out but similar to the stabilityFee, the liquidation  module will adjust the liquidation sale price based on the amount of collateral that needs to be liquidated, whether or not the last price was successful in selling all necessary collateral, and the current exchange rate such that collateral may be sold at up to a 20% discount.
-
-this has no public endpoints, but will have a procedure which calculates this price
+pricing algorithm details:
+- if this is the first ever liquidation
 
 ### LiquidationPurchase
 prerequisite: there is at least one vault where the minimumCollateralRatio is not met.
@@ -262,6 +323,14 @@ input: { amount :: Integer, assetClass :: AssetClass }
 behavior:
 transfer `amount` of assetClass to user (if there is that amount of that assetClass available for liquidation and assuming the price can be paid)
 user must pay `amount` * currentLiquidationPrice for that collateral type in DUSD
+
+
+the liquidation purchase must be able to track previous purchases of the `assetClass` specified by the user over the past several liquidations
+
+If this is the First liquidation of this assetClass in more than 24 hours,  the price of the seized collateral is the market price (Value of the collateral in ada, converted to USD/DUSD) minus liquidationBenefitCap.
+If we have a record of a previous liquidation 24 AND we sold All of the given `assetClass`, increase the previous price by 1%
+If we did not sell all of the given assetClass, decrease the price by 1%
+the maximum and minimum bounds for the price are marketPrice * liquidationBenefitFloor and marketPrice * liquidationBenefitCap.
 
 ## Treasury
  the treasury holds all reserve funds, and other funds that belong 'to the protocol' and cannot be withdrawn directly by users
