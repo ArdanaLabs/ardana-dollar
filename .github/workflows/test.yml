@@ -23,34 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - uses: actions/cache@v2.1.4
-        name: Cache Stack
-        with:
-          path: ~/.stack
-          key: ${{ runner.os }}-stack-formatting
-          restore-keys: ${{ runner.os }}-stack-
-        
-      - run: stack install fourmolu
-        name: Install fourmolu
-
-      - run: ./.github/check_formatting.sh
+      - run: nix-shell -p haskellPackages.fourmolu --command "./.github/check_formatting.sh"
 
   lint:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - uses: actions/cache@v2.1.4
-        name: Cache Stack
-        with:
-          path: ~/.stack
-          key: ${{ runner.os }}-stack-lint
-          restore-keys: ${{ runner.os }}-stack-
-
-      - run: stack install hlint
-        name: Install hlint
-
-      - run: ~/.local/bin/hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')
+      - run: nix-shell -p haskellPackages.hlint --command "hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')"
         name: Run hlint
 
   build:
