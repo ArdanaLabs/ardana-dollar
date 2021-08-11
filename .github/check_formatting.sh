@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Extensions necessary to tell fourmolu about 
+# Extensions necessary to tell fourmolu about
 EXTENSIONS="-o -XTypeApplications -o -XTemplateHaskell -o -XImportQualifiedPost -o -XPatternSynonyms -o -fplugin=RecordDotPreprocessor"
 SOURCES=$(find -name '*.hs' -not -path './dist-*/*')
-~/.local/bin/fourmolu --mode check --check-idempotence $EXTENSIONS $SOURCES
+fourmolu --mode check --check-idempotence $EXTENSIONS $SOURCES
