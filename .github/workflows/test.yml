@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - run: nix-shell -p haskellPackages.hlint --command "hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')"
+      - run: nix-shell -p hlint --command "hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')"
         name: Run hlint
 
   build:
