@@ -10,11 +10,16 @@ module ArdanaDollar.Utils (
   valueUnlockedBy,
   pubKeyInputsAt,
   valuePaidBy,
+  getDatumOnChain,
+  validateDatumImmutable,
 ) where
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
+import Data.Kind (Type)
 import Ledger qualified
+import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
 import Prelude qualified as Haskell
@@ -196,3 +201,36 @@ pubKeyInputsAt pk txInfo =
 -}
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
+
+{-# INLINEABLE getDatumOnChain #-}
+getDatumOnChain ::
+  forall (datum :: Type).
+  (PlutusTx.IsData datum) =>
+  Contexts.TxOut ->
+  (Ledger.DatumHash -> Maybe Ledger.Datum) ->
+  Maybe datum
+getDatumOnChain o f = do
+  dh <- Ledger.txOutDatum o
+  Ledger.Datum d <- f dh
+  PlutusTx.fromBuiltinData d
+
+{-# INLINEABLE validateDatumImmutable #-}
+validateDatumImmutable ::
+  forall (datum :: Type).
+  (Eq datum, PlutusTx.IsData datum) =>
+  datum ->
+  Contexts.ScriptContext ->
+  Bool
+validateDatumImmutable td ctx =
+  traceIfFalse "datum has changed" (Just td == outputDatum)
+  where
+    info :: Contexts.TxInfo
+    info = Contexts.scriptContextTxInfo ctx
+
+    outputDatum :: Maybe datum
+    outputDatum = getDatumOnChain ownOutput (`Contexts.findDatum` info)
+
+    ownOutput :: Ledger.TxOut
+    ownOutput = case Contexts.getContinuingOutputs ctx of
+      [o] -> o
+      _ -> traceError "expected exactly one output"

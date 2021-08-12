@@ -34,36 +34,27 @@ import PlutusTx.Prelude
 
 data Treasury = Treasury
   { tSymbol :: Value.AssetClass
-  , dusdAssetClass :: Value.AssetClass
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
-PlutusTx.makeLift ''Treasury
 
 data TreasuryDatum = TreasuryDatum
-  { currentDebtAuctionPrice :: !Integer
-  , currentSurplusAuctionPrice :: !Integer
-  , auctionDanaAmount :: !Integer
+  { auctionDanaAmount :: !Integer
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
-PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
 
-data TreasuryAction = MkDebtBid Integer | MkSurplusBid Integer deriving (Show)
-PlutusTx.makeIsDataIndexed
-  ''TreasuryAction
-  [ ('MkDebtBid, 0)
-  , ('MkSurplusBid, 1)
-  ]
-PlutusTx.makeLift ''TreasuryAction
+-- TODO: Should the Redeemer give more information?
+data TreasuryAction = BorrowForAuction
+  deriving (Show)
 
 -- instances
 instance Eq TreasuryDatum where
-  (TreasuryDatum cdap1 csap1 ada1) == (TreasuryDatum cdap2 csap2 ada2)
-    | cdap1 == cdap2 && csap1 == csap2 && ada1 == ada2 = True
+  (TreasuryDatum ada1) == (TreasuryDatum ada2)
+    | ada1 == ada2 = True
     | otherwise = False
 
--- helper currencies
+-- helper currencies (a bit debugable)
 {-# INLINEABLE treasuryTokenName #-}
 treasuryTokenName :: Value.TokenName
 treasuryTokenName = Value.TokenName "treasury"
@@ -93,3 +84,8 @@ danaCurrency = Ledger.scriptCurrencySymbol danaMintingPolicy
 {-# INLINEABLE danaAssetClass #-}
 danaAssetClass :: Value.AssetClass
 danaAssetClass = Value.AssetClass (danaCurrency, danaTokenName)
+
+PlutusTx.makeLift ''Treasury
+PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
+PlutusTx.makeIsDataIndexed ''TreasuryAction [('BorrowForAuction, 0)]
+PlutusTx.makeLift ''TreasuryAction

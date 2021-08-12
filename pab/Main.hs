@@ -53,6 +53,7 @@ import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
 
+import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.Treasury.Endpoints
 import ArdanaDollar.Treasury.Types (Treasury)
 import ArdanaDollar.Vault
@@ -102,24 +103,28 @@ main = void $
     callVaultEndpoint "mintDUSD" 100
     logCurrentBalances_
 
+    -- Treasury
     logBlueString "Init treasury"
-    cTreasuryId <- Simulator.activateContract (Wallet 1) (TreasuryStart dUSDAsset)
+    cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
     Simulator.waitNSlots 10
     treasury <- getBus @Treasury cTreasuryId
     logBlueString (show treasury)
+
+    _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
+    Simulator.waitNSlots 10
     logCurrentBalances_
 
-    cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury) <* Simulator.waitNSlots 2
+    cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury) <* Simulator.waitNSlots 2
     logCurrentBalances_
 
-    let callTreasuryEndpoint = waitAndCallEndpoint cTreasuryUserId
+    let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
 
     logBlueString "Debt auction"
-    callTreasuryEndpoint "debtAuction" 2
+    callBufferEndpoint "debtAuction" 2
     logCurrentBalances_
 
     logBlueString "Surplus auction"
-    callTreasuryEndpoint "surplusAuction" 50
+    callBufferEndpoint "surplusAuction" 50
     logCurrentBalances_
 
     void $ liftIO getLine
@@ -144,7 +149,9 @@ main = void $
 data ArdanaContracts
   = VaultContract
   | TreasuryContract Treasury
-  | TreasuryStart Value.AssetClass
+  | TreasuryStart
+  | BufferStart Treasury
+  | BufferContract Treasury
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
@@ -163,14 +170,18 @@ handleArdanaContract = Builtin.handleBuiltin getSchema getContract
     getSchema :: ArdanaContracts -> [FunctionSchema FormSchema]
     getSchema = \case
       VaultContract -> Builtin.endpointsToSchemas @VaultSchema
+      TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
       TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
-      TreasuryStart _ -> Builtin.endpointsToSchemas @EmptySchema
+      BufferStart _ -> Builtin.endpointsToSchemas @EmptySchema
+      BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
 
     getContract :: ArdanaContracts -> SomeBuiltin
     getContract = \case
       VaultContract -> SomeBuiltin vaultContract
+      TreasuryStart -> SomeBuiltin treasuryStartContract
       TreasuryContract t -> SomeBuiltin (treasuryContract @() @ContractError t)
-      TreasuryStart dac -> SomeBuiltin (treasuryStartContract dac)
+      BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
+      BufferContract t -> SomeBuiltin (bufferContract @() @ContractError t)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)
 handlers =

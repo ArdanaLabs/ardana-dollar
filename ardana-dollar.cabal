@@ -96,6 +96,10 @@ library
   import:          deps
   exposed-modules:
     ArdanaDollar.Trace
+    ArdanaDollar.Buffer.Endpoints
+    ArdanaDollar.Buffer.OffChain
+    ArdanaDollar.Buffer.OnChain
+    ArdanaDollar.Buffer.Types
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain

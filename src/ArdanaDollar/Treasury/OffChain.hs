@@ -3,10 +3,12 @@
 
 module ArdanaDollar.Treasury.OffChain (
   startTreasury,
-  debtAuction,
-  surplusAuction,
   depositAuctionFloat,
   upgrade,
+  treasuryAddress,
+  treasuryInst,
+  treasuryValidator,
+  findTreasury,
 ) where
 
 --------------------------------------------------------------------------------
@@ -16,7 +18,7 @@ import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Text.Printf (printf)
-import Prelude (Semigroup (..), String, div, rem, show)
+import Prelude (Semigroup (..), String, show)
 
 --------------------------------------------------------------------------------
 
@@ -34,7 +36,7 @@ import PlutusTx.Prelude hiding (Semigroup (..))
 
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Vault (getDatumOffChain)
+import ArdanaDollar.Vault (dUSDAsset, getDatumOffChain)
 
 data Treasuring
 instance Scripts.ValidatorTypes Treasuring where
@@ -47,6 +49,7 @@ treasuryInst t dac =
     ( $$(PlutusTx.compile [||mkTreasuryValidator||])
         `PlutusTx.applyCode` PlutusTx.liftCode t
         `PlutusTx.applyCode` PlutusTx.liftCode dac
+        `PlutusTx.applyCode` PlutusTx.liftCode dUSDAsset
     )
     $$(PlutusTx.compile [||wrap||])
   where
@@ -59,6 +62,7 @@ treasuryAddress :: Treasury -> Value.AssetClass -> Ledger.Address
 treasuryAddress t dac = Ledger.scriptAddress $ treasuryValidator t dac
 
 findTreasury ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
   (AsContractError e) =>
   Treasury ->
   Contract w s e (Maybe (Contexts.TxOutRef, Ledger.TxOutTx, TreasuryDatum))
@@ -75,106 +79,31 @@ findTreasury treasury = do
     f o = Value.assetClassValueOf (Ledger.txOutValue $ Ledger.txOutTxOut o) (tSymbol treasury) == 1
 
 -- Treasury start contract
-startTreasury :: forall (w :: Type). Value.AssetClass -> Contract w EmptySchema ContractError Treasury
-startTreasury dac = do
+startTreasury :: forall (w :: Type). Contract w EmptySchema ContractError Treasury
+startTreasury = do
   pkh <- Contexts.pubKeyHash <$> ownPubKey
   cs <-
     fmap Currency.currencySymbol $
       mapError (\(Currency.CurContractError e) -> e) $
         Currency.mintContract pkh [(treasuryTokenName, 1)]
   let ac = Value.assetClass cs treasuryTokenName
-      treasury = Treasury ac dac
-      td =
-        TreasuryDatum
-          { currentDebtAuctionPrice = 50
-          , currentSurplusAuctionPrice = 50
-          , auctionDanaAmount = 10
-          }
-      tx = Constraints.mustPayToTheScript td (Value.assetClassValue ac 1)
-  ledgerTx <- submitTxConstraints (treasuryInst treasury danaAssetClass) tx
+      treasury = Treasury ac
+      td = TreasuryDatum {auctionDanaAmount = 10}
+      treasuryValue = Value.assetClassValue ac 1 <> Value.assetClassValue danaAssetClass 10
+      lookups =
+        Constraints.mintingPolicy danaMintingPolicy
+          <> Constraints.typedValidatorLookups (treasuryInst treasury danaAssetClass)
+          <> Constraints.otherScript (treasuryValidator treasury danaAssetClass)
+      tx =
+        Constraints.mustPayToTheScript td treasuryValue
+          <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass 10)
+
+  ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
   logInfo @String $ printf "initialized Treasury %s" (show td)
   return treasury
 
 -- Treasury usage contracts
-debtAuction ::
-  forall (w :: Type) (s :: Row Type) (e :: Type).
-  (AsContractError e) =>
-  Treasury ->
-  Integer ->
-  Contract w s e ()
-debtAuction treasury danaAmount = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
-
-  logInfo @String $ printf "User %s has called debtAuction" (show pkh)
-  utxoWithDatum <- findTreasury treasury
-  case utxoWithDatum of
-    Nothing -> logError @String "no treasury utxo at the script address"
-    Just (oref, o, td) -> do
-      logInfo @String $ printf "Found treasury, it's datum:\n%s" (show td)
-      let dusdPrice = currentDebtAuctionPrice td * danaAmount
-          v =
-            Ledger.txOutValue (Ledger.txOutTxOut o)
-              <> Value.assetClassValue (dusdAssetClass treasury) dusdPrice
-          danaValue = Value.assetClassValue danaAssetClass danaAmount
-          td' = Ledger.Datum $ PlutusTx.toBuiltinData td
-
-          lookups =
-            Constraints.typedValidatorLookups (treasuryInst treasury danaAssetClass)
-              <> Constraints.otherScript (treasuryValidator treasury danaAssetClass)
-              <> Constraints.unspentOutputs (Map.singleton oref o)
-              <> Constraints.mintingPolicy danaMintingPolicy
-          tx =
-            Constraints.mustSpendScriptOutput oref (Ledger.Redeemer . PlutusTx.toBuiltinData $ MkDebtBid danaAmount)
-              <> Constraints.mustPayToOtherScript (Ledger.validatorHash $ treasuryValidator treasury danaAssetClass) td' v
-              <> Constraints.mustMintValue danaValue
-              <> Constraints.mustPayToPubKey pkh danaValue
-      ledgerTx <- submitTxConstraintsWith lookups tx
-      awaitTxConfirmed $ Ledger.txId ledgerTx
-      logInfo @String $ printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
-
-surplusAuction ::
-  forall (w :: Type) (s :: Row Type) (e :: Type).
-  (AsContractError e) =>
-  Treasury ->
-  Integer ->
-  Contract w s e ()
-surplusAuction treasury dusdAmount = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
-  logInfo @String $ printf "User %s has called surplusAuction " (show pkh)
-  utxoWithDatum <- findTreasury treasury
-  case utxoWithDatum of
-    Nothing -> logError @String "no treasury utxo at the script address" -- throwError?
-    Just (oref, o, td) -> do
-      logInfo @String $ printf "Found treasury, it's datum:\n%s" (show td)
-      let danaPrice = dusdAmount `div` currentSurplusAuctionPrice td -- [DANA], surplus is dUSD or DANA?
-          danaRem = dusdAmount `rem` currentSurplusAuctionPrice td -- [DANA], should be 0
-          td' = Ledger.Datum $ PlutusTx.toBuiltinData td
-          userValue = Value.assetClassValue (dusdAssetClass treasury) dusdAmount
-          scriptValue =
-            Ledger.txOutValue (Ledger.txOutTxOut o)
-              -- <> Value.assetClassValue danaAssetClass danaPrice
-              <> Value.assetClassValue (dusdAssetClass treasury) (negate dusdAmount)
-          scriptHash = Ledger.validatorHash $ treasuryValidator treasury danaAssetClass
-
-          lookups =
-            Constraints.typedValidatorLookups (treasuryInst treasury danaAssetClass)
-              <> Constraints.otherScript (treasuryValidator treasury danaAssetClass)
-              <> Constraints.unspentOutputs (Map.singleton oref o)
-              <> Constraints.mintingPolicy danaMintingPolicy
-          tx =
-            Constraints.mustSpendScriptOutput oref (Ledger.Redeemer . PlutusTx.toBuiltinData $ MkSurplusBid dusdAmount)
-              <> Constraints.mustPayToOtherScript scriptHash td' scriptValue
-              <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass $ negate danaPrice)
-              <> Constraints.mustPayToPubKey pkh userValue
-
-      if danaRem /= 0
-        then logError @String $ printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
-        else do
-          ledgerTx <- submitTxConstraintsWith lookups tx
-          awaitTxConfirmed $ Ledger.txId ledgerTx
-          logInfo @String $ printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
-
 depositAuctionFloat :: forall (w :: Type) (s :: Row Type) (e :: Type). Contract w s e ()
 depositAuctionFloat = logInfo ("called depositAuctionFloat" :: ByteString)
 
