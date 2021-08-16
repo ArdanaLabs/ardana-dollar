@@ -5,6 +5,8 @@ module ArdanaDollar.Treasury.Types (
   Treasury (..),
   TreasuryDatum (..),
   TreasuryAction (..),
+  TreasuryDepositParams (..),
+  TreasurySpendParams (..),
   danaAssetClass,
   danaCurrency,
   danaTokenName,
@@ -29,6 +31,7 @@ import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Contexts qualified as Contexts
 import PlutusTx qualified
 import PlutusTx.Prelude
+import Schema (ToSchema)
 
 --------------------------------------------------------------------------------
 
@@ -44,8 +47,30 @@ data TreasuryDatum = TreasuryDatum
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
+data TreasuryDepositParams = TreasuryDepositParams
+  { treasuryDepositAmount :: Integer
+  , treasuryDepositCurrency :: Value.AssetClass
+  , treasuryDepositCostCenter :: ByteString
+  }
+  deriving stock (Generic, Show)
+  deriving anyclass (FromJSON, ToJSON, ToSchema)
+
+data TreasurySpendParams = TreasurySpendParams
+  { treasurySpendValue :: Value.Value
+  , treasurySpendCostCenter :: ByteString
+  , treasurySpendBeneficiary :: Ledger.PubKeyHash
+  }
+  deriving stock (Generic, Show)
+  deriving anyclass (FromJSON, ToJSON, ToSchema)
+
 -- TODO: Should the Redeemer give more information?
-data TreasuryAction = BorrowForAuction
+data TreasuryAction
+  = BorrowForAuction
+  | DepositFundsWithCostCenter
+  | SpendFundsFromCostCenter
+  | AllowMint
+  | AllowBurn
+  | InitiateUpgrade
   deriving (Show)
 
 -- instances
@@ -87,5 +112,13 @@ danaAssetClass = Value.AssetClass (danaCurrency, danaTokenName)
 
 PlutusTx.makeLift ''Treasury
 PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
-PlutusTx.makeIsDataIndexed ''TreasuryAction [('BorrowForAuction, 0)]
+PlutusTx.makeIsDataIndexed
+  ''TreasuryAction
+  [ ('BorrowForAuction, 0)
+  , ('DepositFundsWithCostCenter, 1)
+  , ('SpendFundsFromCostCenter, 2)
+  , ('AllowMint, 3)
+  , ('AllowBurn, 4)
+  , ('InitiateUpgrade, 5)
+  ]
 PlutusTx.makeLift ''TreasuryAction

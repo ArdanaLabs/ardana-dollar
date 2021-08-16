@@ -3,8 +3,10 @@
 
 module ArdanaDollar.Treasury.OffChain (
   startTreasury,
-  depositAuctionFloat,
-  upgrade,
+  depositFundsWithCostCenter,
+  spendFromCostCenter,
+  queryCostCenters,
+  initiateUpgrade,
   treasuryAddress,
   treasuryInst,
   treasuryValidator,
@@ -17,6 +19,8 @@ import Control.Monad (void)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
+import Data.Vector (Vector)
+import Data.Vector qualified as Vector
 import Text.Printf (printf)
 import Prelude (Semigroup (..), String, show)
 
@@ -37,6 +41,7 @@ import PlutusTx.Prelude hiding (Semigroup (..))
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
 import ArdanaDollar.Treasury.Types
 import ArdanaDollar.Vault (dUSDAsset, getDatumOffChain)
+import Plutus.PAB.OutputBus
 
 data Treasuring
 instance Scripts.ValidatorTypes Treasuring where
@@ -104,8 +109,23 @@ startTreasury = do
   return treasury
 
 -- Treasury usage contracts
-depositAuctionFloat :: forall (w :: Type) (s :: Row Type) (e :: Type). Contract w s e ()
-depositAuctionFloat = logInfo ("called depositAuctionFloat" :: ByteString)
+depositFundsWithCostCenter ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
+  TreasuryDepositParams ->
+  Contract w s e ()
+depositFundsWithCostCenter params = do
+  logInfo ("called depositFundsWithCostCenter" :: ByteString)
+  logInfo (show params)
 
-upgrade :: forall (w :: Type) (s :: Row Type) (e :: Type). Contract w s e ()
-upgrade = logInfo ("called depositAuctionFloat" :: ByteString)
+spendFromCostCenter :: forall (w :: Type) (s :: Row Type) (e :: Type). TreasurySpendParams -> Contract w s e ()
+spendFromCostCenter params = do
+  logInfo ("called spendFromCostCenter" :: ByteString)
+  logInfo (show params)
+
+queryCostCenters :: forall (s :: Row Type) (e :: Type). Contract (OutputBus (Vector (ByteString, Value.Value))) s e ()
+queryCostCenters = do
+  logInfo ("called queryCostCenters" :: ByteString)
+  sendBus Vector.empty
+
+initiateUpgrade :: forall (w :: Type) (s :: Row Type) (e :: Type). Contract w s e ()
+initiateUpgrade = logInfo ("called initiateUpgrade" :: ByteString)

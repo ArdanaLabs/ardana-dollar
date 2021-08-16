@@ -31,6 +31,7 @@ import Data.Text qualified as Text (unpack)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
 import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
+import Data.Vector (Vector)
 
 --------------------------------------------------------------------------------
 
@@ -110,6 +111,13 @@ main = void $
     treasury <- getBus @Treasury cTreasuryId
     logBlueString (show treasury)
 
+    cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
+    Simulator.waitNSlots 10
+    _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
+    Simulator.waitNSlots 10
+    queriedCosts <- getBus @(Vector (ByteString, Value.Value)) cTreasuryUserId
+    logBlueString (show queriedCosts)
+
     _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
     Simulator.waitNSlots 10
     logCurrentBalances_
@@ -179,7 +187,7 @@ handleArdanaContract = Builtin.handleBuiltin getSchema getContract
     getContract = \case
       VaultContract -> SomeBuiltin vaultContract
       TreasuryStart -> SomeBuiltin treasuryStartContract
-      TreasuryContract t -> SomeBuiltin (treasuryContract @() @ContractError t)
+      TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
       BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
       BufferContract t -> SomeBuiltin (bufferContract @() @ContractError t)
 

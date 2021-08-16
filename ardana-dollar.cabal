@@ -11,7 +11,7 @@ version:       0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
-license:       NONE
+license:
 license-files: LICENSE
 author:        Your name
 maintainer:    Your email
@@ -83,6 +83,7 @@ common deps
     , record-hasfield
     , row-types
     , text
+    , vector
 
 common test-deps
   import:        deps
@@ -95,11 +96,11 @@ library
   import:          lang
   import:          deps
   exposed-modules:
-    ArdanaDollar.Trace
     ArdanaDollar.Buffer.Endpoints
     ArdanaDollar.Buffer.OffChain
     ArdanaDollar.Buffer.OnChain
     ArdanaDollar.Buffer.Types
+    ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain
@@ -121,6 +122,7 @@ test-suite ardana-dollar-test
   other-modules:
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
+
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
   build-depends:  ardana-dollar

@@ -8,35 +8,41 @@ module ArdanaDollar.Treasury.Endpoints (
 
 import Control.Monad (forever)
 import Data.Kind (Type)
+import Data.Vector (Vector)
 import Prelude (foldr1)
 
 --------------------------------------------------------------------------------
 
+import Ledger.Value qualified as Value
 import Plutus.Contract
 import PlutusTx.Prelude
 
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.OffChain
-import ArdanaDollar.Treasury.Types (Treasury)
+import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams, TreasurySpendParams)
 import Plutus.PAB.OutputBus
 
 type TreasurySchema =
-  Endpoint "depositAuctionFloat" ()
-    .\/ Endpoint "upgrade" ()
+  Endpoint "depositFundsWithCostCenter" TreasuryDepositParams
+    .\/ Endpoint "spendFromCostCenter" TreasurySpendParams
+    .\/ Endpoint "queryCostCenters" ()
+    .\/ Endpoint "initUpgrade" ()
 
 treasuryStartContract :: Contract (OutputBus Treasury) EmptySchema ContractError ()
 treasuryStartContract = startTreasury >>= sendBus
 
 treasuryContract ::
-  forall (w :: Type) (e :: Type).
+  forall (e :: Type).
   (AsContractError e) =>
   Treasury ->
-  Contract w TreasurySchema e ()
+  Contract (OutputBus (Vector (ByteString, Value.Value))) TreasurySchema e ()
 treasuryContract _treasury =
   forever $
     foldr1
       select
-      [ endpoint @"depositAuctionFloat" >> depositAuctionFloat
-      , endpoint @"upgrade" >> upgrade
+      [ endpoint @"depositFundsWithCostCenter" >>= depositFundsWithCostCenter
+      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter
+      , endpoint @"queryCostCenters" >> queryCostCenters
+      , endpoint @"initUpgrade" >> initiateUpgrade
       ]
