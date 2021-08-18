@@ -1,6 +1,6 @@
 module ArdanaDollar.Buffer.Endpoints (
   type BufferSchema,
-  bufferContract,
+  bufferAuctionContract,
   bufferStartContract,
 ) where
 
@@ -31,12 +31,12 @@ bufferStartContract ::
   Contract w EmptySchema e ()
 bufferStartContract = startBuffer
 
-bufferContract ::
+bufferAuctionContract ::
   forall (w :: Type) (e :: Type).
   (AsContractError e) =>
   Treasury ->
   Contract w BufferSchema e ()
-bufferContract treasury =
+bufferAuctionContract treasury =
   forever $
     foldr1
       select

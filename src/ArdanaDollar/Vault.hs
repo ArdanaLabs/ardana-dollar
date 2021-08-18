@@ -13,7 +13,6 @@ module ArdanaDollar.Vault (
   valueWithin,
   isUnity,
   inputHasToken,
-  getDatumOffChain,
   ownOutput,
   outputHasToken,
   nextDatum,
@@ -36,7 +35,7 @@ module ArdanaDollar.Vault (
 -- TODO
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite))
-import ArdanaDollar.Utils (collaterizationRatio, valuePaidBy, valueUnlockedBy)
+import ArdanaDollar.Utils (collaterizationRatio, getDatumOffChain, valuePaidBy, valueUnlockedBy)
 import Control.Monad (forever, guard, void)
 import Data.Aeson qualified as JSON
 import Data.Kind (Type)
@@ -241,12 +240,6 @@ type VaultSchema =
     .\/ Endpoint "withdrawCollateral" Integer
     .\/ Endpoint "mintDUSD" Integer
     .\/ Endpoint "repayDUSD" Integer
-
-getDatumOffChain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
-getDatumOffChain outTx = do
-  dh <- Ledger.txOutDatumHash $ Ledger.txOutTxOut outTx
-  Ledger.Datum datum <- Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx outTx
-  PlutusTx.fromBuiltinData datum
 
 findUtxo ::
   forall (w :: Type) (s :: Row Type).

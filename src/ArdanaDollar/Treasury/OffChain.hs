@@ -1,5 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.Treasury.OffChain (
   startTreasury,
@@ -34,37 +33,32 @@ import Plutus.Contract
 import Plutus.Contracts.Currency qualified as Currency
 import Plutus.V1.Ledger.Contexts qualified as Contexts
 import PlutusTx qualified
+import PlutusTx.Data.Extra (toRedeemer)
 import PlutusTx.Prelude hiding (Semigroup (..))
+import PlutusTx.UniqueMap qualified as UniqueMap
 
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Vault (dUSDAsset, getDatumOffChain)
+import ArdanaDollar.Utils (getDatumOffChain)
 import Plutus.PAB.OutputBus
 
-data Treasuring
-instance Scripts.ValidatorTypes Treasuring where
-  type DatumType Treasuring = TreasuryDatum
-  type RedeemerType Treasuring = TreasuryAction
-
-treasuryInst :: Treasury -> Value.AssetClass -> Scripts.TypedValidator Treasuring
-treasuryInst t dac =
+treasuryInst :: Treasury -> Scripts.TypedValidator Treasuring
+treasuryInst t =
   Scripts.mkTypedValidator @Treasuring
     ( $$(PlutusTx.compile [||mkTreasuryValidator||])
         `PlutusTx.applyCode` PlutusTx.liftCode t
-        `PlutusTx.applyCode` PlutusTx.liftCode dac
-        `PlutusTx.applyCode` PlutusTx.liftCode dUSDAsset
     )
     $$(PlutusTx.compile [||wrap||])
   where
     wrap = Scripts.wrapValidator @TreasuryDatum @TreasuryAction
 
-treasuryValidator :: Treasury -> Value.AssetClass -> Ledger.Validator
-treasuryValidator t dac = Scripts.validatorScript $ treasuryInst t dac
+treasuryValidator :: Treasury -> Ledger.Validator
+treasuryValidator = Scripts.validatorScript . treasuryInst
 
-treasuryAddress :: Treasury -> Value.AssetClass -> Ledger.Address
-treasuryAddress t dac = Ledger.scriptAddress $ treasuryValidator t dac
+treasuryAddress :: Treasury -> Ledger.Address
+treasuryAddress = Ledger.scriptAddress . treasuryValidator
 
 findTreasury ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
@@ -72,8 +66,7 @@ findTreasury ::
   Treasury ->
   Contract w s e (Maybe (Contexts.TxOutRef, Ledger.TxOutTx, TreasuryDatum))
 findTreasury treasury = do
-  utxos <- Map.filter f <$> utxoAt (treasuryAddress treasury danaAssetClass)
-  logInfo @String $ printf "Found UTXOs:\n%s" (show utxos)
+  utxos <- Map.filter f <$> utxoAt (treasuryAddress treasury)
   return $ case Map.toList utxos of
     [(oref, o)] -> do
       datum <- getDatumOffChain o
@@ -93,12 +86,12 @@ startTreasury = do
         Currency.mintContract pkh [(treasuryTokenName, 1)]
   let ac = Value.assetClass cs treasuryTokenName
       treasury = Treasury ac
-      td = TreasuryDatum {auctionDanaAmount = 10}
+      td = TreasuryDatum {auctionDanaAmount = 10, costCenters = UniqueMap.empty}
       treasuryValue = Value.assetClassValue ac 1 <> Value.assetClassValue danaAssetClass 10
       lookups =
         Constraints.mintingPolicy danaMintingPolicy
-          <> Constraints.typedValidatorLookups (treasuryInst treasury danaAssetClass)
-          <> Constraints.otherScript (treasuryValidator treasury danaAssetClass)
+          <> Constraints.typedValidatorLookups (treasuryInst treasury)
+          <> Constraints.otherScript (treasuryValidator treasury)
       tx =
         Constraints.mustPayToTheScript td treasuryValue
           <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass 10)
@@ -111,21 +104,58 @@ startTreasury = do
 -- Treasury usage contracts
 depositFundsWithCostCenter ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
+  (AsContractError e) =>
+  Treasury ->
   TreasuryDepositParams ->
   Contract w s e ()
-depositFundsWithCostCenter params = do
-  logInfo ("called depositFundsWithCostCenter" :: ByteString)
+depositFundsWithCostCenter treasury params = do
+  pkh <- Contexts.pubKeyHash <$> ownPubKey
+  logInfo ("called depositFundsWithCostCenter with params: " ++ show params)
+  let ac = treasuryDepositCurrency params
+      amount = treasuryDepositAmount params
+      centerName = treasuryDepositCostCenter params
+      depositValue = Value.assetClassValue ac amount
+  findTreasury treasury >>= \case
+    Nothing -> logError @String "no treasury utxo at the script address"
+    Just (oref, o, td) -> do
+      let td' = td {costCenters = UniqueMap.alter centerName (Just depositValue <>) (costCenters td)}
+          scriptValue = Ledger.txOutValue (Ledger.txOutTxOut o) <> depositValue
+          lookups =
+            Constraints.typedValidatorLookups (treasuryInst treasury)
+              <> Constraints.otherScript (treasuryValidator treasury)
+              <> Constraints.unspentOutputs (Map.singleton oref o)
+          tx =
+            Constraints.mustPayToTheScript td' scriptValue
+              <> Constraints.mustSpendScriptOutput
+                oref
+                (toRedeemer @Treasuring $ DepositFundsWithCostCenter params)
+      ledgerTx <- submitTxConstraintsWith lookups tx
+      awaitTxConfirmed $ Ledger.txId ledgerTx
+      logInfo @String $ printf "User %s has deposited %s %s" (show pkh) (show amount) (show ac)
+
+spendFromCostCenter ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
+  Treasury ->
+  TreasurySpendParams ->
+  Contract w s e ()
+spendFromCostCenter _ params = do
+  logInfo @String "called spendFromCostCenter"
   logInfo (show params)
 
-spendFromCostCenter :: forall (w :: Type) (s :: Row Type) (e :: Type). TreasurySpendParams -> Contract w s e ()
-spendFromCostCenter params = do
-  logInfo ("called spendFromCostCenter" :: ByteString)
-  logInfo (show params)
+queryCostCenters ::
+  forall (s :: Row Type) (e :: Type).
+  (AsContractError e) =>
+  Treasury ->
+  Contract (OutputBus (Vector (ByteString, Value.Value))) s e ()
+queryCostCenters treasury = do
+  logInfo @String "called queryCostCenters"
+  findTreasury treasury >>= \case
+    Nothing -> logError @String "no treasury utxo at the script address"
+    Just (_, _, td) ->
+      sendBus . Vector.fromList . UniqueMap.toList $ costCenters td
 
-queryCostCenters :: forall (s :: Row Type) (e :: Type). Contract (OutputBus (Vector (ByteString, Value.Value))) s e ()
-queryCostCenters = do
-  logInfo ("called queryCostCenters" :: ByteString)
-  sendBus Vector.empty
-
-initiateUpgrade :: forall (w :: Type) (s :: Row Type) (e :: Type). Contract w s e ()
-initiateUpgrade = logInfo ("called initiateUpgrade" :: ByteString)
+initiateUpgrade ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
+  Treasury ->
+  Contract w s e ()
+initiateUpgrade _ = logInfo @String "called initiateUpgrade"

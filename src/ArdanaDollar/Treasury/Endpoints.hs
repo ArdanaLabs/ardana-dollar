@@ -37,12 +37,12 @@ treasuryContract ::
   (AsContractError e) =>
   Treasury ->
   Contract (OutputBus (Vector (ByteString, Value.Value))) TreasurySchema e ()
-treasuryContract _treasury =
+treasuryContract treasury =
   forever $
     foldr1
       select
-      [ endpoint @"depositFundsWithCostCenter" >>= depositFundsWithCostCenter
-      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter
-      , endpoint @"queryCostCenters" >> queryCostCenters
-      , endpoint @"initUpgrade" >> initiateUpgrade
+      [ endpoint @"depositFundsWithCostCenter" >>= depositFundsWithCostCenter treasury
+      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter treasury
+      , endpoint @"queryCostCenters" >> queryCostCenters treasury
+      , endpoint @"initUpgrade" >> initiateUpgrade treasury
       ]

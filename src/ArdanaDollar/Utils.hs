@@ -10,12 +10,14 @@ module ArdanaDollar.Utils (
   valueUnlockedBy,
   pubKeyInputsAt,
   valuePaidBy,
+  getDatumOffChain,
   getDatumOnChain,
   validateDatumImmutable,
 ) where
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import Data.Kind (Type)
+import Data.Map qualified as Map
 import Ledger qualified
 import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
@@ -202,6 +204,21 @@ pubKeyInputsAt pk txInfo =
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
 
+-- | Extract datum from given `Ledger.TxOutTx`.
+getDatumOffChain ::
+  forall (datum :: Type).
+  PlutusTx.IsData datum =>
+  Ledger.TxOutTx ->
+  Maybe datum
+getDatumOffChain outTx = do
+  dh <- Ledger.txOutDatumHash $ Ledger.txOutTxOut outTx
+  Ledger.Datum datum <- Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx outTx
+  PlutusTx.fromBuiltinData datum
+
+{- | Extract datum from given `Contexts.TxOut` using provided function for
+ finding the data corresponding to `Ledger.DatumHash`. An on-chain version of
+ `getDatumOffChain`.
+-}
 {-# INLINEABLE getDatumOnChain #-}
 getDatumOnChain ::
   forall (datum :: Type).
@@ -214,6 +231,7 @@ getDatumOnChain o f = do
   Ledger.Datum d <- f dh
   PlutusTx.fromBuiltinData d
 
+-- | On-chain helper function checking immutability of the validator's datum
 {-# INLINEABLE validateDatumImmutable #-}
 validateDatumImmutable ::
   forall (datum :: Type).

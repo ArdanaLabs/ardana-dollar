@@ -1,12 +1,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialize #-}
 
 module ArdanaDollar.Treasury.Types (
+  Treasuring,
   Treasury (..),
   TreasuryDatum (..),
   TreasuryAction (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
+  calculateCostCenterValueOf,
   danaAssetClass,
   danaCurrency,
   danaTokenName,
@@ -18,6 +22,7 @@ module ArdanaDollar.Treasury.Types (
 
 import GHC.Generics (Generic)
 import Prelude (Show)
+import Prelude qualified
 
 --------------------------------------------------------------------------------
 
@@ -35,6 +40,15 @@ import Schema (ToSchema)
 
 --------------------------------------------------------------------------------
 
+import PlutusTx.UniqueMap qualified as UniqueMap
+
+--------------------------------------------------------------------------------
+
+data Treasuring
+instance Scripts.ValidatorTypes Treasuring where
+  type DatumType Treasuring = TreasuryDatum
+  type RedeemerType Treasuring = TreasuryAction
+
 data Treasury = Treasury
   { tSymbol :: Value.AssetClass
   }
@@ -43,14 +57,15 @@ data Treasury = Treasury
 
 data TreasuryDatum = TreasuryDatum
   { auctionDanaAmount :: !Integer
+  , costCenters :: !(UniqueMap.Map ByteString Value.Value)
   }
-  deriving stock (Show, Generic)
+  deriving stock (Show, Generic, Prelude.Eq)
   deriving anyclass (FromJSON, ToJSON)
 
 data TreasuryDepositParams = TreasuryDepositParams
-  { treasuryDepositAmount :: Integer
-  , treasuryDepositCurrency :: Value.AssetClass
-  , treasuryDepositCostCenter :: ByteString
+  { treasuryDepositAmount :: !Integer
+  , treasuryDepositCurrency :: !Value.AssetClass
+  , treasuryDepositCostCenter :: !ByteString
   }
   deriving stock (Generic, Show)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
@@ -66,8 +81,8 @@ data TreasurySpendParams = TreasurySpendParams
 -- TODO: Should the Redeemer give more information?
 data TreasuryAction
   = BorrowForAuction
-  | DepositFundsWithCostCenter
-  | SpendFundsFromCostCenter
+  | DepositFundsWithCostCenter TreasuryDepositParams
+  | SpendFundsFromCostCenter ByteString
   | AllowMint
   | AllowBurn
   | InitiateUpgrade
@@ -75,9 +90,15 @@ data TreasuryAction
 
 -- instances
 instance Eq TreasuryDatum where
-  (TreasuryDatum ada1) == (TreasuryDatum ada2)
-    | ada1 == ada2 = True
+  (TreasuryDatum ada1 cc1) == (TreasuryDatum ada2 cc2)
+    | ada1 == ada2 && cc1 == cc2 = True
     | otherwise = False
+
+-- helper functions
+{-# INLINEABLE calculateCostCenterValueOf #-}
+calculateCostCenterValueOf :: Value.AssetClass -> TreasuryDatum -> Integer
+calculateCostCenterValueOf ac TreasuryDatum {costCenters = cc} =
+  foldr (\el acc -> (el `Value.assetClassValueOf` ac) + acc) 0 (UniqueMap.elems cc)
 
 -- helper currencies (a bit debugable)
 {-# INLINEABLE treasuryTokenName #-}
@@ -112,6 +133,9 @@ danaAssetClass = Value.AssetClass (danaCurrency, danaTokenName)
 
 PlutusTx.makeLift ''Treasury
 PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
+PlutusTx.makeLift ''TreasuryDatum
+PlutusTx.makeIsDataIndexed ''TreasuryDepositParams [('TreasuryDepositParams, 0)]
+PlutusTx.makeLift ''TreasuryDepositParams
 PlutusTx.makeIsDataIndexed
   ''TreasuryAction
   [ ('BorrowForAuction, 0)

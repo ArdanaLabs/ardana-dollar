@@ -35,6 +35,7 @@ import Data.Vector (Vector)
 
 --------------------------------------------------------------------------------
 
+import Ledger qualified
 import Playground.Contract (FormSchema, FunctionSchema)
 import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
@@ -46,7 +47,6 @@ import Plutus.PAB.Simulator (SimulatorEffectHandlers)
 import Plutus.PAB.Simulator qualified as Simulator
 import Plutus.PAB.Types (PABError (..))
 import Plutus.PAB.Webserver.Server qualified as PAB.Server
-import Plutus.V1.Ledger.Value qualified as Ledger
 import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import Wallet.Emulator.Types (Wallet (..))
@@ -56,7 +56,7 @@ import Wallet.Emulator.Wallet qualified as Wallet
 
 import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.Treasury.Endpoints
-import ArdanaDollar.Treasury.Types (Treasury)
+import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams (..))
 import ArdanaDollar.Vault
 
 import Plutus.PAB.OutputBus
@@ -101,7 +101,7 @@ main = void $
     logBlueString "Mint dUSD"
     Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
     callVaultEndpoint "depositCollateral" 113_000_000
-    callVaultEndpoint "mintDUSD" 100
+    callVaultEndpoint "mintDUSD" 200
     logCurrentBalances_
 
     -- Treasury
@@ -111,13 +111,29 @@ main = void $
     treasury <- getBus @Treasury cTreasuryId
     logBlueString (show treasury)
 
+    logBlueString "Deposit funds"
     cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
     Simulator.waitNSlots 10
+    let callDepositEndpoint cc = do
+          let params =
+                TreasuryDepositParams
+                  { treasuryDepositAmount = 10
+                  , treasuryDepositCurrency = dUSDAsset
+                  , treasuryDepositCostCenter = cc
+                  }
+          _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
+          Simulator.waitNSlots 10
+    callDepositEndpoint "TestCostCenter1"
+    callDepositEndpoint "TestCostCenter2"
+    callDepositEndpoint "TestCostCenter1"
     _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
     Simulator.waitNSlots 10
     queriedCosts <- getBus @(Vector (ByteString, Value.Value)) cTreasuryUserId
-    logBlueString (show queriedCosts)
+    logBlueString $ "Deposited currently: " ++ show queriedCosts
+    logCurrentBalances_
+    Simulator.waitNSlots 20
 
+    logBlueString "Start buffer contract"
     _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
     Simulator.waitNSlots 10
     logCurrentBalances_
@@ -189,7 +205,7 @@ handleArdanaContract = Builtin.handleBuiltin getSchema getContract
       TreasuryStart -> SomeBuiltin treasuryStartContract
       TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
       BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
-      BufferContract t -> SomeBuiltin (bufferContract @() @ContractError t)
+      BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)
 handlers =

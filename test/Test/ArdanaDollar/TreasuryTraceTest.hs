@@ -45,7 +45,7 @@ debtTraceTest =
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -61,7 +61,7 @@ debtAndSurplusTraceTest =
   where
     debtAndSurplusAuction :: Treasury -> EmulatorTrace ()
     debtAndSurplusAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -79,7 +79,7 @@ tooSmallSurplusTraceTest =
   where
     surplusAuction :: Treasury -> EmulatorTrace ()
     surplusAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -97,7 +97,7 @@ zeroDebtAuction =
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 0
@@ -113,7 +113,7 @@ negativeDebtAuction =
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId (-1)

@@ -20,13 +20,13 @@ import Prelude (String, div, mconcat, rem, show)
 --------------------------------------------------------------------------------
 
 import Ledger qualified
-import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Contexts qualified as Contexts
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
 import PlutusTx qualified
+import PlutusTx.Data.Extra (toDatum, toRedeemer)
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
 
 --------------------------------------------------------------------------------
@@ -38,8 +38,15 @@ import ArdanaDollar.Treasury.OffChain (
   treasuryAddress,
   treasuryValidator,
  )
-import ArdanaDollar.Treasury.Types (Treasury, TreasuryAction (..), TreasuryDatum, danaAssetClass)
-import ArdanaDollar.Vault (dUSDAsset, getDatumOffChain)
+import ArdanaDollar.Treasury.Types (
+  Treasuring,
+  Treasury,
+  TreasuryAction (..),
+  TreasuryDatum,
+  danaAssetClass,
+ )
+import ArdanaDollar.Utils (getDatumOffChain)
+import ArdanaDollar.Vault (dUSDAsset)
 
 data BufferAuctioning
 instance Scripts.ValidatorTypes BufferAuctioning where
@@ -51,7 +58,7 @@ bufferInst t dac =
   Scripts.mkTypedValidator @BufferAuctioning
     ( $$(PlutusTx.compile [||mkBufferValidator||])
         `PlutusTx.applyCode` PlutusTx.liftCode t
-        `PlutusTx.applyCode` PlutusTx.liftCode (treasuryAddress t dac)
+        `PlutusTx.applyCode` PlutusTx.liftCode (treasuryAddress t)
         `PlutusTx.applyCode` PlutusTx.liftCode dac
         `PlutusTx.applyCode` PlutusTx.liftCode dUSDAsset
     )
@@ -72,7 +79,7 @@ startBuffer treasury = do
           { currentDebtAuctionPrice = 50
           , currentSurplusAuctionPrice = 50
           }
-      tx = Constraints.mustPayToTheScript bd (Ada.lovelaceValueOf 0)
+      tx = Constraints.mustPayToTheScript bd mempty
   ledgerTx <- submitTxConstraints (bufferInst treasury danaAssetClass) tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
@@ -111,16 +118,16 @@ debtAuction treasury danaAmount = do
             Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
               <> Value.assetClassValue dUSDAsset dusdPrice
               <> negate danaValue
-          bufferValue = Ada.lovelaceValueOf 0
           td = treasuryDatum args
           bd = bufferDatum args
 
           tx =
-            txConstraintsCtr args td treasuryValue bd bufferValue (MkDebtBid danaAmount)
+            txConstraintsCtr args td treasuryValue bd mempty (MkDebtBid danaAmount)
               <> Constraints.mustPayToPubKey pkh danaValue
       ledgerTx <- submitTxConstraintsWith (txLookups args) tx
       awaitTxConfirmed $ Ledger.txId ledgerTx
-      logInfo @String $ printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
+      logInfo @String $
+        printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
 
 surplusAuction ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
@@ -142,20 +149,22 @@ surplusAuction treasury dusdAmount = do
             Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
               <> Value.assetClassValue danaAssetClass danaPrice
               <> negate dusdValue
-          bufferValue = Ada.lovelaceValueOf 0
           td = treasuryDatum args
           bd = bufferDatum args
 
           tx =
-            txConstraintsCtr args td treasuryValue bd bufferValue (MkSurplusBid dusdAmount)
+            txConstraintsCtr args td treasuryValue bd mempty (MkSurplusBid dusdAmount)
               <> Constraints.mustPayToPubKey pkh dusdValue
 
       if danaRem /= 0
-        then logError @String $ printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
+        then
+          logError @String $
+            printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
         else do
           ledgerTx <- submitTxConstraintsWith (txLookups args) tx
           awaitTxConfirmed $ Ledger.txId ledgerTx
-          logInfo @String $ printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
+          logInfo @String $
+            printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
 
 bufferTreasuryAuction ::
   (AsContractError e) =>
@@ -168,22 +177,22 @@ bufferTreasuryAuction treasury = do
     (Nothing, _) -> logError @String "no treasury utxo at the script address" >> return Nothing
     (_, Nothing) -> logError @String "no buffer utxo at the script address" >> return Nothing
     (Just (toref, to, td), Just (boref, bo, bd)) -> do
-      let treasuryHash = Ledger.validatorHash $ treasuryValidator treasury danaAssetClass
+      let treasuryHash = Ledger.validatorHash $ treasuryValidator treasury
           bufferHash = Ledger.validatorHash $ bufferValidator treasury danaAssetClass
 
           lookups =
             mconcat
               [ Constraints.typedValidatorLookups (bufferInst treasury danaAssetClass)
               , Constraints.otherScript (bufferValidator treasury danaAssetClass)
-              , Constraints.otherScript (treasuryValidator treasury danaAssetClass)
+              , Constraints.otherScript (treasuryValidator treasury)
               , Constraints.unspentOutputs (Map.fromList [(toref, to), (boref, bo)])
               ]
           txCtr = \td' tv bd' bv br ->
             mconcat
-              [ Constraints.mustSpendScriptOutput toref (toRedeemer BorrowForAuction)
-              , Constraints.mustSpendScriptOutput boref (toRedeemer br)
-              , Constraints.mustPayToOtherScript treasuryHash (toDatum td') tv
-              , Constraints.mustPayToOtherScript bufferHash (toDatum bd') bv
+              [ Constraints.mustSpendScriptOutput toref (toRedeemer @Treasuring BorrowForAuction)
+              , Constraints.mustSpendScriptOutput boref (toRedeemer @BufferAuctioning br)
+              , Constraints.mustPayToOtherScript treasuryHash (toDatum @Treasuring td') tv
+              , Constraints.mustPayToOtherScript bufferHash (toDatum @BufferAuctioning bd') bv
               ]
       return . Just $
         BufferTreasuryAuctionArgs
@@ -194,12 +203,6 @@ bufferTreasuryAuction treasury = do
           , txLookups = lookups
           , txConstraintsCtr = txCtr
           }
-  where
-    toDatum :: forall (datum :: Type). (PlutusTx.IsData datum) => datum -> Ledger.Datum
-    toDatum = Ledger.Datum . PlutusTx.toBuiltinData
-
-    toRedeemer :: forall (r :: Type). (PlutusTx.IsData r) => r -> Ledger.Redeemer
-    toRedeemer = Ledger.Redeemer . PlutusTx.toBuiltinData
 
 findBuffer ::
   (AsContractError e) =>
