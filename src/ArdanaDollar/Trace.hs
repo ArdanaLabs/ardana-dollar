@@ -1,17 +1,16 @@
 module ArdanaDollar.Trace (
   vaultTrace,
-  runVaultTrace
+  runVaultTrace,
 ) where
 
-import Prelude
-import qualified Data.Map.Strict as Map
-import Plutus.Trace.Emulator (EmulatorTrace)
-import qualified Plutus.Trace.Emulator as Emulator
-import qualified Ledger.Ada as Ada
-import Wallet.Emulator.Types (Wallet (..))
-import Data.Default (Default (..))
 import ArdanaDollar.Vault
-
+import Data.Default (Default (..))
+import Data.Map.Strict qualified as Map
+import Ledger.Ada qualified as Ada
+import Plutus.Trace.Emulator (EmulatorTrace)
+import Plutus.Trace.Emulator qualified as Emulator
+import Wallet.Emulator.Types (Wallet (..))
+import Prelude
 
 vaultTrace :: EmulatorTrace ()
 vaultTrace = do

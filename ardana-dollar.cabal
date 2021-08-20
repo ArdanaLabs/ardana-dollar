@@ -1,6 +1,6 @@
-cabal-version:      2.4
-name:               ardana-dollar
-version:            0.1.0.0
+cabal-version: 2.4
+name:          ardana-dollar
+version:       0.1.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -11,10 +11,10 @@ version:            0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
-license: Apache-2.0
+license:       NONE
 license-files: LICENSE
-author:             Your name
-maintainer:         Your email
+author:        Your name
+maintainer:    Your email
 
 -- A copyright notice.
 -- copyright:
@@ -22,8 +22,9 @@ maintainer:         Your email
 -- extra-source-files: CHANGELOG.md
 
 common lang
-  default-language: Haskell2010
+  default-language:   Haskell2010
   default-extensions:
+    NoImplicitPrelude
     BangPatterns
     BinaryLiterals
     ConstraintKinds
@@ -40,12 +41,11 @@ common lang
     GADTs
     GeneralizedNewtypeDeriving
     HexFloatLiterals
-    InstanceSigs
     ImportQualifiedPost
+    InstanceSigs
     KindSignatures
     LambdaCase
     MultiParamTypeClasses
-    NoImplicitPrelude
     NumericUnderscores
     OverloadedStrings
     ScopedTypeVariables
@@ -64,24 +64,24 @@ common lang
 
 common deps
   build-depends:
-    , base                     >=4.9 && <5
     , aeson
+    , base                     >=4.9 && <5
     , bytestring
-    , text
     , containers
-    , freer-extras
     , data-default
-    , row-types
+    , freer-extras
     , playground-common
     , plutus-contract
     , plutus-core
-    , plutus-tx-plugin
-    , plutus-tx
     , plutus-ledger
+    , plutus-tx
+    , plutus-tx-plugin
     , plutus-use-cases
     , record-dot-preprocessor
     , record-hasfield
     , mtl
+    , row-types
+    , text
 
 common test-deps
   import:        deps
@@ -90,8 +90,8 @@ common test-deps
     , tasty-hunit
 
 library
-  import:           lang
-  import:           deps
+  import:          lang
+  import:          deps
   exposed-modules:
     ArdanaDollar.Types
     ArdanaDollar.Utils
@@ -108,27 +108,26 @@ test-suite ardana-dollar-test
   import:           lang
   import:           deps
   import:           test-deps
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
+  type:             exitcode-stdio-1.0
+  main-is:          Main.hs
   other-modules:
     Test.ArdanaDollar.Utils
     Test.ArdanaDollar.DanaStakePoolTest
   hs-source-dirs: test
-  ghc-options: -Wnoncanonical-monad-instances -Widentities -rtsopts
-  build-depends: ardana-dollar
+  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
+  build-depends:  ardana-dollar
 
 executable ardana-pab
-  import:           lang
-  import:           deps
-  main-is: Main.hs
+  import:         lang
+  import:         deps
+  main-is:        Main.hs
   hs-source-dirs: pab
-  ghc-options:
-    -threaded
+  ghc-options:    -threaded
   build-depends:
     , ardana-dollar
     , data-default
+    , freer-simple
     , plutus-extra
     , plutus-ledger-api
     , plutus-pab
-    , freer-simple
     , prettyprinter
