@@ -7,6 +7,7 @@ TODO
 - arbitrage bot spec
 - reserve funds - how do stability fees and liquidations help create a reserve?
 - how will stability fees be paid out
+- remove confusing term 'contract'
 
 -- [Section I: Introduction](#section-i-introduction)
   * [Distinctions from MakerDAO](#distinctions-from-makerdao)
@@ -96,7 +97,7 @@ Additionally, there is one off-chain component needed, the Oracle Bot, which wil
 
 ## Section II: Governance
 
-### DanaStakePool Contract
+### DanaStakePool
 
 This contract is used to distribute rewards to users and, later, determine their voting power.
 
@@ -346,6 +347,8 @@ it's important to track the principal of a given dUSD loan, and the portion whic
 
 if a loan is taken out and repaid between Oracle.SetPrice calls, then there is no stability fee
 
+the Vault script will split the fees betwen the DanaStakePool and the Treasury
+
 ### Oracle
 
 #### SetPrice
@@ -418,14 +421,19 @@ input : { amount :: Integer }
 behavior:
 user purchases `amount` of DANA tokens using DUSD at `currentDebtAuctionPrice`
 
+DANA is not minted during this process
+
 #### SurplusAuction
 prerequisites:
 there is a greater amount of Collateral than the value of all DUSD loans.
+
 
 input: { amount :: Integer }
 
 behavior:
 user purchases `amount` of DUSD using DANA at `currentSurplusAuctionPrice`
+
+dUSD is minted using the Treasury during this process.
 
 ## Section IV: Treasury
 
@@ -455,6 +463,8 @@ this allows for an extensible set of funds in the treasury, which can be spent b
 examples `{ amount = 1000000000, currency = danaAssetClass, costCenter = "SurplusAuctionFloat" }`
 examples `{ amount = 1000000000, currency = Ada, costCenter = "ProtocolReserve" }`
 
+these cost centers will function as a key-value pair, which allow us to track available funds by cost center and must be extensible by design.
+
 no negative inputs permitted
 
 #### SpendFromCostCenter
@@ -471,7 +481,7 @@ no negative inputs permitted
 #### AllowMint
 prerequisite: the transaction must witness proof of the Admin contract's code (specifically a minted token that the admin contract has exclusive rights to mint).
 
-input :: [(Integer, Address)]
+input :: (Integer, Address)
 
 behavior:
 allows the minting of dUSD (or the relavant ardana-dollar protocol stablecoin)
@@ -514,6 +524,7 @@ behaviors:
 if the transaction meets security prerequisites, then the newContract is accepted as the `currentContract`, the previous contract must be put into emergencyDisabled mode
 
 after this process, the old contract can pay funds into the treasury, but not extract funds, receive reward DANA, or mint new DUSD
+ie (the old contract will lose the right to mint or spend)
 
 ## Section V: Oracle Bot
 
