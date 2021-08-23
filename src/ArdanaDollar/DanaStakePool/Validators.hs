@@ -31,7 +31,8 @@ import PlutusTx.Semigroup qualified
 import Prelude qualified as Haskell
 
 import ArdanaDollar.DanaStakePool.DanaCurrency qualified as DanaCurrency
-import ArdanaDollar.DanaStakePool.Utils (datumForOnchain, intersectionWith)
+import ArdanaDollar.DanaStakePool.Utils (intersectionWith)
+import ArdanaDollar.Utils (datumForOnchain)
 
 import Control.Monad (join)
 

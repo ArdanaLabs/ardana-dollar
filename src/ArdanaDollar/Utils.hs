@@ -10,11 +10,17 @@ module ArdanaDollar.Utils (
   valueUnlockedBy,
   pubKeyInputsAt,
   valuePaidBy,
+  datumForOffchain,
+  datumForOnchain,
 ) where
+
+import Data.Kind (Type)
+import Data.Map qualified as Map
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import Ledger qualified
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import PlutusTx
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
 import Prelude qualified as Haskell
@@ -196,3 +202,17 @@ pubKeyInputsAt pk txInfo =
 -}
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
+
+{-# INLINEABLE datumFor #-}
+datumFor :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
+datumFor txOut f = do
+  dh <- Ledger.txOutDatum txOut
+  Ledger.Datum d <- f dh
+  PlutusTx.fromBuiltinData d
+
+datumForOffchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
+datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
+
+{-# INLINEABLE datumForOnchain #-}
+datumForOnchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
+datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info

@@ -3,8 +3,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.DanaStakePool.Utils (
-  datumForOffchain,
-  datumForOnchain,
   positive,
   intersectionWith,
   sortBy,
@@ -14,24 +12,6 @@ import PlutusTx.Prelude
 
 import Ledger qualified
 import Ledger.Value qualified
-import PlutusTx qualified
-
-import Data.Kind (Type)
-import Data.Map as Map (lookup)
-
-{-# INLINEABLE datumFor #-}
-datumFor :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
-datumFor txOut f = do
-  dh <- Ledger.txOutDatum txOut
-  Ledger.Datum d <- f dh
-  PlutusTx.fromBuiltinData d
-
-datumForOffchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
-datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
-
-{-# INLINEABLE datumForOnchain #-}
-datumForOnchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
-datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
 
 {-# INLINEABLE positive #-}
 positive :: Ledger.Value -> Bool

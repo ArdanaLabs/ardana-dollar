@@ -34,6 +34,7 @@ import Data.Text (Text, pack)
 import ArdanaDollar.DanaStakePool.DanaCurrency
 import ArdanaDollar.DanaStakePool.Utils
 import ArdanaDollar.DanaStakePool.Validators
+import ArdanaDollar.Utils
 import ArdanaDollar.Vault as Vault
 
 mintNFT :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text Ledger.AssetClass
