@@ -1,10 +1,10 @@
 module Test.ArdanaDollar.DanaStakePoolTest (
   testDeposit,
   testWithdraw,
-  testWithdrawRewards,
   testProvide,
-  testInitialize,
   testDistribute,
+  danaStakePoolTests,
+  runTrace,
 ) where
 
 import ArdanaDollar.DanaStakePool.DanaCurrency
@@ -19,12 +19,16 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Monoid
 import Ledger.Ada as Ada
+import Plutus.Contract.Test
 import Plutus.Trace.Emulator as Emulator
-import Wallet.Emulator.Wallet as Wallet
 
 import Control.Monad (void)
 
 import Data.Default (Default (..))
+
+import Control.Lens
+
+import Test.Tasty
 
 v :: Value.Value
 v =
@@ -35,6 +39,9 @@ v =
 emCfg :: EmulatorConfig
 emCfg = EmulatorConfig $ Left $ Map.fromList [(Wallet 1, v), (Wallet 2, v), (Wallet 3, v)]
 
+runTrace :: EmulatorTrace () -> IO ()
+runTrace = runEmulatorTraceIO' def emCfg def
+
 initializeSystem :: EmulatorTrace Value.CurrencySymbol
 initializeSystem = do
   h <- activateContractWallet (Wallet 1) PEndpoints.initializeSystemEndpoint
@@ -42,8 +49,8 @@ initializeSystem = do
   void $ Emulator.waitNSlots 5
   fst . Value.unAssetClass . fromJust . getLast <$> observableState h
 
-testDeposit :: IO ()
-testDeposit = runEmulatorTraceIO' def emCfg def $ do
+testDeposit :: EmulatorTrace ()
+testDeposit = do
   ac <- initializeSystem
 
   h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
@@ -55,8 +62,8 @@ testDeposit = runEmulatorTraceIO' def emCfg def $ do
   callEndpoint @"deposit" h1 4
   void $ Emulator.waitNSlots 5
 
-testWithdraw :: IO ()
-testWithdraw = runEmulatorTraceIO' def emCfg def $ do
+testWithdraw :: EmulatorTrace ()
+testWithdraw = do
   ac <- initializeSystem
 
   h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
@@ -68,19 +75,8 @@ testWithdraw = runEmulatorTraceIO' def emCfg def $ do
   callEndpoint @"withdraw" h1 2
   void $ Emulator.waitNSlots 5
 
-testWithdrawRewards :: IO ()
-testWithdrawRewards = runEmulatorTraceIO' def emCfg def $ do
-  ac <- initializeSystem
-
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
-  void $ Emulator.waitNSlots 5
-  callEndpoint @"deposit" h1 5
-  void $ Emulator.waitNSlots 5
-  callEndpoint @"withdrawRewards" h1 ()
-  void $ Emulator.waitNSlots 5
-
-testProvide :: IO ()
-testProvide = runEmulatorTraceIO' def emCfg def $ do
+testProvide :: EmulatorTrace ()
+testProvide = do
   ac <- initializeSystem
 
   h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
@@ -90,17 +86,8 @@ testProvide = runEmulatorTraceIO' def emCfg def $ do
   callEndpoint @"provideRewards" h1 7
   void $ Emulator.waitNSlots 5
 
-testInitialize :: IO ()
-testInitialize = runEmulatorTraceIO' def emCfg def $ do
-  ac <- initializeSystem
-
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
-  void $ Emulator.waitNSlots 5
-  callEndpoint @"initializeUser" h1 ()
-  void $ Emulator.waitNSlots 5
-
-testDistribute :: IO ()
-testDistribute = runEmulatorTraceIO' def emCfg def $ do
+testDistribute :: EmulatorTrace ()
+testDistribute = do
   ac <- initializeSystem
 
   h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
@@ -127,3 +114,40 @@ testDistribute = runEmulatorTraceIO' def emCfg def $ do
   void $ Emulator.waitNSlots 5
   callEndpoint @"withdrawRewards" h2 ()
   void $ Emulator.waitNSlots 5
+
+testDeposit' :: TestTree
+testDeposit' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "deposit to stake pool"
+    ( walletFundsChange (Wallet 1) (Value.assetClassValue danaAsset (-9))
+    )
+    testDeposit
+
+testWithdraw' :: TestTree
+testWithdraw' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "deposit & withdraw from stake pool"
+    ( walletFundsChange (Wallet 1) (Value.assetClassValue danaAsset (-3))
+    )
+    testWithdraw
+
+testDistribute' :: TestTree
+testDistribute' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "two users collect rewards"
+    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 301 <> Value.assetClassValue danaAsset (-60))
+        .&&. walletFundsChange (Wallet 2) (Value.assetClassValue Vault.dUSDAsset 201 <> Value.assetClassValue danaAsset (-40))
+    )
+    testDistribute
+
+danaStakePoolTests :: TestTree
+danaStakePoolTests =
+  testGroup
+    "dana stake pool tests"
+    [ testDeposit'
+    , testWithdraw'
+    , testDistribute'
+    ]

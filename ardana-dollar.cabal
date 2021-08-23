@@ -82,6 +82,7 @@ common deps
     , mtl
     , row-types
     , text
+    , lens
 
 common test-deps
   import:        deps
