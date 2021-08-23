@@ -5,10 +5,12 @@
 module ArdanaDollar.DanaStakePool.Endpoints (
   endpoints,
   initializeSystemEndpoint,
+  queryEndpoints,
 ) where
 
 import PlutusTx.Prelude
 
+import Ledger (PubKeyHash)
 import Ledger.Value qualified as Value
 import Plutus.Contract
 
@@ -27,6 +29,10 @@ type Schema =
     .\/ Endpoint "distributeRewards" ()
     .\/ Endpoint "withdrawRewards" ()
 
+type QuerySchema =
+  Endpoint "queryUser" Ledger.PubKeyHash
+    .\/ Endpoint "querySelf" ()
+
 type SystemInitializationSchema =
   Endpoint "initializeSystem" ()
 
@@ -44,3 +50,9 @@ endpoints f = do
       `select` (endpoint @"provideRewards" >>= provideRewards f)
       `select` (endpoint @"distributeRewards" >>= distributeRewards f)
       `select` (endpoint @"withdrawRewards" >>= withdrawRewards f)
+
+queryEndpoints :: Value.CurrencySymbol -> Contract (Last UserData) QuerySchema Text ()
+queryEndpoints f = do
+  forever $
+    (endpoint @"queryUser" >>= queryUser f)
+      `select` (endpoint @"querySelf" >> querySelf f)
