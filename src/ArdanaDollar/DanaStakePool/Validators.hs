@@ -266,7 +266,7 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
           oUsers = f (Ledger.getContinuingOutputs ctx)
           combined = intersectionWith (,) (g iUsers) (g oUsers)
           sync = length combined == length iUsers && length combined == length oUsers
-       in if sync
+       in if unique iUsers && unique oUsers && sync
             then Just $ snd <$> combined
             else Nothing
       where
@@ -277,6 +277,10 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
               filter hasUserToken txOuts
 
         g users = (\t@(_, d) -> (dPkh d, t)) `fmap` users
+
+        unique users =
+          let pkhs = dPkh . snd <$> users in
+          length (nub pkhs) == length pkhs
 
     justUsers :: [((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))]
     justUsers = PlutusTx.Prelude.fromMaybe (traceError "cannot retrieve users") maybeUsers
