@@ -26,11 +26,11 @@ datumFor txOut f = do
   Ledger.Datum d <- f dh
   PlutusTx.fromBuiltinData d
 
-datumForOffchain :: PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
+datumForOffchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
 datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
 
 {-# INLINEABLE datumForOnchain #-}
-datumForOnchain :: PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
+datumForOnchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
 datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
 
 {-# INLINEABLE positive #-}
