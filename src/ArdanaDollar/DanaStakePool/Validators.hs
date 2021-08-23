@@ -4,9 +4,9 @@
 
 module ArdanaDollar.DanaStakePool.Validators (
   ValidatorTypes,
-  inst,
-  validator,
-  address,
+  spInst,
+  spValidator,
+  spAddress,
   Datum (..),
   UserData (..),
   GlobalData (..),
@@ -24,7 +24,9 @@ import Ledger qualified
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import PlutusTx qualified
+import PlutusTx.Monoid qualified
 import PlutusTx.Ratio qualified as R
+import PlutusTx.Semigroup qualified
 
 import Prelude qualified as Haskell
 
@@ -44,11 +46,17 @@ data Balance = Balance
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
-instance Semigroup Balance where
+instance PlutusTx.Semigroup.Semigroup Balance where
   (<>) x y = Balance (dStake x + dStake y) (dReward x + dReward y)
 
-instance Monoid Balance where
+instance Haskell.Semigroup Balance where
+  (<>) x y = x PlutusTx.Semigroup.<> y
+
+instance PlutusTx.Monoid.Monoid Balance where
   mempty = Balance mempty mempty
+
+instance Haskell.Monoid Balance where
+  mempty = PlutusTx.Monoid.mempty
 
 data UserData = UserData
   { dPkh :: Ledger.PubKeyHash
@@ -313,9 +321,9 @@ instance Scripts.ValidatorTypes ValidatorTypes where
   type DatumType ValidatorTypes = Datum
   type RedeemerType ValidatorTypes = Redeemer
 
-{-# INLINEABLE inst_ #-}
-inst_ :: Value.AssetClass -> Value.CurrencySymbol -> Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
-inst_ danaAsset nft symbol =
+{-# INLINEABLE inst #-}
+inst :: Value.AssetClass -> Value.CurrencySymbol -> Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
+inst danaAsset nft symbol =
   Scripts.mkTypedValidator @ValidatorTypes
     ( $$(PlutusTx.compile [||mkValidator||])
         `PlutusTx.applyCode` PlutusTx.liftCode danaAsset
@@ -326,17 +334,18 @@ inst_ danaAsset nft symbol =
   where
     wrap = Scripts.wrapValidator @Datum @Redeemer
 
-{-# INLINEABLE inst #-}
-inst :: Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
-inst nft = inst_ DanaCurrency.danaAsset nft userInitProofSymbol
+--
+{-# INLINEABLE spInst #-}
+spInst :: Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
+spInst nft = inst DanaCurrency.danaAsset nft userInitProofSymbol
 
-{-# INLINEABLE validator #-}
-validator :: Value.CurrencySymbol -> Ledger.Validator
-validator nft = Scripts.validatorScript $ inst nft
+{-# INLINEABLE spValidator #-}
+spValidator :: Value.CurrencySymbol -> Ledger.Validator
+spValidator nft = Scripts.validatorScript $ spInst nft
 
-{-# INLINEABLE address #-}
-address :: Value.CurrencySymbol -> Ledger.Address
-address nft = Ledger.scriptAddress $ validator nft
+{-# INLINEABLE spAddress #-}
+spAddress :: Value.CurrencySymbol -> Ledger.Address
+spAddress nft = Ledger.scriptAddress $ spValidator nft
 
 -------------------------------------------------------------------------------
 
@@ -346,18 +355,16 @@ positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
 
 {-# INLINEABLE txOutValid #-}
 txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
-txOutValid tokenAssetClass info txOut = PlutusTx.Prelude.maybe False id $ do
-  d <- datumForOnchain info txOut
-  case d of
-    UserDatum dat ->
-      let value = Ledger.txOutValue txOut
-          balance = dBalance dat
+txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
+  Just (UserDatum dat) ->
+    let value = Ledger.txOutValue txOut
+        balance = dBalance dat
 
-          syncOk = value == dReward balance <> dStake balance <> Value.assetClassValue tokenAssetClass 1
-          rewardOk = (positive . dReward) balance
-          stakeOk = (positive . dStake) balance
-       in return (syncOk && rewardOk && stakeOk)
-    _ -> return False
+        syncOk = value == dReward balance <> dStake balance <> Value.assetClassValue tokenAssetClass 1
+        rewardOk = (positive . dReward) balance
+        stakeOk = (positive . dStake) balance
+     in syncOk && rewardOk && stakeOk
+  _ -> False
 
 {-# INLINEABLE rewardHelper #-}
 rewardHelper :: Value.AssetClass -> Value.Value -> Value.Value -> Value.Value -> Value.Value

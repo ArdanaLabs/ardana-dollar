@@ -12,16 +12,17 @@ module ArdanaDollar.DanaStakePool.Contracts (
   querySelf,
 ) where
 
+import Prelude
+
 import Plutus.Contract
 import PlutusTx
-import PlutusTx.Prelude
+import PlutusTx.Numeric as Numeric
+import PlutusTx.Prelude (emptyByteString, fold, mempty)
 
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Value qualified as Value
 import Plutus.Contracts.Currency qualified as Currency
-
-import Prelude qualified as Haskell
 
 import Control.Monad.Except
 import Data.Kind
@@ -38,16 +39,16 @@ import ArdanaDollar.Vault as Vault
 mintNFT :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text Ledger.AssetClass
 mintNFT = do
   self <- Ledger.pubKeyHash <$> ownPubKey
-  let nftTokenName = Value.TokenName emptyByteString
+  let nftTokenName = Value.TokenName PlutusTx.Prelude.emptyByteString
   x <-
     mapError
-      (pack . Haskell.show @Currency.CurrencyError)
+      (pack . show @Currency.CurrencyError)
       (Currency.mintContract self [(nftTokenName, 1)])
   return $ Value.assetClass (Currency.currencySymbol x) nftTokenName
 
 userDatumUtxos :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
 userDatumUtxos nft = do
-  utxos <- utxoAt (address nft)
+  utxos <- utxoAt (spAddress nft)
   return $ Map.toList utxos >>= own
   where
     own e@(_, o) =
@@ -68,7 +69,7 @@ ownUtxos nft = do
 
 globalUtxo :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Contract w s Text ((Ledger.TxOutRef, Ledger.TxOutTx), GlobalData)
 globalUtxo nft = do
-  utxos <- Map.filter hasNft <$> utxoAt (address nft)
+  utxos <- Map.filter hasNft <$> utxoAt (spAddress nft)
   let found = Map.toList utxos >>= own
   if length found == 1
     then return $ head found
@@ -104,38 +105,38 @@ spendWithConstRedeemer r utxos =
 addReward :: UserData -> Value.Value -> UserData
 addReward (UserData pkh (Balance stake r)) v = UserData pkh (Balance stake (r <> v))
 
-initializeSystem :: forall (s :: Row Type). () -> Contract (Last Value.AssetClass) s Text ()
-initializeSystem _ = do
+initializeSystem :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text ()
+initializeSystem = do
   nftAssetClass <- mintNFT
   let c =
         Constraints.mustPayToTheScript
-          (GlobalDatum (GlobalData mempty))
+          (GlobalDatum (GlobalData PlutusTx.Prelude.mempty))
           (Value.assetClassValue nftAssetClass 1)
 
-  ledgerTx <- submitTxConstraints (inst (fst $ Value.unAssetClass nftAssetClass)) c
+  ledgerTx <- submitTxConstraints (spInst (fst $ Value.unAssetClass nftAssetClass)) c
   awaitTxConfirmed $ Ledger.txId ledgerTx
-  logInfo @Haskell.String $ "Initialized global state represented by token: " ++ Haskell.show nftAssetClass
+  logInfo @String $ "Initialized global state represented by token: " ++ show nftAssetClass
   tell $ Last $ Just nftAssetClass
   return ()
 
-initializeUser :: forall (s :: Row Type). Value.CurrencySymbol -> () -> Contract (Last Datum) s Text ()
-initializeUser nft _ = do
+initializeUser :: forall (s :: Row Type). Value.CurrencySymbol -> Contract (Last Datum) s Text ()
+initializeUser nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
 
   let val = Value.assetClassValue userInitProofAssetClass 1
 
       lookups =
-        Constraints.typedValidatorLookups (inst nft)
-          Haskell.<> Constraints.otherScript (validator nft)
-          Haskell.<> Constraints.mintingPolicy userInitProofPolicy
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.mintingPolicy userInitProofPolicy
       tx =
         Constraints.mustMintValue val
-          <> Constraints.mustPayToTheScript (UserDatum (UserData self mempty)) val
+          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty)) val
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-deposit :: forall (s :: Row Type). Value.CurrencySymbol -> Integer -> Contract (Last Datum) s Text ()
+deposit :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Integer -> Contract w s Text ()
 deposit nft amount = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- ownUtxos nft
@@ -143,14 +144,14 @@ deposit nft amount = do
 
   let danaAmount = Value.assetClassValue danaAsset amount
       oldBalance = totalBalance (dBalance . snd <$> utxos)
-      newBalance = oldBalance <> Balance danaAmount mempty
+      newBalance = oldBalance <> Balance danaAmount PlutusTx.Prelude.mempty
 
-      toSpend = Map.fromList (fst <$> utxos) Haskell.<> Map.fromList [fst global]
+      toSpend = Map.fromList (fst <$> utxos) <> Map.fromList [fst global]
 
       lookups =
-        Constraints.typedValidatorLookups (inst nft)
-          Haskell.<> Constraints.otherScript (validator nft)
-          Haskell.<> Constraints.unspentOutputs toSpend
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.unspentOutputs toSpend
       tx =
         Constraints.mustPayToTheScript (UserDatum (UserData self newBalance)) (balanceToUserValue newBalance)
           <> Constraints.mustPayToTheScript
@@ -165,7 +166,7 @@ deposit nft amount = do
     else throwError "Negative balance not acceptable"
 
 withdraw :: forall (s :: Row Type). Value.CurrencySymbol -> Integer -> Contract (Last Datum) s Text ()
-withdraw nft amount = deposit nft (negate amount)
+withdraw nft amount = deposit nft (Numeric.negate amount)
 
 provideRewards :: forall (s :: Row Type). Value.CurrencySymbol -> Integer -> Contract (Last Datum) s Text ()
 provideRewards nft amount = do
@@ -177,10 +178,10 @@ provideRewards nft amount = do
       globalValue = Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global)
 
       lookups =
-        Constraints.typedValidatorLookups (inst nft)
-          Haskell.<> Constraints.otherScript (validator nft)
-          Haskell.<> Constraints.unspentOutputs toSpend
-          Haskell.<> Constraints.ownPubKeyHash pkh
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.unspentOutputs toSpend
+          <> Constraints.ownPubKeyHash pkh
       tx =
         Constraints.mustPayToTheScript (GlobalDatum $ snd global) (globalValue <> dusdAmount)
           <> spendWithConstRedeemer ProvideRewards toSpend
@@ -199,13 +200,13 @@ distributeRewards nft _ = do
       rewards =
         rewardHelper danaAsset totalStakeGlobal totalRewards
           <$> ((\(_, UserData _ balance) -> dStake balance) <$> utxos)
-      leftover = totalRewards <> negate (fold rewards)
+      leftover = totalRewards <> Numeric.negate (fold rewards)
 
       lookups =
-        Constraints.typedValidatorLookups (inst nft)
-          Haskell.<> Constraints.otherScript (validator nft)
-          Haskell.<> Constraints.unspentOutputs (Map.fromList $ fst <$> utxos)
-          Haskell.<> Constraints.unspentOutputs (Map.fromList [fst global])
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.unspentOutputs (Map.fromList $ fst <$> utxos)
+          <> Constraints.unspentOutputs (Map.fromList [fst global])
       tx =
         Constraints.mustPayToTheScript (GlobalDatum $ snd global) leftover
           <> mconcat
@@ -217,10 +218,10 @@ distributeRewards nft _ = do
           <> spendWithConstRedeemer DistributeRewards (Map.fromList $ fst <$> utxos)
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
   if
-      | totalStakeUtxo Haskell./= totalStakeGlobal -> throwError "not all utxos provided"
-      | totalStakeGlobal Haskell.== mempty -> logInfo @Haskell.String $ "total stake is zero"
-      | totalRewards Haskell.== mempty -> logInfo @Haskell.String $ "no rewards"
-      | length utxos == 0 -> throwError "no user utxos"
+      | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
+      | totalStakeGlobal == PlutusTx.Prelude.mempty -> logInfo @String $ "total stake is zero"
+      | totalRewards == PlutusTx.Prelude.mempty -> logInfo @String $ "no rewards"
+      | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
           ledgerTx <- submitTxConstraintsWith lookups tx
@@ -231,13 +232,13 @@ withdrawRewards nft _ = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- ownUtxos nft
   let oldBalance = totalBalance (dBalance . snd <$> utxos)
-      newBalance = Balance (dStake oldBalance) mempty
+      newBalance = Balance (dStake oldBalance) PlutusTx.Prelude.mempty
       toSpend = Map.fromList (fst <$> utxos)
 
       lookups =
-        Constraints.typedValidatorLookups (inst nft)
-          Haskell.<> Constraints.otherScript (validator nft)
-          Haskell.<> Constraints.unspentOutputs toSpend
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.unspentOutputs toSpend
       tx =
         Constraints.mustPayToTheScript (UserDatum (UserData self newBalance)) (balanceToUserValue newBalance)
           <> Constraints.mustPayToPubKey self (dReward oldBalance)

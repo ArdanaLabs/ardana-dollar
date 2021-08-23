@@ -16,10 +16,11 @@ import Ledger qualified
 import Ledger.Value qualified
 import PlutusTx qualified
 
+import Data.Kind (Type)
 import Data.Map as Map (lookup)
 
 {-# INLINEABLE datumFor #-}
-datumFor :: PlutusTx.IsData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
+datumFor :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
 datumFor txOut f = do
   dh <- Ledger.txOutDatum txOut
   Ledger.Datum d <- f dh
@@ -79,6 +80,12 @@ sortBy cmp = mergeAll . sequences
     merge as [] = as
 
 {-# INLINEABLE intersectionWith #-}
+
+{- | The analogue of https://hackage.haskell.org/package/containers-0.6.5.1/docs/Data-Map-Internal.html#v:intersectionWith
+ for PlutusTx.AssocMap.
+ The assumption is that input lists how not contain duplicate keys.
+ To be incorporated into plutus-extra.
+-}
 intersectionWith :: forall k a b c. Ord k => (a -> b -> c) -> [(k, a)] -> [(k, b)] -> [(k, c)]
 intersectionWith f list1 list2 =
   let ord x y = compare (fst x) (fst y)

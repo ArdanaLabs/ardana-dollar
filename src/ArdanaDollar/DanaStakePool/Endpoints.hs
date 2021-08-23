@@ -27,18 +27,18 @@ type Schema =
     .\/ Endpoint "distributeRewards" ()
     .\/ Endpoint "withdrawRewards" ()
 
-type Schema2 =
+type SystemInitializationSchema =
   Endpoint "initializeSystem" ()
 
-initializeSystemEndpoint :: Contract (Last Value.AssetClass) Schema2 Text ()
+initializeSystemEndpoint :: Contract (Last Value.AssetClass) SystemInitializationSchema Text ()
 initializeSystemEndpoint = do
   forever
-    (endpoint @"initializeSystem" >>= initializeSystem)
+    (endpoint @"initializeSystem" >> initializeSystem)
 
 endpoints :: Value.CurrencySymbol -> Contract (Last Datum) Schema Text ()
 endpoints f = do
   forever $
-    (endpoint @"initializeUser" >>= initializeUser f)
+    (endpoint @"initializeUser" >> initializeUser f)
       `select` (endpoint @"deposit" >>= deposit f)
       `select` (endpoint @"withdraw" >>= withdraw f)
       `select` (endpoint @"provideRewards" >>= provideRewards f)
