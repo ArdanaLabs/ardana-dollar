@@ -20,7 +20,11 @@ import PlutusTx.Prelude
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.OffChain
-import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams, TreasurySpendParams)
+import ArdanaDollar.Treasury.Types (
+  Treasury,
+  TreasuryDepositParams,
+  TreasurySpendParams,
+ )
 import Plutus.PAB.OutputBus
 
 type TreasurySchema =
@@ -29,8 +33,9 @@ type TreasurySchema =
     .\/ Endpoint "queryCostCenters" ()
     .\/ Endpoint "initUpgrade" ()
 
-treasuryStartContract :: Contract (OutputBus Treasury) EmptySchema ContractError ()
-treasuryStartContract = startTreasury >>= sendBus
+treasuryStartContract ::
+  Contract (OutputBus Treasury) EmptySchema ContractError ()
+treasuryStartContract = startTreasury >>= maybe (return ()) sendBus
 
 treasuryContract ::
   forall (e :: Type).
@@ -42,7 +47,7 @@ treasuryContract treasury =
     foldr1
       select
       [ endpoint @"depositFundsWithCostCenter" >>= depositFundsWithCostCenter treasury
-      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter treasury
+      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter
       , endpoint @"queryCostCenters" >> queryCostCenters treasury
-      , endpoint @"initUpgrade" >> initiateUpgrade treasury
+      , endpoint @"initUpgrade" >> initiateUpgrade
       ]

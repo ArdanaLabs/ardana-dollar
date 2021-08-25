@@ -1,4 +1,4 @@
-module Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests) where
+module Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests) where
 
 import Control.Lens
 import Control.Monad (void)
@@ -24,10 +24,10 @@ import ArdanaDollar.Treasury.Types (Treasury, danaAssetClass)
 import ArdanaDollar.Vault (dUSDAsset)
 import Plutus.PAB.OutputBus
 
-treasuryTraceTests :: TestTree
-treasuryTraceTests =
+bufferTraceTests :: TestTree
+bufferTraceTests =
   testGroup
-    "Treasury Trace tests"
+    "Buffer Trace tests"
     [ debtTraceTest
     , debtAndSurplusTraceTest
     , tooSmallSurplusTraceTest

@@ -6,16 +6,17 @@
 module ArdanaDollar.Treasury.Types (
   Treasuring,
   Treasury (..),
+  TreasuryStateTokenParams (..),
   TreasuryDatum (..),
   TreasuryAction (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
+  isInitialDatum,
   calculateCostCenterValueOf,
   danaAssetClass,
   danaCurrency,
   danaTokenName,
   danaMintingPolicy,
-  treasuryTokenName,
 ) where
 
 --------------------------------------------------------------------------------
@@ -50,9 +51,17 @@ instance Scripts.ValidatorTypes Treasuring where
   type RedeemerType Treasuring = TreasuryAction
 
 data Treasury = Treasury
-  { tSymbol :: Value.AssetClass
+  { stateTokenSymbol :: Value.AssetClass
+  , stateTokenParams :: TreasuryStateTokenParams
   }
   deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+data TreasuryStateTokenParams = TreasuryStateTokenParams
+  { stateToken :: !Value.TokenName
+  , initialOutput :: !Contexts.TxOutRef
+  }
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON)
 
 data TreasuryDatum = TreasuryDatum
@@ -95,23 +104,24 @@ instance Eq TreasuryDatum where
     | otherwise = False
 
 -- helper functions
+{-# INLINEABLE isInitialDatum #-}
+isInitialDatum :: TreasuryDatum -> Bool
+isInitialDatum td = UniqueMap.null (costCenters td)
+
 {-# INLINEABLE calculateCostCenterValueOf #-}
 calculateCostCenterValueOf :: Value.AssetClass -> TreasuryDatum -> Integer
 calculateCostCenterValueOf ac TreasuryDatum {costCenters = cc} =
   foldr (\el acc -> (el `Value.assetClassValueOf` ac) + acc) 0 (UniqueMap.elems cc)
 
 -- helper currencies (a bit debugable)
-{-# INLINEABLE treasuryTokenName #-}
-treasuryTokenName :: Value.TokenName
-treasuryTokenName = Value.TokenName "treasury"
-
 {-# INLINEABLE danaTokenName #-}
 danaTokenName :: Value.TokenName
 danaTokenName = Value.TokenName "DANA"
 
 {-# INLINEABLE mkDanaMintingPolicy #-}
 mkDanaMintingPolicy :: Value.TokenName -> () -> Contexts.ScriptContext -> Bool
-mkDanaMintingPolicy danaToken _ sc = tokenList == [danaToken]
+mkDanaMintingPolicy danaToken _ sc =
+  traceIfFalse "DANA isn't minted" $ danaToken `elem` tokenList
   where
     valuesFromCtx = Value.flattenValue . Ledger.txInfoForge . Ledger.scriptContextTxInfo
     tokenList = (\(_, tokenName, _) -> tokenName) <$> valuesFromCtx sc
@@ -134,6 +144,7 @@ danaAssetClass = Value.AssetClass (danaCurrency, danaTokenName)
 PlutusTx.makeLift ''Treasury
 PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
 PlutusTx.makeLift ''TreasuryDatum
+PlutusTx.makeLift ''TreasuryStateTokenParams
 PlutusTx.makeIsDataIndexed ''TreasuryDepositParams [('TreasuryDepositParams, 0)]
 PlutusTx.makeLift ''TreasuryDepositParams
 PlutusTx.makeIsDataIndexed

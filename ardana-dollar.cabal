@@ -104,6 +104,7 @@ library
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain
+    ArdanaDollar.Treasury.StateToken
     ArdanaDollar.Treasury.Types
     ArdanaDollar.Types
     ArdanaDollar.Utils
@@ -120,7 +121,7 @@ test-suite ardana-dollar-test
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
   other-modules:
-    Test.ArdanaDollar.TreasuryTraceTest
+    Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.Utils
 
   hs-source-dirs: test

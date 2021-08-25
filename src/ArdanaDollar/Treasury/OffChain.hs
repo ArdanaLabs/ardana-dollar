@@ -30,7 +30,6 @@ import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
-import Plutus.Contracts.Currency qualified as Currency
 import Plutus.V1.Ledger.Contexts qualified as Contexts
 import PlutusTx qualified
 import PlutusTx.Data.Extra (toRedeemer)
@@ -40,6 +39,11 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
+import ArdanaDollar.Treasury.StateToken (
+  treasuryStateTokenAssetClass,
+  treasuryStateTokenMintingConstraints,
+  treasuryStateTokenParams,
+ )
 import ArdanaDollar.Treasury.Types
 import ArdanaDollar.Utils (getDatumOffChain)
 import Plutus.PAB.OutputBus
@@ -73,33 +77,47 @@ findTreasury treasury = do
       return (oref, o, datum)
     _ -> Nothing
   where
+    tokenAC :: Value.AssetClass
+    tokenAC = stateTokenSymbol treasury
+
     f :: Ledger.TxOutTx -> Bool
-    f o = Value.assetClassValueOf (Ledger.txOutValue $ Ledger.txOutTxOut o) (tSymbol treasury) == 1
+    f o = Value.assetClassValueOf (Ledger.txOutValue $ Ledger.txOutTxOut o) tokenAC == 1
 
 -- Treasury start contract
-startTreasury :: forall (w :: Type). Contract w EmptySchema ContractError Treasury
+startTreasury ::
+  forall (w :: Type).
+  Contract w EmptySchema ContractError (Maybe Treasury)
 startTreasury = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
-  cs <-
-    fmap Currency.currencySymbol $
-      mapError (\(Currency.CurContractError e) -> e) $
-        Currency.mintContract pkh [(treasuryTokenName, 1)]
-  let ac = Value.assetClass cs treasuryTokenName
-      treasury = Treasury ac
-      td = TreasuryDatum {auctionDanaAmount = 10, costCenters = UniqueMap.empty}
-      treasuryValue = Value.assetClassValue ac 1 <> Value.assetClassValue danaAssetClass 10
-      lookups =
-        Constraints.mintingPolicy danaMintingPolicy
-          <> Constraints.typedValidatorLookups (treasuryInst treasury)
-          <> Constraints.otherScript (treasuryValidator treasury)
-      tx =
-        Constraints.mustPayToTheScript td treasuryValue
-          <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass 10)
+  pka <- Ledger.pubKeyAddress <$> ownPubKey
+  utxos <- Map.toList <$> utxoAt pka
+  case utxos of
+    [] -> logError @String "No UTXO found at public address" >> return Nothing
+    (oref, o) : _ -> do
+      let stParams = treasuryStateTokenParams oref
+          treasury =
+            Treasury
+              { stateTokenParams = stParams
+              , stateTokenSymbol = treasuryStateTokenAssetClass stParams
+              }
+          (tokenLookup, tokenTx, tokenValue) = treasuryStateTokenMintingConstraints stParams
+          td = TreasuryDatum {auctionDanaAmount = 10, costCenters = UniqueMap.empty}
+          treasuryValue = tokenValue <> Value.assetClassValue danaAssetClass 10
+      let lookups =
+            tokenLookup
+              <> Constraints.mintingPolicy danaMintingPolicy
+              <> Constraints.typedValidatorLookups (treasuryInst treasury)
+              <> Constraints.otherScript (treasuryValidator treasury)
+              <> Constraints.unspentOutputs (Map.singleton oref o)
+          tx =
+            tokenTx
+              <> Constraints.mustPayToTheScript td treasuryValue
+              <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass 10)
+              <> Constraints.mustSpendPubKeyOutput oref
 
-  ledgerTx <- submitTxConstraintsWith lookups tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
-  logInfo @String $ printf "initialized Treasury %s" (show td)
-  return treasury
+      ledgerTx <- submitTxConstraintsWith lookups tx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      logInfo @String $ printf "initialized Treasury %s" (show td)
+      return $ Just treasury
 
 -- Treasury usage contracts
 depositFundsWithCostCenter ::
@@ -135,10 +153,9 @@ depositFundsWithCostCenter treasury params = do
 
 spendFromCostCenter ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
-  Treasury ->
   TreasurySpendParams ->
   Contract w s e ()
-spendFromCostCenter _ params = do
+spendFromCostCenter params = do
   logInfo @String "called spendFromCostCenter"
   logInfo (show params)
 
@@ -156,6 +173,5 @@ queryCostCenters treasury = do
 
 initiateUpgrade ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
-  Treasury ->
   Contract w s e ()
-initiateUpgrade _ = logInfo @String "called initiateUpgrade"
+initiateUpgrade = logInfo @String "called initiateUpgrade"

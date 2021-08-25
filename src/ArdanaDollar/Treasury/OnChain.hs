@@ -47,7 +47,7 @@ mkTreasuryValidator treasury td redeemer ctx =
       _ -> traceError "expected exactly one treasury output"
 
     hasToken :: Ledger.TxOut -> Bool
-    hasToken o = Value.assetClassValueOf (Ledger.txOutValue o) (tSymbol treasury) == 1
+    hasToken o = Value.assetClassValueOf (Ledger.txOutValue o) (stateTokenSymbol treasury) == 1
 
 {-# INLINEABLE validateAuctionDanaAmountUnchanged #-}
 validateAuctionDanaAmountUnchanged :: TreasuryDatum -> Contexts.ScriptContext -> Bool

@@ -109,9 +109,10 @@ main = void $
     cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
     Simulator.waitNSlots 10
     treasury <- getBus @Treasury cTreasuryId
-    logBlueString (show treasury)
+    logCurrentBalances_
 
-    logBlueString "Deposit funds"
+    -- Deposit funds in cost centers
+    logBlueString "Deposit funds in cost centers"
     cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
     Simulator.waitNSlots 10
     let callDepositEndpoint cc = do
@@ -133,12 +134,14 @@ main = void $
     logCurrentBalances_
     Simulator.waitNSlots 20
 
+    -- Start buffer
     logBlueString "Start buffer contract"
     _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
     Simulator.waitNSlots 10
     logCurrentBalances_
 
-    cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury) <* Simulator.waitNSlots 2
+    cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
+    Simulator.waitNSlots 2
     logCurrentBalances_
 
     let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
@@ -209,8 +212,11 @@ handleArdanaContract = Builtin.handleBuiltin getSchema getContract
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)
 handlers =
-  Simulator.mkSimulatorHandlers @(Builtin ArdanaContracts) def [VaultContract] $
-    interpret handleArdanaContract
+  Simulator.mkSimulatorHandlers
+    @(Builtin ArdanaContracts)
+    def
+    [VaultContract, TreasuryStart]
+    (interpret handleArdanaContract)
 
 -- helper functions
 logTitleSequence :: forall (t :: Type). Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
