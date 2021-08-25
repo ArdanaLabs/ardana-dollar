@@ -37,7 +37,7 @@ import ArdanaDollar.DanaStakePool.Validators
 import ArdanaDollar.Utils
 import ArdanaDollar.Vault as Vault
 
-mintNFT :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text Ledger.AssetClass
+mintNFT :: forall (s :: Row Type) (w :: Type). Contract w s Text Ledger.AssetClass
 mintNFT = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   let nftTokenName = Value.TokenName PlutusTx.Prelude.emptyByteString
@@ -47,7 +47,7 @@ mintNFT = do
       (Currency.mintContract self [(nftTokenName, 1)])
   return $ Value.assetClass (Currency.currencySymbol x) nftTokenName
 
-userDatumUtxos :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+userDatumUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
 userDatumUtxos nft = do
   utxos <- utxoAt (spAddress nft)
   return $ Map.toList utxos >>= own
@@ -57,18 +57,18 @@ userDatumUtxos nft = do
         Just (UserDatum datum) -> [(e, datum)]
         _ -> []
 
-userUtxos :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Ledger.PubKeyHash -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+userUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Ledger.PubKeyHash -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
 userUtxos nft self = do
   filter (belongsTo self) <$> userDatumUtxos nft
   where
     belongsTo pkh (_, dat) = dPkh dat == pkh
 
-ownUtxos :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+ownUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
 ownUtxos nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   userUtxos nft self
 
-globalUtxo :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Contract w s Text ((Ledger.TxOutRef, Ledger.TxOutTx), GlobalData)
+globalUtxo :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text ((Ledger.TxOutRef, Ledger.TxOutTx), GlobalData)
 globalUtxo nft = do
   utxos <- Map.filter hasNft <$> utxoAt (spAddress nft)
   let found = Map.toList utxos >>= own
@@ -86,7 +86,7 @@ globalUtxo nft = do
       1
         == Value.assetClassValueOf
           (Ledger.txOutValue (Ledger.txOutTxOut txOutTx))
-          (Value.AssetClass (nft, Value.TokenName emptyByteString))
+          (unNFTAssetClass nft)
 
 totalBalance :: [Balance] -> Balance
 totalBalance = fold
@@ -106,7 +106,7 @@ spendWithConstRedeemer r utxos =
 addReward :: UserData -> Value.Value -> UserData
 addReward (UserData pkh (Balance stake r) id') v = UserData pkh (Balance stake (r <> v)) id'
 
-initializeSystem :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text ()
+initializeSystem :: forall (s :: Row Type). Contract (Last NFTAssetClass) s Text ()
 initializeSystem = do
   nftAssetClass <- mintNFT
   let c =
@@ -114,13 +114,13 @@ initializeSystem = do
           (GlobalDatum (GlobalData PlutusTx.Prelude.mempty 0 False))
           (Value.assetClassValue nftAssetClass 1)
 
-  ledgerTx <- submitTxConstraints (spInst (fst $ Value.unAssetClass nftAssetClass)) c
+  ledgerTx <- submitTxConstraints (spInst (NFTAssetClass nftAssetClass)) c
   awaitTxConfirmed $ Ledger.txId ledgerTx
   logInfo @String $ "Initialized global state represented by token: " ++ show nftAssetClass
-  tell $ Last $ Just nftAssetClass
+  tell $ Last $ Just (NFTAssetClass nftAssetClass)
   return ()
 
-initializeUser :: forall (s :: Row Type). Value.CurrencySymbol -> Contract (Last Datum) s Text ()
+initializeUser :: forall (s :: Row Type). NFTAssetClass -> Contract (Last Datum) s Text ()
 initializeUser nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
 
@@ -137,7 +137,7 @@ initializeUser nft = do
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-deposit :: forall (s :: Row Type) (w :: Type). Value.CurrencySymbol -> Integer -> Contract w s Text ()
+deposit :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Integer -> Contract w s Text ()
 deposit nft amount = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- ownUtxos nft
@@ -166,10 +166,10 @@ deposit nft amount = do
       void $ awaitTxConfirmed $ Ledger.txId ledgerTx
     else throwError "Negative balance not acceptable"
 
-withdraw :: forall (s :: Row Type). Value.CurrencySymbol -> Integer -> Contract (Last Datum) s Text ()
+withdraw :: forall (s :: Row Type). NFTAssetClass -> Integer -> Contract (Last Datum) s Text ()
 withdraw nft amount = deposit nft (Numeric.negate amount)
 
-provideRewards :: forall (s :: Row Type). Value.CurrencySymbol -> Integer -> Contract (Last Datum) s Text ()
+provideRewards :: forall (s :: Row Type). NFTAssetClass -> Integer -> Contract (Last Datum) s Text ()
 provideRewards nft amount = do
   global <- globalUtxo nft
   pkh <- Ledger.pubKeyHash <$> ownPubKey
@@ -190,7 +190,7 @@ provideRewards nft amount = do
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-distributeRewards :: forall (s :: Row Type). Value.CurrencySymbol -> () -> Contract (Last Datum) s Text ()
+distributeRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 distributeRewards nft _ = do
   utxos <- userDatumUtxos nft
   global <- globalUtxo nft
@@ -228,7 +228,7 @@ distributeRewards nft _ = do
           ledgerTx <- submitTxConstraintsWith lookups tx
           void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-withdrawRewards :: forall (s :: Row Type). Value.CurrencySymbol -> () -> Contract (Last Datum) s Text ()
+withdrawRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 withdrawRewards nft _ = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- ownUtxos nft
@@ -248,13 +248,13 @@ withdrawRewards nft _ = do
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-queryUser :: forall (s :: Row Type). Value.CurrencySymbol -> Ledger.PubKeyHash -> Contract (Last UserData) s Text ()
+queryUser :: forall (s :: Row Type). NFTAssetClass -> Ledger.PubKeyHash -> Contract (Last UserData) s Text ()
 queryUser nft pkh = do
   utxos <- userUtxos nft pkh
   let total = totalBalance (dBalance . snd <$> utxos)
   tell $ Last $ Just (UserData pkh total 0)
 
-querySelf :: forall (s :: Row Type). Value.CurrencySymbol -> Contract (Last UserData) s Text ()
+querySelf :: forall (s :: Row Type). NFTAssetClass -> Contract (Last UserData) s Text ()
 querySelf nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- userUtxos nft self

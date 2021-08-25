@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.DanaStakePool.Validators (
+  NFTAssetClass (..),
   ValidatorTypes,
   spInst,
   spValidator,
@@ -39,6 +40,16 @@ import Control.Monad (join)
 import GHC.Generics (Generic)
 
 import Data.Aeson qualified as JSON
+
+newtype DanaAssetClass = DanaAssetClass {unDanaAssetClass :: Value.AssetClass}
+newtype NFTAssetClass = NFTAssetClass {unNFTAssetClass :: Value.AssetClass}
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
+  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
+newtype UserInitProofAssetClass = UserInitProofAssetClass {unUserInitProofAssetClass :: Value.AssetClass}
+
+PlutusTx.makeLift ''DanaAssetClass
+PlutusTx.makeLift ''NFTAssetClass
+PlutusTx.makeLift ''UserInitProofAssetClass
 
 data Balance = Balance
   { dStake :: Value.Value
@@ -156,14 +167,14 @@ userInitProofAssetClass = Value.AssetClass (userInitProofSymbol, userInitProofTo
 
 {-# INLINEABLE mkValidator #-}
 mkValidator ::
-  Value.AssetClass ->
-  Value.CurrencySymbol ->
-  Value.CurrencySymbol ->
+  DanaAssetClass ->
+  NFTAssetClass ->
+  UserInitProofAssetClass ->
   Datum ->
   Redeemer ->
   Ledger.ScriptContext ->
   Bool
-mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
+mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
   case datum of
     GlobalDatum _ ->
         traceIfFalse "incorrect global" (isJust maybeGlobal)
@@ -227,17 +238,17 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
     isSigned dat = dPkh dat `elem` Ledger.txInfoSignatories info
 
     isValid :: Ledger.TxOut -> Bool
-    isValid txOut = txOutValid (Value.AssetClass (userInitProofSymbol_, userInitProofTokenName)) info txOut
+    isValid txOut = txOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
 
     hasNFT :: Ledger.TxOut -> Bool
     hasNFT txOut =
       1
         == Value.assetClassValueOf
           (Ledger.txOutValue txOut)
-          (Value.AssetClass (nftSymbol, Value.TokenName emptyByteString))
+          (unNFTAssetClass nftAC)
 
     hasUserToken :: Ledger.TxOut -> Bool
-    hasUserToken txOut = Value.assetClassValueOf (Ledger.txOutValue txOut) (Value.AssetClass (userInitProofSymbol_, userInitProofTokenName)) == 1
+    hasUserToken txOut = Value.assetClassValueOf (Ledger.txOutValue txOut) (unUserInitProofAssetClass userInitProofAC) == 1
 
     globalDatum :: Ledger.TxOut -> Maybe GlobalData
     globalDatum txOut = case datumForOnchain @Datum info txOut of
@@ -305,7 +316,7 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
       Nothing -> traceError "no output for user utxo"
 
     danaOnly :: Value.Value -> Bool
-    danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass danaAsset]
+    danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass $ unDanaAssetClass danaAC]
 
     distributionOk :: Value.Value -> Value.Value -> Value.Value -> Bool
     distributionOk totalStake totalReward leftover =
@@ -313,7 +324,7 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
        in all ok users && (leftover == totalReward - distributed users) && positive leftover
       where
         ok ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
-          dReward outBalance - dReward inBalance == rewardHelper danaAsset totalStake totalReward (dStake inBalance)
+          dReward outBalance - dReward inBalance == rewardHelper (unDanaAssetClass danaAC) totalStake totalReward (dStake inBalance)
 
         distributed users =
           fold $
@@ -330,7 +341,7 @@ instance Scripts.ValidatorTypes ValidatorTypes where
   type RedeemerType ValidatorTypes = Redeemer
 
 {-# INLINEABLE inst #-}
-inst :: Value.AssetClass -> Value.CurrencySymbol -> Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
+inst :: DanaAssetClass -> NFTAssetClass -> UserInitProofAssetClass -> Scripts.TypedValidator ValidatorTypes
 inst danaAsset nft symbol =
   Scripts.mkTypedValidator @ValidatorTypes
     ( $$(PlutusTx.compile [||mkValidator||])
@@ -344,16 +355,16 @@ inst danaAsset nft symbol =
 
 --
 {-# INLINEABLE spInst #-}
-spInst :: Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
-spInst nft = inst DanaCurrency.danaAsset nft userInitProofSymbol
+spInst :: NFTAssetClass -> Scripts.TypedValidator ValidatorTypes
+spInst nftAC = inst (DanaAssetClass DanaCurrency.danaAsset) nftAC (UserInitProofAssetClass userInitProofAssetClass)
 
 {-# INLINEABLE spValidator #-}
-spValidator :: Value.CurrencySymbol -> Ledger.Validator
-spValidator nft = Scripts.validatorScript $ spInst nft
+spValidator :: NFTAssetClass -> Ledger.Validator
+spValidator nftAC = Scripts.validatorScript $ spInst nftAC
 
 {-# INLINEABLE spAddress #-}
-spAddress :: Value.CurrencySymbol -> Ledger.Address
-spAddress nft = Ledger.scriptAddress $ spValidator nft
+spAddress :: NFTAssetClass -> Ledger.Address
+spAddress nftAC = Ledger.scriptAddress $ spValidator nftAC
 
 -------------------------------------------------------------------------------
 

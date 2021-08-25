@@ -9,6 +9,7 @@ module Test.ArdanaDollar.DanaStakePoolTest (
 
 import ArdanaDollar.DanaStakePool.DanaCurrency
 import ArdanaDollar.DanaStakePool.Endpoints as PEndpoints
+import ArdanaDollar.DanaStakePool.Validators (NFTAssetClass (..))
 import ArdanaDollar.Vault as Vault
 
 import Prelude
@@ -42,12 +43,12 @@ emCfg = EmulatorConfig $ Left $ Map.fromList [(Wallet 1, v), (Wallet 2, v), (Wal
 runTrace :: EmulatorTrace () -> IO ()
 runTrace = runEmulatorTraceIO' def emCfg def
 
-initializeSystem :: EmulatorTrace Value.CurrencySymbol
+initializeSystem :: EmulatorTrace NFTAssetClass
 initializeSystem = do
   h <- activateContractWallet (Wallet 1) PEndpoints.initializeSystemEndpoint
   callEndpoint @"initializeSystem" h ()
   void $ Emulator.waitNSlots 5
-  fst . Value.unAssetClass . fromJust . getLast <$> observableState h
+  fromJust . getLast <$> observableState h
 
 testDeposit :: EmulatorTrace ()
 testDeposit = do
