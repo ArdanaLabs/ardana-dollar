@@ -62,6 +62,7 @@ instance Haskell.Monoid Balance where
 data UserData = UserData
   { dPkh :: Ledger.PubKeyHash
   , dBalance :: Balance
+  , dId :: Integer
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
@@ -115,7 +116,7 @@ mkUserInitProofPolicy _ ctx =
       unique = head outputs
    in if length outputs == 1
         then case datumForOnchain @Datum info unique of
-          Just (UserDatum (UserData key balance)) ->
+          Just (UserDatum (UserData key balance _)) ->
             balance Haskell.== mempty
               && checkMintedAmount
               && Ledger.txSignedBy info key
@@ -311,12 +312,12 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
       let users = justUsers
        in all ok users && (leftover == totalReward - distributed users) && positive leftover
       where
-        ok ((_, UserData _ inBalance), (_, UserData _ outBalance)) =
+        ok ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
           dReward outBalance - dReward inBalance == rewardHelper danaAsset totalStake totalReward (dStake inBalance)
 
         distributed users =
           fold $
-            (\((_, UserData _ inBalance), (_, UserData _ outBalance)) -> dReward outBalance - dReward inBalance)
+            (\((_, UserData _ inBalance _), (_, UserData _ outBalance _)) -> dReward outBalance - dReward inBalance)
               <$> users
 
 {- ORMOLU_ENABLE -}

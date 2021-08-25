@@ -104,7 +104,7 @@ spendWithConstRedeemer r utxos =
     ]
 
 addReward :: UserData -> Value.Value -> UserData
-addReward (UserData pkh (Balance stake r)) v = UserData pkh (Balance stake (r <> v))
+addReward (UserData pkh (Balance stake r) id') v = UserData pkh (Balance stake (r <> v)) id'
 
 initializeSystem :: forall (s :: Row Type). Contract (Last Value.AssetClass) s Text ()
 initializeSystem = do
@@ -132,7 +132,7 @@ initializeUser nft = do
           <> Constraints.mintingPolicy userInitProofPolicy
       tx =
         Constraints.mustMintValue val
-          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty)) val
+          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty 0)) val
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -154,7 +154,7 @@ deposit nft amount = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance)) (balanceToUserValue newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue newBalance)
           <> Constraints.mustPayToTheScript
             (GlobalDatum $ addTotalStake (snd global) danaAmount)
             (Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global))
@@ -200,7 +200,7 @@ distributeRewards nft _ = do
       totalRewards = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
       rewards =
         rewardHelper danaAsset totalStakeGlobal totalRewards
-          <$> ((\(_, UserData _ balance) -> dStake balance) <$> utxos)
+          <$> ((\(_, UserData _ balance _) -> dStake balance) <$> utxos)
       leftover = totalRewards <> Numeric.negate (fold rewards)
 
       lookups =
@@ -241,7 +241,7 @@ withdrawRewards nft _ = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance)) (balanceToUserValue newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue newBalance)
           <> Constraints.mustPayToPubKey self (dReward oldBalance)
           <> spendWithConstRedeemer WithdrawRewards toSpend
 
@@ -252,11 +252,11 @@ queryUser :: forall (s :: Row Type). Value.CurrencySymbol -> Ledger.PubKeyHash -
 queryUser nft pkh = do
   utxos <- userUtxos nft pkh
   let total = totalBalance (dBalance . snd <$> utxos)
-  tell $ Last $ Just (UserData pkh total)
+  tell $ Last $ Just (UserData pkh total 0)
 
 querySelf :: forall (s :: Row Type). Value.CurrencySymbol -> Contract (Last UserData) s Text ()
 querySelf nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- userUtxos nft self
   let total = totalBalance (dBalance . snd <$> utxos)
-  tell $ Last $ Just (UserData self total)
+  tell $ Last $ Just (UserData self total 0)
