@@ -121,21 +121,31 @@ PlutusTx.makeIsDataIndexed
 
 -------------------------------------------------------------------------------
 
+blah :: forall a. PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
+blah info txOut = do
+  r <- datumForOnchain @a info txOut
+  return (txOut, r)
+
 {-# INLINEABLE mkUserInitProofPolicy #-}
 mkUserInitProofPolicy :: NFTAssetClass -> () -> Ledger.ScriptContext -> Bool
-mkUserInitProofPolicy _ _ ctx =
-  let outputs = filter (PlutusTx.Prelude.isJust . datumForOnchain @Datum info) (Ledger.txInfoOutputs info)
-      unique = head outputs
-   in if length outputs == 1
-        then case datumForOnchain @Datum info unique of
-          Just (UserDatum (UserData key balance _)) ->
-            balance Haskell.== mempty
-              && checkMintedAmount
-              && Ledger.txSignedBy info key
-              && txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info unique
-          _ -> False
-        else False
+mkUserInitProofPolicy nftAC _ ctx =
+  let outputs = join $ toList . blah @Datum info <$> Ledger.txInfoOutputs info
+      inputs = join $ toList . blah @Datum info <$> (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
+   in case (inputs, outputs) of
+        ([(t1, GlobalDatum d1)], [(t2, GlobalDatum d2), (t3, UserDatum d3)]) -> validate (t1, d1) (t2, d2) (t3, d3)
+        ([(t1, GlobalDatum d1)], [(t2, UserDatum d2), (t3, GlobalDatum d3)]) -> validate (t1, d1) (t3, d3) (t2, d2)
+        _ -> traceIfFalse "incorrect utxos provided" False
   where
+    validate (t1, inputGlobal) (t2, outputGlobal) (t3, outputUser) =
+      traceIfFalse "minting more than 1" checkMintedAmount
+        && traceIfFalse "nonempty out balance" (dBalance outputUser Haskell.== mempty)
+        && traceIfFalse "not signed" (Ledger.txSignedBy info (dPkh outputUser))
+        && traceIfFalse "user out tx invalid" (txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info t3)
+        && traceIfFalse "incorrect id" (dId outputUser == dUserDatumCount inputGlobal)
+        && traceIfFalse "not incremented" ((dUserDatumCount inputGlobal + 1) == dUserDatumCount outputGlobal)
+        && traceIfFalse "no nft at input" (Value.assetClassValueOf (Ledger.txOutValue t1) (unNFTAssetClass nftAC) == 1)
+        && traceIfFalse "no nft at output" (Value.assetClassValueOf (Ledger.txOutValue t2) (unNFTAssetClass nftAC) == 1)
+
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 
