@@ -91,8 +91,8 @@ globalUtxo nft = do
 totalBalance :: [Balance] -> Balance
 totalBalance = fold
 
-balanceToUserValue :: Balance -> Value.Value
-balanceToUserValue b = dStake b <> dReward b <> Value.assetClassValue userInitProofAssetClass 1
+balanceToUserValue :: NFTAssetClass -> Balance -> Value.Value
+balanceToUserValue nftAC b = dStake b <> dReward b <> Value.assetClassValue (userInitProofAssetClass nftAC) 1
 
 spendWithConstRedeemer :: Redeemer -> UtxoMap -> Constraints.TxConstraints Redeemer Datum
 spendWithConstRedeemer r utxos =
@@ -124,12 +124,12 @@ initializeUser :: forall (s :: Row Type). NFTAssetClass -> Contract (Last Datum)
 initializeUser nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
 
-  let val = Value.assetClassValue userInitProofAssetClass 1
+  let val = Value.assetClassValue (userInitProofAssetClass nft) 1
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
           <> Constraints.otherScript (spValidator nft)
-          <> Constraints.mintingPolicy userInitProofPolicy
+          <> Constraints.mintingPolicy (userInitProofPolicy nft)
       tx =
         Constraints.mustMintValue val
           <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty 0)) val
@@ -154,7 +154,7 @@ deposit nft amount = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue nft newBalance)
           <> Constraints.mustPayToTheScript
             (GlobalDatum $ addTotalStake (snd global) danaAmount)
             (Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global))
@@ -241,7 +241,7 @@ withdrawRewards nft _ = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue nft newBalance)
           <> Constraints.mustPayToPubKey self (dReward oldBalance)
           <> spendWithConstRedeemer WithdrawRewards toSpend
 

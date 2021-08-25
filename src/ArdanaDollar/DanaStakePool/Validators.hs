@@ -28,6 +28,7 @@ import PlutusTx qualified
 import PlutusTx.Monoid qualified
 import PlutusTx.Ratio qualified as R
 import PlutusTx.Semigroup qualified
+import PlutusTx.TH qualified as TH
 
 import Prelude qualified as Haskell
 
@@ -121,8 +122,8 @@ PlutusTx.makeIsDataIndexed
 -------------------------------------------------------------------------------
 
 {-# INLINEABLE mkUserInitProofPolicy #-}
-mkUserInitProofPolicy :: () -> Ledger.ScriptContext -> Bool
-mkUserInitProofPolicy _ ctx =
+mkUserInitProofPolicy :: NFTAssetClass -> () -> Ledger.ScriptContext -> Bool
+mkUserInitProofPolicy _ _ ctx =
   let outputs = filter (PlutusTx.Prelude.isJust . datumForOnchain @Datum info) (Ledger.txInfoOutputs info)
       unique = head outputs
    in if length outputs == 1
@@ -144,22 +145,23 @@ mkUserInitProofPolicy _ ctx =
       _ -> False
 
 {-# INLINEABLE userInitProofPolicy #-}
-userInitProofPolicy :: Scripts.MintingPolicy
-userInitProofPolicy =
-  Ledger.mkMintingPolicyScript
-    $$(PlutusTx.compile [||Scripts.wrapMintingPolicy mkUserInitProofPolicy||])
+userInitProofPolicy :: NFTAssetClass -> Scripts.MintingPolicy
+userInitProofPolicy nftAC =
+  Ledger.mkMintingPolicyScript $
+    $$(TH.compile [||Scripts.wrapMintingPolicy . mkUserInitProofPolicy||])
+      `PlutusTx.applyCode` PlutusTx.liftCode nftAC
 
 {-# INLINEABLE userInitProofSymbol #-}
-userInitProofSymbol :: Value.CurrencySymbol
-userInitProofSymbol = Ledger.scriptCurrencySymbol userInitProofPolicy
+userInitProofSymbol :: NFTAssetClass -> Value.CurrencySymbol
+userInitProofSymbol = Ledger.scriptCurrencySymbol . userInitProofPolicy
 
 {-# INLINEABLE userInitProofTokenName #-}
 userInitProofTokenName :: Value.TokenName
 userInitProofTokenName = Value.TokenName emptyByteString
 
 {-# INLINEABLE userInitProofAssetClass #-}
-userInitProofAssetClass :: Value.AssetClass
-userInitProofAssetClass = Value.AssetClass (userInitProofSymbol, userInitProofTokenName)
+userInitProofAssetClass :: NFTAssetClass -> Value.AssetClass
+userInitProofAssetClass nftAC = Value.AssetClass (userInitProofSymbol nftAC, userInitProofTokenName)
 
 -------------------------------------------------------------------------------
 
@@ -356,7 +358,7 @@ inst danaAsset nft symbol =
 --
 {-# INLINEABLE spInst #-}
 spInst :: NFTAssetClass -> Scripts.TypedValidator ValidatorTypes
-spInst nftAC = inst (DanaAssetClass DanaCurrency.danaAsset) nftAC (UserInitProofAssetClass userInitProofAssetClass)
+spInst nftAC = inst (DanaAssetClass DanaCurrency.danaAsset) nftAC (UserInitProofAssetClass (userInitProofAssetClass nftAC))
 
 {-# INLINEABLE spValidator #-}
 spValidator :: NFTAssetClass -> Ledger.Validator
