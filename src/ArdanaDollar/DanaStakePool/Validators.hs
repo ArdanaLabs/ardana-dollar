@@ -13,6 +13,7 @@ module ArdanaDollar.DanaStakePool.Validators (
   GlobalData (..),
   Redeemer (..),
   Balance (..),
+  TraversalState (..),
   userInitProofAssetClass,
   userInitProofPolicy,
   addTotalStake,
@@ -79,16 +80,21 @@ data UserData = UserData
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
+data TraversalState = TraversalInactive | TraversalActive Integer
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
+  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
+
 data GlobalData = GlobalData
   { dTotalStake :: Value.Value
   , dUserDatumCount :: Integer
   , dLocked :: Bool
+  , dTraversal :: TraversalState
   }
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
-addTotalStake (GlobalData s c l) v = GlobalData (s <> v) c l
+addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
 
 data Datum = UserDatum UserData | GlobalDatum GlobalData
   deriving stock (Haskell.Show, Generic)
@@ -96,6 +102,12 @@ data Datum = UserDatum UserData | GlobalDatum GlobalData
 
 PlutusTx.makeIsDataIndexed ''Balance [('Balance, 0)]
 PlutusTx.makeIsDataIndexed ''UserData [('UserData, 0)]
+PlutusTx.makeIsDataIndexed
+  ''TraversalState
+  [ ('TraversalInactive, 0)
+  , ('TraversalActive, 1)
+  ]
+
 PlutusTx.makeIsDataIndexed ''GlobalData [('GlobalData, 0)]
 PlutusTx.makeIsDataIndexed
   ''Datum
@@ -218,7 +230,8 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                (dTotalStake gOutData == dTotalStake gInData)
                             && traceIfFalse "wrong reward distribution"
                                ( distributionOk
-                                  (dTotalStake gOutData)
+                                  gInData
+                                  gOutData
                                   (Ledger.txOutValue gInTxOut)
                                   (Ledger.txOutValue gOutTxOut)
                                )
@@ -337,18 +350,12 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     danaOnly :: Value.Value -> Bool
     danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass $ unDanaAssetClass danaAC]
 
-    distributionOk :: Value.Value -> Value.Value -> Value.Value -> Bool
-    distributionOk totalStake totalReward leftover =
-      let users = justUsers
-       in all ok users && (leftover == totalReward - distributed users) && positive leftover
-      where
-        ok ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
-          dReward outBalance - dReward inBalance == rewardHelper (unDanaAssetClass danaAC) totalStake totalReward (dStake inBalance)
-
-        distributed users =
-          fold $
-            (\((_, UserData _ inBalance _), (_, UserData _ outBalance _)) -> dReward outBalance - dReward inBalance)
-              <$> users
+    distributionOk :: GlobalData -> GlobalData -> Value.Value -> Value.Value -> Bool
+    distributionOk gInData gOutData totalReward leftover =
+      let ((uInTxOut, uInData), (uOutTxOut, uOutData)) = uniqueUser
+       in case dTraversal gInData of
+         TraversalInactive    -> dId uInData == 0
+         TraversalActive id'  -> dId uInData == 1
 
     checkUserInitProofMinted :: Bool
     checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoForge info) of
