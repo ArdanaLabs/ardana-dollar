@@ -80,7 +80,7 @@ data UserData = UserData
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
-data TraversalState = TraversalInactive | TraversalActive Integer
+newtype TraversalState = TraversalState Integer
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
@@ -102,11 +102,7 @@ data Datum = UserDatum UserData | GlobalDatum GlobalData
 
 PlutusTx.makeIsDataIndexed ''Balance [('Balance, 0)]
 PlutusTx.makeIsDataIndexed ''UserData [('UserData, 0)]
-PlutusTx.makeIsDataIndexed
-  ''TraversalState
-  [ ('TraversalInactive, 0)
-  , ('TraversalActive, 1)
-  ]
+PlutusTx.makeIsDataIndexed ''TraversalState [('TraversalState, 0)]
 
 PlutusTx.makeIsDataIndexed ''GlobalData [('GlobalData, 0)]
 PlutusTx.makeIsDataIndexed
@@ -328,9 +324,6 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
           let pkhs = dPkh . snd <$> users in
           length (nub pkhs) == length pkhs
 
-    justUsers :: [((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))]
-    justUsers = PlutusTx.Prelude.fromMaybe (traceError "cannot retrieve users") maybeUsers
-
     uniqueUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
     uniqueUser = case maybeUsers of
       Just [u] -> u
@@ -352,10 +345,20 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
     distributionOk :: GlobalData -> GlobalData -> Value.Value -> Value.Value -> Bool
     distributionOk gInData gOutData totalReward leftover =
-      let ((uInTxOut, uInData), (uOutTxOut, uOutData)) = uniqueUser
-       in case dTraversal gInData of
-         TraversalInactive    -> dId uInData == 0
-         TraversalActive id'  -> dId uInData == 1
+      let TraversalState tIn = dTraversal gInData
+          TraversalState tOut = dTraversal gOutData
+          (userOk, diff) = ok uniqueUser
+          leftoverOk = (totalReward <> negate diff) == leftover
+       in userOk && leftoverOk && positive leftover && case (dUserDatumCount gInData, tIn, tOut) of
+         (num, _, _) | num == 0 -> False -- should never happen
+         (num, inIdx, outIdx) | inIdx == num - 1 && outIdx == 0 -> True
+         (num, inIdx, outIdx) | inIdx < num - 1  && outIdx == inIdx + 1 -> True
+         _ -> False
+      where
+        ok ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
+          let diff = dReward outBalance - dReward inBalance
+              reward' = rewardHelper (unDanaAssetClass danaAC) (dTotalStake gInData) totalReward (dStake inBalance)
+           in (diff == reward', diff)
 
     checkUserInitProofMinted :: Bool
     checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoForge info) of

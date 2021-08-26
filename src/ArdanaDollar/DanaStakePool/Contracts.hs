@@ -111,7 +111,7 @@ initializeSystem = do
   nftAssetClass <- mintNFT
   let c =
         Constraints.mustPayToTheScript
-          (GlobalDatum (GlobalData PlutusTx.Prelude.mempty 0 False TraversalInactive))
+          (GlobalDatum (GlobalData PlutusTx.Prelude.mempty 0 False (TraversalState 0)))
           (Value.assetClassValue nftAssetClass 1)
 
   ledgerTx <- submitTxConstraints (spInst (NFTAssetClass nftAssetClass)) c
