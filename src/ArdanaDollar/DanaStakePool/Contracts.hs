@@ -123,16 +123,22 @@ initializeSystem = do
 initializeUser :: forall (s :: Row Type). NFTAssetClass -> Contract (Last Datum) s Text ()
 initializeUser nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
+  global <- globalUtxo nft
 
   let val = Value.assetClassValue (userInitProofAssetClass nft) 1
+      toSpend = Map.fromList [fst global]
+      oldData = snd global
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.mintingPolicy (userInitProofPolicy nft)
+          <> Constraints.unspentOutputs toSpend
       tx =
         Constraints.mustMintValue val
-          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty 0)) val
+          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty (dUserDatumCount oldData))) val
+          <> Constraints.mustPayToTheScript (GlobalDatum (oldData {dUserDatumCount = dUserDatumCount oldData Prelude.+ 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
+          <> spendWithConstRedeemer InitializeUser toSpend
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx

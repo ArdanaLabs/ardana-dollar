@@ -84,7 +84,7 @@ data GlobalData = GlobalData
   , dUserDatumCount :: Integer
   , dLocked :: Bool
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
@@ -108,6 +108,7 @@ data Redeemer
   | ProvideRewards
   | DistributeRewards
   | WithdrawRewards
+  | InitializeUser
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
@@ -117,6 +118,7 @@ PlutusTx.makeIsDataIndexed
   , ('ProvideRewards, 1)
   , ('DistributeRewards, 2)
   , ('WithdrawRewards, 3)
+  , ('InitializeUser, 4)
   ]
 
 -------------------------------------------------------------------------------
@@ -142,7 +144,9 @@ mkUserInitProofPolicy nftAC _ ctx =
         && traceIfFalse "not signed" (Ledger.txSignedBy info (dPkh outputUser))
         && traceIfFalse "user out tx invalid" (txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info t3)
         && traceIfFalse "incorrect id" (dId outputUser == dUserDatumCount inputGlobal)
-        && traceIfFalse "not incremented" ((dUserDatumCount inputGlobal + 1) == dUserDatumCount outputGlobal)
+        && traceIfFalse "global datum unexpected change" (dUserDatumCount inputGlobal + 1 == dUserDatumCount outputGlobal)
+        -- && traceIfFalse "global datum unexpected change" (inputGlobal{dUserDatumCount = (dUserDatumCount inputGlobal + 1)} == outputGlobal)
+        && traceIfFalse "rewards changed" (Ledger.txOutValue t1 == Ledger.txOutValue t2)
         && traceIfFalse "no nft at input" (Value.assetClassValueOf (Ledger.txOutValue t1) (unNFTAssetClass nftAC) == 1)
         && traceIfFalse "no nft at output" (Value.assetClassValueOf (Ledger.txOutValue t2) (unNFTAssetClass nftAC) == 1)
 
@@ -221,6 +225,8 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
           WithdrawRewards   -> traceIfFalse "cannot use redeemer" False
 
+          InitializeUser    -> checkUserInitProofMinted -- delegate checks to minting policy
+
     UserDatum dat ->
         traceIfFalse "own input is not valid"
         (isJust maybeUsers) -- that could be optimized
@@ -242,6 +248,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                ( let ((_, inData), (_, outData)) = ownUser
                                  in (dStake $ dBalance inData) == (dStake $ dBalance outData)
                                )
+          InitializeUser  ->   False
   where
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
@@ -342,6 +349,11 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
           fold $
             (\((_, UserData _ inBalance _), (_, UserData _ outBalance _)) -> dReward outBalance - dReward inBalance)
               <$> users
+
+    checkUserInitProofMinted :: Bool
+    checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoForge info) of
+      [(cs, tn', amt)] -> unUserInitProofAssetClass userInitProofAC == Value.AssetClass (cs, tn') && amt == 1
+      _ -> False
 
 {- ORMOLU_ENABLE -}
 
