@@ -10,11 +10,18 @@ module ArdanaDollar.Utils (
   valueUnlockedBy,
   pubKeyInputsAt,
   valuePaidBy,
+  getDatumOffChain,
+  getDatumOnChain,
+  validateDatumImmutable,
 ) where
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
+import Data.Kind (Type)
+import Data.Map qualified as Map
 import Ledger qualified
+import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
 import Prelude qualified as Haskell
@@ -196,3 +203,52 @@ pubKeyInputsAt pk txInfo =
 -}
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
+
+-- | Extract datum from given `Ledger.TxOutTx`.
+getDatumOffChain ::
+  forall (datum :: Type).
+  PlutusTx.IsData datum =>
+  Ledger.TxOutTx ->
+  Maybe datum
+getDatumOffChain outTx = do
+  dh <- Ledger.txOutDatumHash $ Ledger.txOutTxOut outTx
+  Ledger.Datum datum <- Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx outTx
+  PlutusTx.fromBuiltinData datum
+
+{- | Extract datum from given `Contexts.TxOut` using provided function for
+ finding the data corresponding to `Ledger.DatumHash`. An on-chain version of
+ `getDatumOffChain`.
+-}
+{-# INLINEABLE getDatumOnChain #-}
+getDatumOnChain ::
+  forall (datum :: Type).
+  (PlutusTx.IsData datum) =>
+  Contexts.TxOut ->
+  (Ledger.DatumHash -> Maybe Ledger.Datum) ->
+  Maybe datum
+getDatumOnChain o f = do
+  dh <- Ledger.txOutDatum o
+  Ledger.Datum d <- f dh
+  PlutusTx.fromBuiltinData d
+
+-- | On-chain helper function checking immutability of the validator's datum
+{-# INLINEABLE validateDatumImmutable #-}
+validateDatumImmutable ::
+  forall (datum :: Type).
+  (Eq datum, PlutusTx.IsData datum) =>
+  datum ->
+  Contexts.ScriptContext ->
+  Bool
+validateDatumImmutable td ctx =
+  traceIfFalse "datum has changed" (Just td == outputDatum)
+  where
+    info :: Contexts.TxInfo
+    info = Contexts.scriptContextTxInfo ctx
+
+    outputDatum :: Maybe datum
+    outputDatum = getDatumOnChain ownOutput (`Contexts.findDatum` info)
+
+    ownOutput :: Ledger.TxOut
+    ownOutput = case Contexts.getContinuingOutputs ctx of
+      [o] -> o
+      _ -> traceError "expected exactly one output"
