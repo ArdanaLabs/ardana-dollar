@@ -7,6 +7,7 @@ module ArdanaDollar.DanaStakePool.Contracts (
   withdraw,
   provideRewards,
   distributeRewards,
+  distributeRewardsUser,
   withdrawRewards,
   queryUser,
   querySelf,
@@ -196,6 +197,27 @@ provideRewards nft amount = do
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
+distributeRewardsUser :: forall (s :: Row Type). NFTAssetClass -> ((Ledger.TxOutRef, Ledger.TxOutTx), UserData) -> Contract (Last Datum) s Text ()
+distributeRewardsUser nft (tuple', userData) = do
+  global <- globalUtxo nft
+
+  let totalStake = dTotalStake $ snd global
+      totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      reward' = rewardHelper danaAsset totalStake totalReward (dStake $ dBalance userData)
+      leftover = totalReward <> Numeric.negate reward'
+
+      lookups =
+        Constraints.typedValidatorLookups (spInst nft)
+          <> Constraints.otherScript (spValidator nft)
+          <> Constraints.unspentOutputs (Map.fromList [fst global, tuple'])
+      tx =
+        Constraints.mustPayToTheScript (GlobalDatum $ snd global) leftover
+          <> Constraints.mustPayToTheScript (UserDatum $ addReward userData reward') (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
+          <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global, tuple'])
+
+  ledgerTx <- submitTxConstraintsWith lookups tx
+  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+
 distributeRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 distributeRewards nft _ = do
   utxos <- userDatumUtxos nft
@@ -204,26 +226,8 @@ distributeRewards nft _ = do
   let totalStakeUtxo = dStake $ totalBalance $ dBalance . snd <$> utxos
       totalStakeGlobal = dTotalStake (snd global)
       totalRewards = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
-      rewards =
-        rewardHelper danaAsset totalStakeGlobal totalRewards
-          <$> ((\(_, UserData _ balance _) -> dStake balance) <$> utxos)
-      leftover = totalRewards <> Numeric.negate (fold rewards)
-
-      lookups =
-        Constraints.typedValidatorLookups (spInst nft)
-          <> Constraints.otherScript (spValidator nft)
-          <> Constraints.unspentOutputs (Map.fromList $ fst <$> utxos)
-          <> Constraints.unspentOutputs (Map.fromList [fst global])
-      tx =
-        Constraints.mustPayToTheScript (GlobalDatum $ snd global) leftover
-          <> mconcat
-            [ Constraints.mustPayToTheScript
-              (UserDatum $ addReward dat r)
-              (r <> Ledger.txOutValue (Ledger.txOutTxOut txOutTx))
-            | (((_, txOutTx), dat), r) <- zip utxos rewards
-            ]
-          <> spendWithConstRedeemer DistributeRewards (Map.fromList $ fst <$> utxos)
-          <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
+      sorted = sortBy (\(_, d1) (_, d2) -> compare (dId d1) (dId d2)) utxos
+      txs = mapM_ (distributeRewardsUser nft) sorted
   if
       | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
       | totalStakeGlobal == PlutusTx.Prelude.mempty -> logInfo @String $ "total stake is zero"
@@ -231,8 +235,7 @@ distributeRewards nft _ = do
       | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
-          ledgerTx <- submitTxConstraintsWith lookups tx
-          void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+          txs
 
 withdrawRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 withdrawRewards nft _ = do
