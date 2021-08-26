@@ -347,22 +347,25 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     distributionOk gInData gOutData totalRewardBeforeT totalRewardAfterT =
       case (dUserDatumCount gInData, dTraversal gInData, dTraversal gOutData) of
          (num, _, _)                                              | num == 0
-            -> False
+            -> traceIfFalse "0 case" False
 
          (_, TraversalInactive, TraversalActive r' id')           | id' == 0
-            -> r' == totalRewardBeforeT
+            -> traceIfFalse "1 case" $
+               r' == totalRewardBeforeT
             && r' == totalRewardAfterT
 
          (num, TraversalActive r' id', TraversalInactive)         | id' == num - 1
-            -> ok r'
+            -> traceIfFalse "2 case" $
+               ok r'
             && userId == id'
 
          (num, TraversalActive r' id', TraversalActive r'' id'')  | id' < num - 1 && id'' == id' + 1
-            -> r' == r''
+            -> traceIfFalse "3 case" $
+               r' == r''
             && ok r'
             && userId == id'
 
-         _  -> False
+         _  -> traceIfFalse "4 case" False
       where
         user = uniqueUser
 

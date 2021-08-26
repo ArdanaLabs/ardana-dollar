@@ -129,6 +129,7 @@ initializeUser nft = do
   let val = Value.assetClassValue (userInitProofAssetClass nft) 1
       toSpend = Map.fromList [fst global]
       oldData = snd global
+      userDatum = UserDatum (UserData self PlutusTx.Prelude.mempty (dUserDatumCount oldData))
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
@@ -137,9 +138,11 @@ initializeUser nft = do
           <> Constraints.unspentOutputs toSpend
       tx =
         Constraints.mustMintValue val
-          <> Constraints.mustPayToTheScript (UserDatum (UserData self PlutusTx.Prelude.mempty (dUserDatumCount oldData))) val
+          <> Constraints.mustPayToTheScript userDatum val
           <> Constraints.mustPayToTheScript (GlobalDatum (oldData {dUserDatumCount = dUserDatumCount oldData Prelude.+ 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
           <> spendWithConstRedeemer InitializeUser toSpend
+
+  logInfo @String $ "initializing user with: %s" ++ show userDatum
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -161,7 +164,7 @@ deposit nft amount = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue nft newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (dId $ snd $ head utxos))) (balanceToUserValue nft newBalance)
           <> Constraints.mustPayToTheScript
             (GlobalDatum $ addTotalStake (snd global) danaAmount)
             (Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global))
@@ -214,26 +217,38 @@ distributeRewardsTrigger nft = do
 
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ waitNSlots 5
 
 distributeRewardsUser :: forall (s :: Row Type). NFTAssetClass -> Value.Value -> ((Ledger.TxOutRef, Ledger.TxOutTx), UserData) -> Contract (Last Datum) s Text ()
 distributeRewardsUser nft totalReward (tuple', userData) = do
   global <- globalUtxo nft
 
-  let totalStake = dTotalStake $ snd global
+  let oldGlobalData = snd global
+      newTraversal =
+        if dId userData == dUserDatumCount oldGlobalData Prelude.- 1
+          then TraversalInactive
+          else TraversalActive totalReward $ dId userData Prelude.+ 1
+      newGlobalData = oldGlobalData {dTraversal = newTraversal}
+      totalStake = dTotalStake $ snd global
       reward' = rewardHelper danaAsset totalStake totalReward (dStake $ dBalance userData)
-      leftover = totalReward <> Numeric.negate reward'
+      currentTotalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      leftover = currentTotalReward <> Numeric.negate reward'
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs (Map.fromList [fst global, tuple'])
       tx =
-        Constraints.mustPayToTheScript (GlobalDatum $ snd global) leftover
+        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) leftover
           <> Constraints.mustPayToTheScript (UserDatum $ addReward userData reward') (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global, tuple'])
 
+  logInfo @String $ "sending transaction with: %s" ++ show newGlobalData
+  logInfo @String $ "sending transaction with: %s" ++ show userData
+
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ waitNSlots 5
 
 distributeRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 distributeRewards nft _ = do
@@ -252,6 +267,7 @@ distributeRewards nft _ = do
       | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
+          logInfo @String $ "found utxos" ++ (show $ length sorted) ++ (show sorted)
           distributeRewardsTrigger nft
           txs
 
@@ -268,7 +284,7 @@ withdrawRewards nft _ = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance 0)) (balanceToUserValue nft newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (dId $ snd $ head utxos))) (balanceToUserValue nft newBalance)
           <> Constraints.mustPayToPubKey self (dReward oldBalance)
           <> spendWithConstRedeemer WithdrawRewards toSpend
 

@@ -109,7 +109,7 @@ testDistribute = do
   void $ Emulator.waitNSlots 5
 
   callEndpoint @"distributeRewards" h3 ()
-  void $ Emulator.waitNSlots 5
+  void $ Emulator.waitNSlots 30
 
   callEndpoint @"withdrawRewards" h1 ()
   void $ Emulator.waitNSlots 5
