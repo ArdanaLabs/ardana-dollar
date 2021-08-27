@@ -108,7 +108,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
         traceIfFalse "incorrect global" (isJust maybeGlobal)
      && let ((gInTxOut, gInData), (gOutTxOut, gOutData)) = justGlobal
         in case redeemer of
-          DepositOrWithdraw -> traceIfFalse "tinkering with rewards"
+          DepositOrWithdraw -> traceIfFalse "is locked"
+                               (not $ globalData'locked gInData)
+                            && traceIfFalse "tinkering with rewards"
                                (Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut)
                             && traceIfFalse "no unique user"
                                (PlutusTx.Prelude.maybe False id $ (\l -> length l == 1) <$> maybeUsers)
@@ -121,7 +123,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                             && traceIfFalse "stake not in dana"
                                (danaOnly (globalData'totalStake gOutData - globalData'totalStake gInData))
 
-          ProvideRewards    -> traceIfFalse "total stak has changed"
+          ProvideRewards    -> traceIfFalse "is locked"
+                               (not $ globalData'locked gInData)
+                            && traceIfFalse "total stak has changed"
                                (globalData'totalStake gOutData == globalData'totalStake gInData)
                             && traceIfFalse "stealing rewards"
                                (positive $ Ledger.txOutValue gOutTxOut - Ledger.txOutValue gInTxOut)
@@ -138,7 +142,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
           WithdrawRewards   -> traceIfFalse "cannot use redeemer" False
 
-          InitializeUser    -> checkUserInitProofMinted -- delegate checks to minting policy
+          InitializeUser    -> traceIfFalse "is locked"
+                               (not $ globalData'locked gInData)
+                            && checkUserInitProofMinted -- delegate checks to minting policy
 
     UserDatum dat ->
         traceIfFalse "own input is not valid"
