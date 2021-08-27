@@ -27,7 +27,6 @@ import Prelude qualified as Haskell
 
 import ArdanaDollar.DanaStakePool.DanaCurrency qualified as DanaCurrency
 import ArdanaDollar.DanaStakePool.Types
-import ArdanaDollar.DanaStakePool.Utils (intersectionWith)
 import ArdanaDollar.Utils (datumForOnchain)
 
 import Control.Monad (join)
@@ -113,9 +112,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                             && traceIfFalse "tinkering with rewards"
                                (Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut)
                             && traceIfFalse "no unique user"
-                               (PlutusTx.Prelude.maybe False id $ (\l -> length l == 1) <$> maybeUsers)
+                               (isJust maybeUser)
                             && traceIfFalse "total stake incorrect"
-                               ( let ((uInTxOut, _), (uOutTxOut, _)) = uniqueUser
+                               ( let ((uInTxOut, _), (uOutTxOut, _)) = justUser
                                  in globalData'totalStake gOutData - globalData'totalStake gInData
                                       ==
                                     Ledger.txOutValue uOutTxOut - Ledger.txOutValue uInTxOut
@@ -148,7 +147,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
     UserDatum dat ->
         traceIfFalse "own input is not valid"
-        (isJust maybeUsers) -- that could be optimized
+        (isJust maybeUser)
      && case redeemer of
           DepositOrWithdraw -> traceIfFalse "signature missing"
                                (isSigned dat)
@@ -208,42 +207,37 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
           [(txOut, Just dat)] -> Just (txOut, dat)
           _ -> Nothing
 
+    maybeUser :: Maybe ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
+    maybeUser = do
+      a@(_, d1) <- f (Ledger.getContinuingOutputs ctx)
+      b@(_, d2) <- f (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
+      let idOk = userData'id d1 == userData'id d2
+      let pkhOk = userData'pkh d1 == userData'pkh d2
+      if idOk && pkhOk then
+        return (b, a)
+      else
+        Nothing
+      where
+        f txOuts = case map (\txOut -> (txOut, userDatum txOut))
+                         $ filter isValid
+                         $ filter hasUserToken txOuts
+                   of
+          [(txOut, Just dat)] -> Just (txOut, dat)
+          _ -> Nothing
+
     justGlobal = case maybeGlobal of
       Just o -> o
-      Nothing -> PlutusTx.Prelude.traceError "global"
+      Nothing -> PlutusTx.Prelude.traceError "global missing"
 
-    maybeUsers :: Maybe [((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))]
-    maybeUsers =
-      let iUsers = f (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
-          oUsers = f (Ledger.getContinuingOutputs ctx)
-          combined = intersectionWith (,) (g iUsers) (g oUsers)
-          sync = length combined == length iUsers && length combined == length oUsers
-       in if unique iUsers && unique oUsers && sync
-            then Just $ snd <$> combined
-            else Nothing
-      where
-        f txOuts =
-          join $
-            map (\txOut -> toList $ (txOut,) `fmap` userDatum txOut) $
-              filter isValid $
-              filter hasUserToken txOuts
-
-        g users = (\t@(_, d) -> (userData'pkh d, t)) `fmap` users
-
-        unique users =
-          let pkhs = userData'pkh . snd <$> users in
-          length (nub pkhs) == length pkhs
-
-    uniqueUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
-    uniqueUser = case maybeUsers of
-      Just [u] -> u
-      _ -> PlutusTx.Prelude.traceError "no unique user"
+    justUser = case maybeUser of
+      Just o -> o
+      Nothing -> PlutusTx.Prelude.traceError "user missing"
 
     maybeOwnUser :: Maybe ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
     maybeOwnUser = do
-      users <- maybeUsers
+      user <- maybeUser
       own <- Ledger.txInInfoResolved <$> Ledger.findOwnInput ctx
-      find (\((inTxInfo, _), _) -> inTxInfo == own) users
+      find (\((inTxInfo, _), _) -> inTxInfo == own) [user]
 
     ownUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
     ownUser = case maybeOwnUser of
@@ -277,9 +271,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
          _  -> traceIfFalse "4 case" False
       where
-        user = uniqueUser
-
-        userId = userData'id $ snd $ fst user
+        userId = userData'id $ snd $ fst justUser
 
         okReward totalReward ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
           let diff = balance'reward outBalance - balance'reward inBalance
@@ -287,7 +279,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
            in (diff == reward', diff)
 
         ok totalReward =
-          let (okReward', diff) = okReward totalReward user
+          let (okReward', diff) = okReward totalReward justUser
               leftoverOk = (diff == totalRewardBeforeT - totalRewardAfterT)
            in okReward' && leftoverOk && positive diff
 
