@@ -26,110 +26,20 @@ import Ledger qualified
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import PlutusTx qualified
-import PlutusTx.Monoid qualified
 import PlutusTx.Ratio qualified as R
-import PlutusTx.Semigroup qualified
 import PlutusTx.TH qualified as TH
 
 import Prelude qualified as Haskell
 
 import ArdanaDollar.DanaStakePool.DanaCurrency qualified as DanaCurrency
+import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.DanaStakePool.Utils (intersectionWith)
 import ArdanaDollar.Utils (datumForOnchain)
 
 import Control.Monad (join)
 
-import GHC.Generics (Generic)
-
-import Data.Aeson qualified as JSON
-
-newtype DanaAssetClass = DanaAssetClass {unDanaAssetClass :: Value.AssetClass}
-newtype NFTAssetClass = NFTAssetClass {unNFTAssetClass :: Value.AssetClass}
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-newtype UserInitProofAssetClass = UserInitProofAssetClass {unUserInitProofAssetClass :: Value.AssetClass}
-
-PlutusTx.makeLift ''DanaAssetClass
-PlutusTx.makeLift ''NFTAssetClass
-PlutusTx.makeLift ''UserInitProofAssetClass
-
-data Balance = Balance
-  { dStake :: Value.Value
-  , dReward :: Value.Value
-  }
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-instance PlutusTx.Semigroup.Semigroup Balance where
-  (<>) x y = Balance (dStake x + dStake y) (dReward x + dReward y)
-
-instance Haskell.Semigroup Balance where
-  (<>) x y = x PlutusTx.Semigroup.<> y
-
-instance PlutusTx.Monoid.Monoid Balance where
-  mempty = Balance mempty mempty
-
-instance Haskell.Monoid Balance where
-  mempty = PlutusTx.Monoid.mempty
-
-data UserData = UserData
-  { dPkh :: Ledger.PubKeyHash
-  , dBalance :: Balance
-  , dId :: Integer
-  }
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-data TraversalState = TraversalInactive | TraversalActive Value.Value Integer -- reward pool, number of already visited users
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-data GlobalData = GlobalData
-  { dTotalStake :: Value.Value
-  , dUserDatumCount :: Integer
-  , dLocked :: Bool
-  , dTraversal :: TraversalState
-  }
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
 addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
-
-data Datum = UserDatum UserData | GlobalDatum GlobalData
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-PlutusTx.makeIsDataIndexed ''Balance [('Balance, 0)]
-PlutusTx.makeIsDataIndexed ''UserData [('UserData, 0)]
-PlutusTx.makeIsDataIndexed ''TraversalState [('TraversalInactive, 0), ('TraversalActive, 1)]
-
-PlutusTx.makeIsDataIndexed ''GlobalData [('GlobalData, 0)]
-PlutusTx.makeIsDataIndexed
-  ''Datum
-  [ ('UserDatum, 0)
-  , ('GlobalDatum, 1)
-  ]
-
-data Redeemer
-  = DepositOrWithdraw
-  | ProvideRewards
-  | DistributeRewards
-  | WithdrawRewards
-  | InitializeUser
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-PlutusTx.makeIsDataIndexed
-  ''Redeemer
-  [ ('DepositOrWithdraw, 0)
-  , ('ProvideRewards, 1)
-  , ('DistributeRewards, 2)
-  , ('WithdrawRewards, 3)
-  , ('InitializeUser, 4)
-  ]
-
--------------------------------------------------------------------------------
 
 blah :: forall a. PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
 blah info txOut = do

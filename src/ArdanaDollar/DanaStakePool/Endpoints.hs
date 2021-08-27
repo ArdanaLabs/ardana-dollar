@@ -16,7 +16,7 @@ import Data.Monoid (Last)
 import Data.Text (Text)
 
 import ArdanaDollar.DanaStakePool.Contracts
-import ArdanaDollar.DanaStakePool.Validators
+import ArdanaDollar.DanaStakePool.Types
 
 type Schema =
   Endpoint "initializeUser" ()

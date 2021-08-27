@@ -33,6 +33,7 @@ import Data.Row
 import Data.Text (Text, pack)
 
 import ArdanaDollar.DanaStakePool.DanaCurrency
+import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.DanaStakePool.Utils
 import ArdanaDollar.DanaStakePool.Validators
 import ArdanaDollar.Utils
