@@ -208,13 +208,13 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
                                (isJust maybeGlobal)
                             && traceIfFalse "stake not preserved"
                                ( let ((_, inData), (_, outData)) = ownUser
-                                 in (dStake $ dBalance inData) == (dStake $ dBalance outData)
+                                 in dStake (dBalance inData) == dStake (dBalance outData)
                                )
           WithdrawRewards ->   traceIfFalse "signature missing"
                                (isSigned dat)
                             && traceIfFalse "stake not preserved"
                                ( let ((_, inData), (_, outData)) = ownUser
-                                 in (dStake $ dBalance inData) == (dStake $ dBalance outData)
+                                 in dStake (dBalance inData) == dStake (dBalance outData)
                                )
   where
     info :: Ledger.TxInfo
