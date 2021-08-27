@@ -267,7 +267,7 @@ distributeRewards nft _ = do
       | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
-          logInfo @String $ "found utxos" ++ (show $ length sorted) ++ (show sorted)
+          logInfo @String $ "found utxos" ++ show (length sorted) ++ show sorted
           distributeRewardsTrigger nft
           txs
 

@@ -1,7 +1,7 @@
 module Main (main) where
 
-import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
+import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.Tasty (defaultMain, testGroup)
 import Prelude (IO, ($))
