@@ -70,6 +70,8 @@ common deps
     , containers
     , data-default
     , freer-extras
+    , lens
+    , mtl
     , playground-common
     , plutus-contract
     , plutus-core
@@ -81,10 +83,8 @@ common deps
     , plutus-use-cases
     , record-dot-preprocessor
     , record-hasfield
-    , mtl
     , row-types
     , text
-    , lens
     , vector
 
 common test-deps
@@ -102,6 +102,12 @@ library
     ArdanaDollar.Buffer.OffChain
     ArdanaDollar.Buffer.OnChain
     ArdanaDollar.Buffer.Types
+    ArdanaDollar.DanaStakePool.Contracts
+    ArdanaDollar.DanaStakePool.DanaCurrency
+    ArdanaDollar.DanaStakePool.Endpoints
+    ArdanaDollar.DanaStakePool.Utils
+    ArdanaDollar.DanaStakePool.Validators
+    ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain
@@ -110,13 +116,8 @@ library
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
-    ArdanaDollar.Trace
-    ArdanaDollar.DanaStakePool.Contracts
-    ArdanaDollar.DanaStakePool.DanaCurrency
-    ArdanaDollar.DanaStakePool.Endpoints
-    ArdanaDollar.DanaStakePool.Utils
-    ArdanaDollar.DanaStakePool.Validators
-  hs-source-dirs: src
+
+  hs-source-dirs:  src
 
 test-suite ardana-dollar-test
   import:         lang
@@ -125,8 +126,8 @@ test-suite ardana-dollar-test
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
   other-modules:
-    Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.BufferAuctionTraceTest
+    Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
 
   hs-source-dirs: test
