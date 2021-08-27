@@ -66,16 +66,14 @@ data UserData = UserData
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
-data GlobalData = GlobalData
+newtype GlobalData = GlobalData
   { dTotalStake :: Value.Value
-  , dUserDatumCount :: Integer
-  , dLocked :: Bool
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
-addTotalStake (GlobalData s c l) v = GlobalData (s <> v) c l
+addTotalStake (GlobalData s) v = GlobalData (s <> v)
 
 data Datum = UserDatum UserData | GlobalDatum GlobalData
   deriving stock (Haskell.Show, Generic)
