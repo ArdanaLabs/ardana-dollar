@@ -18,7 +18,7 @@ danaTokenName = TokenName "dana"
 {-# INLINEABLE mkDanaMintingPolicy #-}
 mkDanaMintingPolicy :: TokenName -> () -> Ledger.ScriptContext -> Bool
 mkDanaMintingPolicy danaToken _ Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-  PlutusTx.Prelude.map (\(_, tn, _) -> tn) (flattenValue (Ledger.txInfoForge txInfo)) == [danaToken]
+  PlutusTx.Prelude.map (\(_, tn, _) -> tn) (flattenValue (Ledger.txInfoMint txInfo)) == [danaToken]
 
 {-# INLINEABLE danaMintingPolicy #-}
 danaMintingPolicy :: Ledger.MintingPolicy

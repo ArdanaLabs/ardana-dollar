@@ -9,7 +9,6 @@ module ArdanaDollar.Treasury.Endpoints (
 import Control.Monad (forever)
 import Data.Kind (Type)
 import Data.Vector (Vector)
-import Prelude (foldr1)
 
 --------------------------------------------------------------------------------
 
@@ -41,13 +40,12 @@ treasuryContract ::
   forall (e :: Type).
   (AsContractError e) =>
   Treasury ->
-  Contract (OutputBus (Vector (ByteString, Value.Value))) TreasurySchema e ()
+  Contract (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema e ()
 treasuryContract treasury =
   forever $
-    foldr1
-      select
-      [ endpoint @"depositFundsWithCostCenter" >>= depositFundsWithCostCenter treasury
-      , endpoint @"spendFromCostCenter" >>= spendFromCostCenter
-      , endpoint @"queryCostCenters" >> queryCostCenters treasury
-      , endpoint @"initUpgrade" >> initiateUpgrade
+    selectList
+      [ endpoint @"depositFundsWithCostCenter" (depositFundsWithCostCenter treasury)
+      , endpoint @"spendFromCostCenter" spendFromCostCenter
+      , endpoint @"queryCostCenters" (const $ queryCostCenters treasury)
+      , endpoint @"initUpgrade" (const initiateUpgrade)
       ]

@@ -96,7 +96,7 @@ validateDepositFunds params td ownInput ownOutput ctx =
     ac :: Value.AssetClass
     ac = treasuryDepositCurrency params
 
-    costCenterName :: ByteString
+    costCenterName :: BuiltinByteString
     costCenterName = treasuryDepositCostCenter params
 
     depositAmount :: Integer
@@ -115,11 +115,11 @@ validateDepositFunds params td ownInput ownOutput ctx =
     outputDatum = datumForOnchain info ownOutput
 
     otherCostCenters ::
-      UniqueMap.Map ByteString Value.Value ->
-      UniqueMap.Map ByteString Value.Value
+      UniqueMap.Map BuiltinByteString Value.Value ->
+      UniqueMap.Map BuiltinByteString Value.Value
     otherCostCenters = UniqueMap.delete costCenterName
 
-    costCenterValue :: UniqueMap.Map ByteString Value.Value -> Value.Value
+    costCenterValue :: UniqueMap.Map BuiltinByteString Value.Value -> Value.Value
     costCenterValue = fromMaybe mempty . UniqueMap.lookup costCenterName
 
     {- Check if deposit is correctly added to the output and

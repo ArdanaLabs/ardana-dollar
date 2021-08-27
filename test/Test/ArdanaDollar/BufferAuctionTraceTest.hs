@@ -4,6 +4,7 @@ import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Freer.Extras as Extras
 import Data.Aeson
+import Data.Default (Default (..))
 import Data.Map qualified as Map
 import Data.Row.Internal
 import Data.Semigroup qualified as Semigroup
@@ -120,7 +121,7 @@ negativeDebtAuction =
       void $ Emulator.waitNSlots 10
 
 emCfg :: EmulatorConfig
-emCfg = EmulatorConfig $ Left $ Map.fromList [(Wallet w, v' w) | w <- [1 .. 3]]
+emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet w, v' w) | w <- [1 .. 3]]) def def
   where
     v :: Value.Value
     v = Ada.lovelaceValueOf 1_000_000_000

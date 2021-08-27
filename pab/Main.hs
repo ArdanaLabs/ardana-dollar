@@ -12,17 +12,13 @@ import Prelude
 --------------------------------------------------------------------------------
 
 import Control.Monad (void, when, (>=>))
-import Control.Monad.Freer (Eff, Member, interpret, type (~>))
-import Control.Monad.Freer.Error (Error)
-import Control.Monad.Freer.Extras.Log (LogMsg)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Freer (Eff, interpret)
 import Data.Aeson (
   FromJSON,
   Result (Success),
   ToJSON,
   fromJSON,
  )
-import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Foldable (traverse_)
 import Data.List (intercalate)
@@ -39,16 +35,19 @@ import Ledger qualified
 import Playground.Contract (FormSchema, FunctionSchema)
 import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
-import Plutus.PAB.Effects.Contract (ContractEffect (..))
-import Plutus.PAB.Effects.Contract.Builtin (Builtin, SomeBuiltin (..))
+import Plutus.PAB.Effects.Contract.Builtin (
+  Builtin,
+  BuiltinHandler (..),
+  HasDefinitions (..),
+  SomeBuiltin (..),
+ )
 import Plutus.PAB.Effects.Contract.Builtin qualified as Builtin
-import Plutus.PAB.Monitoring.PABLogMsg (PABMultiAgentMsg)
 import Plutus.PAB.Simulator (SimulatorEffectHandlers)
 import Plutus.PAB.Simulator qualified as Simulator
-import Plutus.PAB.Types (PABError (..))
 import Plutus.PAB.Webserver.Server qualified as PAB.Server
 import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
+import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
 import Wallet.Emulator.Wallet qualified as Wallet
 
@@ -129,7 +128,7 @@ main = void $
     callDepositEndpoint "TestCostCenter1"
     _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
     Simulator.waitNSlots 10
-    queriedCosts <- getBus @(Vector (ByteString, Value.Value)) cTreasuryUserId
+    queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
     logBlueString $ "Deposited currently: " ++ show queriedCosts
     logCurrentBalances_
     Simulator.waitNSlots 20
@@ -153,8 +152,6 @@ main = void $
     logBlueString "Surplus auction"
     callBufferEndpoint "surplusAuction" 50
     logCurrentBalances_
-
-    void $ liftIO getLine
 
     logBlueString "Balances at the end of the simulation:"
     logCurrentBalances_
@@ -185,38 +182,29 @@ data ArdanaContracts
 instance Pretty ArdanaContracts where
   pretty = viaShow
 
-handleArdanaContract ::
-  forall (effs :: [Type -> Type]).
-  ( Member (Error PABError) effs
-  , Member (LogMsg (PABMultiAgentMsg (Builtin ArdanaContracts))) effs
-  ) =>
-  ContractEffect (Builtin ArdanaContracts)
-    ~> Eff effs
-handleArdanaContract = Builtin.handleBuiltin getSchema getContract
-  where
-    getSchema :: ArdanaContracts -> [FunctionSchema FormSchema]
-    getSchema = \case
-      VaultContract -> Builtin.endpointsToSchemas @VaultSchema
-      TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
-      TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
-      BufferStart _ -> Builtin.endpointsToSchemas @EmptySchema
-      BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
+instance HasDefinitions ArdanaContracts where
+  getDefinitions = [VaultContract, TreasuryStart]
 
-    getContract :: ArdanaContracts -> SomeBuiltin
-    getContract = \case
-      VaultContract -> SomeBuiltin vaultContract
-      TreasuryStart -> SomeBuiltin treasuryStartContract
-      TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
-      BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
-      BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
+  getSchema :: ArdanaContracts -> [FunctionSchema FormSchema]
+  getSchema = \case
+    VaultContract -> Builtin.endpointsToSchemas @VaultSchema
+    TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
+    TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
+    BufferStart _ -> Builtin.endpointsToSchemas @EmptySchema
+    BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
+
+  getContract :: ArdanaContracts -> SomeBuiltin
+  getContract = \case
+    VaultContract -> SomeBuiltin vaultContract
+    TreasuryStart -> SomeBuiltin treasuryStartContract
+    TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
+    BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
+    BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)
 handlers =
-  Simulator.mkSimulatorHandlers
-    @(Builtin ArdanaContracts)
-    def
-    [VaultContract, TreasuryStart]
-    (interpret handleArdanaContract)
+  Simulator.mkSimulatorHandlers @(Builtin ArdanaContracts) def def $
+    interpret (contractHandler Builtin.handleBuiltin)
 
 -- helper functions
 logTitleSequence :: forall (t :: Type). Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
@@ -273,8 +261,8 @@ formatValue (Value.Value m) =
     safeTokenNameToString tn@(Value.TokenName n) = case bsToString n of
       Right str -> str
       Left _ -> trimHash (show tn) -- it is a hash of a generated token
-    bsToString :: ByteString -> Either UnicodeException String
-    bsToString = fmap Text.unpack . decodeUtf8'
+    bsToString :: BuiltinByteString -> Either UnicodeException String
+    bsToString (BuiltinByteString bs) = Text.unpack <$> decodeUtf8' bs
 
     trimHash :: String -> String
     trimHash ('0' : 'x' : rest) = "0x" ++ take 7 rest
