@@ -63,7 +63,7 @@ userUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Ledger.PubKeyH
 userUtxos nft self = do
   filter (belongsTo self) <$> userDatumUtxos nft
   where
-    belongsTo pkh (_, dat) = dPkh dat == pkh
+    belongsTo pkh (_, dat) = userData'pkh dat == pkh
 
 ownUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
 ownUtxos nft = do
@@ -94,7 +94,7 @@ totalBalance :: [Balance] -> Balance
 totalBalance = fold
 
 balanceToUserValue :: NFTAssetClass -> Balance -> Value.Value
-balanceToUserValue nftAC b = dStake b <> dReward b <> Value.assetClassValue (userInitProofAssetClass nftAC) 1
+balanceToUserValue nftAC b = balance'stake b <> balance'reward b <> Value.assetClassValue (userInitProofAssetClass nftAC) 1
 
 spendWithConstRedeemer :: Redeemer -> UtxoMap -> Constraints.TxConstraints Redeemer Datum
 spendWithConstRedeemer r utxos =
@@ -105,8 +105,8 @@ spendWithConstRedeemer r utxos =
     | oref <- fst <$> Map.toList utxos
     ]
 
-addReward :: UserData -> Value.Value -> UserData
-addReward (UserData pkh (Balance stake r) id') v = UserData pkh (Balance stake (r <> v)) id'
+adbalance'reward :: UserData -> Value.Value -> UserData
+adbalance'reward (UserData pkh (Balance stake r) id') v = UserData pkh (Balance stake (r <> v)) id'
 
 initializeSystem :: forall (s :: Row Type). Contract (Last NFTAssetClass) s Text ()
 initializeSystem = do
@@ -130,7 +130,7 @@ initializeUser nft = do
   let val = Value.assetClassValue (userInitProofAssetClass nft) 1
       toSpend = Map.fromList [fst global]
       oldData = snd global
-      userDatum = UserDatum (UserData self PlutusTx.Prelude.mempty (dUserDatumCount oldData))
+      userDatum = UserDatum (UserData self PlutusTx.Prelude.mempty (globalData'count oldData))
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
@@ -140,7 +140,7 @@ initializeUser nft = do
       tx =
         Constraints.mustMintValue val
           <> Constraints.mustPayToTheScript userDatum val
-          <> Constraints.mustPayToTheScript (GlobalDatum (oldData {dUserDatumCount = dUserDatumCount oldData + 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
+          <> Constraints.mustPayToTheScript (GlobalDatum (oldData {globalData'count = globalData'count oldData + 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
           <> spendWithConstRedeemer InitializeUser toSpend
 
   logInfo @String $ "initializing user with: %s" ++ show userDatum
@@ -155,7 +155,7 @@ deposit nft amount = do
   global <- globalUtxo nft
 
   let danaAmount = Value.assetClassValue danaAsset amount
-      oldBalance = totalBalance (dBalance . snd <$> utxos)
+      oldBalance = totalBalance (userData'balance . snd <$> utxos)
       newBalance = oldBalance <> Balance danaAmount PlutusTx.Prelude.mempty
 
       toSpend = Map.fromList (fst <$> utxos) <> Map.fromList [fst global]
@@ -165,13 +165,13 @@ deposit nft amount = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (dId $ snd $ head utxos))) (balanceToUserValue nft newBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (userData'id $ snd $ head utxos))) (balanceToUserValue nft newBalance)
           <> Constraints.mustPayToTheScript
             (GlobalDatum $ addTotalStake (snd global) danaAmount)
             (Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global))
           <> spendWithConstRedeemer DepositOrWithdraw toSpend
 
-  if positive (dStake newBalance)
+  if positive (balance'stake newBalance)
     then do
       ledgerTx <- submitTxConstraintsWith lookups tx
       void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -213,7 +213,7 @@ distributeRewardsTrigger nft = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs (Map.fromList [fst global])
       tx =
-        Constraints.mustPayToTheScript (GlobalDatum $ globalData {dTraversal = TraversalActive totalReward 0}) totalReward
+        Constraints.mustPayToTheScript (GlobalDatum $ globalData {globaldata'traversal = TraversalActive totalReward 0}) totalReward
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
 
   ledgerTx <- submitTxConstraintsWith lookups tx
@@ -226,12 +226,12 @@ distributeRewardsUser nft totalReward (tuple', userData) = do
 
   let oldGlobalData = snd global
       newTraversal =
-        if dId userData == dUserDatumCount oldGlobalData - 1
+        if userData'id userData == globalData'count oldGlobalData - 1
           then TraversalInactive
-          else TraversalActive totalReward $ dId userData + 1
-      newGlobalData = oldGlobalData {dTraversal = newTraversal}
-      totalStake = dTotalStake $ snd global
-      reward' = rewardHelper danaAsset totalStake totalReward (dStake $ dBalance userData)
+          else TraversalActive totalReward $ userData'id userData + 1
+      newGlobalData = oldGlobalData {globaldata'traversal = newTraversal}
+      totalStake = globalData'totalStake $ snd global
+      reward' = rewardHelper danaAsset totalStake totalReward (balance'stake $ userData'balance userData)
       currentTotalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
       leftover = currentTotalReward <> Numeric.negate reward'
 
@@ -241,7 +241,7 @@ distributeRewardsUser nft totalReward (tuple', userData) = do
           <> Constraints.unspentOutputs (Map.fromList [fst global, tuple'])
       tx =
         Constraints.mustPayToTheScript (GlobalDatum newGlobalData) leftover
-          <> Constraints.mustPayToTheScript (UserDatum $ addReward userData reward') (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
+          <> Constraints.mustPayToTheScript (UserDatum $ adbalance'reward userData reward') (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global, tuple'])
 
   logInfo @String $ "sending transaction with: %s" ++ show newGlobalData
@@ -256,10 +256,10 @@ distributeRewards nft _ = do
   utxos <- userDatumUtxos nft
   global <- globalUtxo nft
 
-  let totalStakeUtxo = dStake $ totalBalance $ dBalance . snd <$> utxos
-      totalStakeGlobal = dTotalStake (snd global)
+  let totalStakeUtxo = balance'stake $ totalBalance $ userData'balance . snd <$> utxos
+      totalStakeGlobal = globalData'totalStake (snd global)
       totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
-      sorted = sortBy (\(_, d1) (_, d2) -> compare (dId d1) (dId d2)) utxos
+      sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
       txs = mapM_ (distributeRewardsUser nft totalReward) sorted
   if
       | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
@@ -276,8 +276,8 @@ withdrawRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last
 withdrawRewards nft _ = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- ownUtxos nft
-  let oldBalance = totalBalance (dBalance . snd <$> utxos)
-      newBalance = Balance (dStake oldBalance) PlutusTx.Prelude.mempty
+  let oldBalance = totalBalance (userData'balance . snd <$> utxos)
+      newBalance = Balance (balance'stake oldBalance) PlutusTx.Prelude.mempty
       toSpend = Map.fromList (fst <$> utxos)
 
       lookups =
@@ -285,8 +285,8 @@ withdrawRewards nft _ = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs toSpend
       tx =
-        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (dId $ snd $ head utxos))) (balanceToUserValue nft newBalance)
-          <> Constraints.mustPayToPubKey self (dReward oldBalance)
+        Constraints.mustPayToTheScript (UserDatum (UserData self newBalance (userData'id $ snd $ head utxos))) (balanceToUserValue nft newBalance)
+          <> Constraints.mustPayToPubKey self (balance'reward oldBalance)
           <> spendWithConstRedeemer WithdrawRewards toSpend
 
   ledgerTx <- submitTxConstraintsWith lookups tx
@@ -295,12 +295,12 @@ withdrawRewards nft _ = do
 queryUser :: forall (s :: Row Type). NFTAssetClass -> Ledger.PubKeyHash -> Contract (Last UserData) s Text ()
 queryUser nft pkh = do
   utxos <- userUtxos nft pkh
-  let total = totalBalance (dBalance . snd <$> utxos)
+  let total = totalBalance (userData'balance . snd <$> utxos)
   tell $ Last $ Just (UserData pkh total 0)
 
 querySelf :: forall (s :: Row Type). NFTAssetClass -> Contract (Last UserData) s Text ()
 querySelf nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   utxos <- userUtxos nft self
-  let total = totalBalance (dBalance . snd <$> utxos)
+  let total = totalBalance (userData'balance . snd <$> utxos)
   tell $ Last $ Just (UserData self total 0)

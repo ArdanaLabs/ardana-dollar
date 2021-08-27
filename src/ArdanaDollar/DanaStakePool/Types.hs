@@ -41,29 +41,29 @@ newtype UserInitProofAssetClass = UserInitProofAssetClass
   {unUserInitProofAssetClass :: Value.AssetClass}
 
 data Balance = Balance
-  { dStake :: Value.Value
-  , dReward :: Value.Value
+  { balance'stake :: Value.Value
+  , balance'reward :: Value.Value
   }
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 data UserData = UserData
-  { dPkh :: Ledger.PubKeyHash
-  , dBalance :: Balance
-  , dId :: Integer
+  { userData'pkh :: Ledger.PubKeyHash
+  , userData'balance :: Balance
+  , userData'id :: Integer
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
-data TraversalState = TraversalInactive | TraversalActive Value.Value Integer -- reward pool, number of already visited users
+data TraversalState = TraversalInactive | TraversalActive Value.Value Integer
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 data GlobalData = GlobalData
-  { dTotalStake :: Value.Value
-  , dUserDatumCount :: Integer
-  , dLocked :: Bool
-  , dTraversal :: TraversalState
+  { globalData'totalStake :: Value.Value
+  , globalData'count :: Integer
+  , globalData'locked :: Bool
+  , globaldata'traversal :: TraversalState
   }
   deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
@@ -82,7 +82,7 @@ data Redeemer
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 instance PlutusTx.Semigroup.Semigroup Balance where
-  (<>) x y = Balance (dStake x + dStake y) (dReward x + dReward y)
+  (<>) x y = Balance (balance'stake x + balance'stake y) (balance'reward x + balance'reward y)
 
 instance Haskell.Semigroup Balance where
   (<>) x y = x PlutusTx.Semigroup.<> y

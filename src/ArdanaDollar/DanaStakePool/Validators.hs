@@ -8,12 +8,6 @@ module ArdanaDollar.DanaStakePool.Validators (
   spInst,
   spValidator,
   spAddress,
-  Datum (..),
-  UserData (..),
-  GlobalData (..),
-  Redeemer (..),
-  Balance (..),
-  TraversalState (..),
   userInitProofAssetClass,
   userInitProofPolicy,
   addTotalStake,
@@ -58,11 +52,11 @@ mkUserInitProofPolicy nftAC _ ctx =
   where
     validate (t1, inputGlobal) (t2, outputGlobal) (t3, outputUser) =
       traceIfFalse "minting more than 1" checkMintedAmount
-        && traceIfFalse "nonempty out balance" (dBalance outputUser Haskell.== mempty)
-        && traceIfFalse "not signed" (Ledger.txSignedBy info (dPkh outputUser))
+        && traceIfFalse "nonempty out balance" (userData'balance outputUser Haskell.== mempty)
+        && traceIfFalse "not signed" (Ledger.txSignedBy info (userData'pkh outputUser))
         && traceIfFalse "user out tx invalid" (txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info t3)
-        && traceIfFalse "incorrect id" (dId outputUser == dUserDatumCount inputGlobal)
-        && traceIfFalse "global datum unexpected change" (dUserDatumCount inputGlobal + 1 == dUserDatumCount outputGlobal)
+        && traceIfFalse "incorrect id" (userData'id outputUser == globalData'count inputGlobal)
+        && traceIfFalse "global datum unexpected change" (globalData'count inputGlobal + 1 == globalData'count outputGlobal)
         -- && traceIfFalse "global datum unexpected change" (inputGlobal{dUserDatumCount = (dUserDatumCount inputGlobal + 1)} == outputGlobal)
         && traceIfFalse "rewards changed" (Ledger.txOutValue t1 == Ledger.txOutValue t2)
         && traceIfFalse "no nft at input" (Value.assetClassValueOf (Ledger.txOutValue t1) (unNFTAssetClass nftAC) == 1)
@@ -120,20 +114,20 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                (PlutusTx.Prelude.maybe False id $ (\l -> length l == 1) <$> maybeUsers)
                             && traceIfFalse "total stake incorrect"
                                ( let ((uInTxOut, _), (uOutTxOut, _)) = uniqueUser
-                                 in dTotalStake gOutData - dTotalStake gInData
+                                 in globalData'totalStake gOutData - globalData'totalStake gInData
                                       ==
                                     Ledger.txOutValue uOutTxOut - Ledger.txOutValue uInTxOut
                                )
                             && traceIfFalse "stake not in dana"
-                               (danaOnly (dTotalStake gOutData - dTotalStake gInData))
+                               (danaOnly (globalData'totalStake gOutData - globalData'totalStake gInData))
 
           ProvideRewards    -> traceIfFalse "total stak has changed"
-                               (dTotalStake gOutData == dTotalStake gInData)
+                               (globalData'totalStake gOutData == globalData'totalStake gInData)
                             && traceIfFalse "stealing rewards"
                                (positive $ Ledger.txOutValue gOutTxOut - Ledger.txOutValue gInTxOut)
 
           DistributeRewards -> traceIfFalse "total stak has changed"
-                               (dTotalStake gOutData == dTotalStake gInData)
+                               (globalData'totalStake gOutData == globalData'totalStake gInData)
                             && traceIfFalse "wrong reward distribution"
                                ( distributionOk
                                   gInData
@@ -159,13 +153,13 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                (isJust maybeGlobal)
                             && traceIfFalse "stake not preserved"
                                ( let ((_, inData), (_, outData)) = ownUser
-                                 in dStake (dBalance inData) == dStake (dBalance outData)
+                                 in balance'stake (userData'balance inData) == balance'stake (userData'balance outData)
                                )
           WithdrawRewards ->   traceIfFalse "signature missing"
                                (isSigned dat)
                             && traceIfFalse "stake not preserved"
                                ( let ((_, inData), (_, outData)) = ownUser
-                                 in dStake (dBalance inData) == dStake (dBalance outData)
+                                 in balance'stake (userData'balance inData) == balance'stake (userData'balance outData)
                                )
           InitializeUser  ->   False
   where
@@ -173,7 +167,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     isSigned :: UserData -> Bool
-    isSigned dat = dPkh dat `elem` Ledger.txInfoSignatories info
+    isSigned dat = userData'pkh dat `elem` Ledger.txInfoSignatories info
 
     isValid :: Ledger.TxOut -> Bool
     isValid txOut = txOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
@@ -228,10 +222,10 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
               filter isValid $
               filter hasUserToken txOuts
 
-        g users = (\t@(_, d) -> (dPkh d, t)) `fmap` users
+        g users = (\t@(_, d) -> (userData'pkh d, t)) `fmap` users
 
         unique users =
-          let pkhs = dPkh . snd <$> users in
+          let pkhs = userData'pkh . snd <$> users in
           length (nub pkhs) == length pkhs
 
     uniqueUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
@@ -255,7 +249,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
 
     distributionOk :: GlobalData -> GlobalData -> Value.Value -> Value.Value -> Bool
     distributionOk gInData gOutData totalRewardBeforeT totalRewardAfterT =
-      case (dUserDatumCount gInData, dTraversal gInData, dTraversal gOutData) of
+      case (globalData'count gInData, globaldata'traversal gInData, globaldata'traversal gOutData) of
          (num, _, _)                                              | num == 0
             -> traceIfFalse "0 case" False
 
@@ -279,11 +273,11 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
       where
         user = uniqueUser
 
-        userId = dId $ snd $ fst user
+        userId = userData'id $ snd $ fst user
 
         okReward totalReward ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) =
-          let diff = dReward outBalance - dReward inBalance
-              reward' = rewardHelper (unDanaAssetClass danaAC) (dTotalStake gInData) totalReward (dStake inBalance)
+          let diff = balance'reward outBalance - balance'reward inBalance
+              reward' = rewardHelper (unDanaAssetClass danaAC) (globalData'totalStake gInData) totalReward (balance'stake inBalance)
            in (diff == reward', diff)
 
         ok totalReward =
@@ -342,11 +336,11 @@ txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
 txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
   Just (UserDatum dat) ->
     let value = Ledger.txOutValue txOut
-        balance = dBalance dat
+        balance = userData'balance dat
 
-        syncOk = value == dReward balance <> dStake balance <> Value.assetClassValue tokenAssetClass 1
-        rewardOk = (positive . dReward) balance
-        stakeOk = (positive . dStake) balance
+        syncOk = value == balance'reward balance <> balance'stake balance <> Value.assetClassValue tokenAssetClass 1
+        rewardOk = (positive . balance'reward) balance
+        stakeOk = (positive . balance'stake) balance
      in syncOk && rewardOk && stakeOk
   _ -> False
 
