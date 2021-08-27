@@ -8,7 +8,6 @@ module ArdanaDollar.Buffer.Endpoints (
 
 import Control.Monad (forever)
 import Data.Kind (Type)
-import Prelude (foldr1)
 
 --------------------------------------------------------------------------------
 
@@ -38,8 +37,7 @@ bufferAuctionContract ::
   Contract w BufferSchema e ()
 bufferAuctionContract treasury =
   forever $
-    foldr1
-      select
-      [ endpoint @"debtAuction" >>= debtAuction treasury
-      , endpoint @"surplusAuction" >>= surplusAuction treasury
+    selectList
+      [ endpoint @"debtAuction" (debtAuction treasury)
+      , endpoint @"surplusAuction" (surplusAuction treasury)
       ]

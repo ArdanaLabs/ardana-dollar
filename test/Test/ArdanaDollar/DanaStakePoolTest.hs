@@ -37,10 +37,10 @@ v =
     <> Value.assetClassValue Vault.dUSDAsset 100_000_000
 
 emCfg :: EmulatorConfig
-emCfg = EmulatorConfig $ Left $ Map.fromList [(Wallet 1, v), (Wallet 2, v), (Wallet 3, v)]
+emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet 1, v), (Wallet 2, v), (Wallet 3, v)]) def def
 
 runTrace :: EmulatorTrace () -> IO ()
-runTrace = runEmulatorTraceIO' def emCfg def
+runTrace = runEmulatorTraceIO' def emCfg
 
 initializeSystem :: EmulatorTrace Value.CurrencySymbol
 initializeSystem = do

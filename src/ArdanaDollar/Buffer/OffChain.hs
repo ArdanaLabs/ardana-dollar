@@ -22,6 +22,7 @@ import Prelude (String, div, mconcat, rem, show)
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Contexts qualified as Contexts
+import Ledger.Crypto qualified as Crypto
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
@@ -106,7 +107,7 @@ debtAuction ::
   Integer ->
   Contract w s e ()
 debtAuction treasury danaAmount = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
+  pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo @String $ printf "User %s has called debtAuction" (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
   case maybeArgs of
@@ -136,7 +137,7 @@ surplusAuction ::
   Integer ->
   Contract w s e ()
 surplusAuction treasury dusdAmount = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
+  pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo @String $ printf "User %s has called surplusAuction " (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
   case maybeArgs of

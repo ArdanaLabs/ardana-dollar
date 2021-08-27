@@ -125,7 +125,7 @@ mkUserInitProofPolicy _ ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     checkMintedAmount :: Bool
-    checkMintedAmount = case Value.flattenValue (Ledger.txInfoForge info) of
+    checkMintedAmount = case Value.flattenValue (Ledger.txInfoMint info) of
       [(cs, tn', amt)] -> cs == Ledger.ownCurrencySymbol ctx && tn' == Value.TokenName emptyByteString && amt == 1
       _ -> False
 

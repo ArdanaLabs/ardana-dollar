@@ -96,7 +96,7 @@ mkTreasuryStateTokenMintingPolicy params () sc =
               && maybeEmpty isCorrectDatum (dh >>= flip Contexts.findDatum info)
 
     isCorrectlyForging :: Value.CurrencySymbol -> Bool
-    isCorrectlyForging cs = Contexts.txInfoForge info `valueSubsetOf` forgeValue cs
+    isCorrectlyForging cs = Contexts.txInfoMint info `valueSubsetOf` forgeValue cs
 
     isScriptAddress :: Ledger.Address -> Bool
     isScriptAddress =
