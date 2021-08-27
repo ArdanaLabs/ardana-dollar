@@ -11,7 +11,7 @@ version:       0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
-license:       NONE
+license:
 license-files: LICENSE
 author:        Your name
 maintainer:    Your email
@@ -73,7 +73,9 @@ common deps
     , playground-common
     , plutus-contract
     , plutus-core
+    , plutus-extra
     , plutus-ledger
+    , plutus-ledger-api
     , plutus-tx
     , plutus-tx-plugin
     , plutus-use-cases
@@ -83,10 +85,12 @@ common deps
     , row-types
     , text
     , lens
+    , vector
 
 common test-deps
   import:        deps
   build-depends:
+    , lens
     , tasty
     , tasty-hunit
 
@@ -94,6 +98,15 @@ library
   import:          lang
   import:          deps
   exposed-modules:
+    ArdanaDollar.Buffer.Endpoints
+    ArdanaDollar.Buffer.OffChain
+    ArdanaDollar.Buffer.OnChain
+    ArdanaDollar.Buffer.Types
+    ArdanaDollar.Treasury.Endpoints
+    ArdanaDollar.Treasury.OffChain
+    ArdanaDollar.Treasury.OnChain
+    ArdanaDollar.Treasury.StateToken
+    ArdanaDollar.Treasury.Types
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
@@ -106,14 +119,16 @@ library
   hs-source-dirs: src
 
 test-suite ardana-dollar-test
-  import:           lang
-  import:           deps
-  import:           test-deps
-  type:             exitcode-stdio-1.0
-  main-is:          Main.hs
+  import:         lang
+  import:         deps
+  import:         test-deps
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
   other-modules:
-    Test.ArdanaDollar.Utils
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.BufferAuctionTraceTest
+    Test.ArdanaDollar.Utils
+
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
   build-depends:  ardana-dollar

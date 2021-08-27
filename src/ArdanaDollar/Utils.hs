@@ -12,6 +12,7 @@ module ArdanaDollar.Utils (
   valuePaidBy,
   datumForOffchain,
   datumForOnchain,
+  validateDatumImmutable,
 ) where
 
 import Data.Kind (Type)
@@ -19,8 +20,9 @@ import Data.Map qualified as Map
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import Ledger qualified
+import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
-import PlutusTx
+import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
 import Prelude qualified as Haskell
@@ -216,3 +218,25 @@ datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.loo
 {-# INLINEABLE datumForOnchain #-}
 datumForOnchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
 datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
+
+-- | On-chain helper function checking immutability of the validator's datum
+{-# INLINEABLE validateDatumImmutable #-}
+validateDatumImmutable ::
+  forall (datum :: Type).
+  (Eq datum, PlutusTx.IsData datum) =>
+  datum ->
+  Contexts.ScriptContext ->
+  Bool
+validateDatumImmutable td ctx =
+  traceIfFalse "datum has changed" (Just td == outputDatum)
+  where
+    info :: Contexts.TxInfo
+    info = Contexts.scriptContextTxInfo ctx
+
+    outputDatum :: Maybe datum
+    outputDatum = datumForOnchain info ownOutput
+
+    ownOutput :: Ledger.TxOut
+    ownOutput = case Contexts.getContinuingOutputs ctx of
+      [o] -> o
+      _ -> traceError "expected exactly one output"
