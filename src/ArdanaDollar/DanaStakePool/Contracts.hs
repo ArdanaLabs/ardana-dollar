@@ -17,7 +17,7 @@ import Prelude
 
 import Plutus.Contract
 import PlutusTx
-import PlutusTx.Numeric as Numeric
+import PlutusTx.Numeric qualified as Numeric
 import PlutusTx.Prelude (emptyByteString, fold, mempty)
 
 import Ledger qualified
@@ -139,7 +139,7 @@ initializeUser nft = do
       tx =
         Constraints.mustMintValue val
           <> Constraints.mustPayToTheScript userDatum val
-          <> Constraints.mustPayToTheScript (GlobalDatum (oldData {dUserDatumCount = dUserDatumCount oldData Prelude.+ 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
+          <> Constraints.mustPayToTheScript (GlobalDatum (oldData {dUserDatumCount = dUserDatumCount oldData + 1})) (Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global)
           <> spendWithConstRedeemer InitializeUser toSpend
 
   logInfo @String $ "initializing user with: %s" ++ show userDatum
@@ -225,9 +225,9 @@ distributeRewardsUser nft totalReward (tuple', userData) = do
 
   let oldGlobalData = snd global
       newTraversal =
-        if dId userData == dUserDatumCount oldGlobalData Prelude.- 1
+        if dId userData == dUserDatumCount oldGlobalData - 1
           then TraversalInactive
-          else TraversalActive totalReward $ dId userData Prelude.+ 1
+          else TraversalActive totalReward $ dId userData + 1
       newGlobalData = oldGlobalData {dTraversal = newTraversal}
       totalStake = dTotalStake $ snd global
       reward' = rewardHelper danaAsset totalStake totalReward (dStake $ dBalance userData)
