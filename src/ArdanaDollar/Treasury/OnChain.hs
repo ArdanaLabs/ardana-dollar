@@ -17,7 +17,7 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Utils (getDatumOnChain, validateDatumImmutable)
+import ArdanaDollar.Utils (datumForOnchain, validateDatumImmutable)
 
 {-# INLINEABLE mkTreasuryValidator #-}
 mkTreasuryValidator ::
@@ -76,7 +76,7 @@ validateDatumFieldUnchanged errMsg getter td ctx =
       _ -> traceError "expected exactly one treasury output"
 
     outputDatum :: Maybe TreasuryDatum
-    outputDatum = getDatumOnChain ownOutput (`Contexts.findDatum` info)
+    outputDatum = datumForOnchain info ownOutput
 
 {-# INLINEABLE validateDepositFunds #-}
 validateDepositFunds ::
@@ -112,7 +112,7 @@ validateDepositFunds params td ownInput ownOutput ctx =
     outputValue = Ledger.txOutValue ownOutput
 
     outputDatum :: Maybe TreasuryDatum
-    outputDatum = getDatumOnChain ownOutput (`Contexts.findDatum` info)
+    outputDatum = datumForOnchain info ownOutput
 
     otherCostCenters ::
       UniqueMap.Map ByteString Value.Value ->

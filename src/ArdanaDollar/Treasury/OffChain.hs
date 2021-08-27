@@ -45,7 +45,7 @@ import ArdanaDollar.Treasury.StateToken (
   treasuryStateTokenParams,
  )
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Utils (getDatumOffChain)
+import ArdanaDollar.Utils (datumForOffchain)
 import Plutus.PAB.OutputBus
 
 treasuryInst :: Treasury -> Scripts.TypedValidator Treasuring
@@ -73,7 +73,7 @@ findTreasury treasury = do
   utxos <- Map.filter f <$> utxoAt (treasuryAddress treasury)
   return $ case Map.toList utxos of
     [(oref, o)] -> do
-      datum <- getDatumOffChain o
+      datum <- datumForOffchain o
       return (oref, o, datum)
     _ -> Nothing
   where

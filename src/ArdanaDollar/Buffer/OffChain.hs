@@ -45,7 +45,7 @@ import ArdanaDollar.Treasury.Types (
   TreasuryDatum,
   danaAssetClass,
  )
-import ArdanaDollar.Utils (getDatumOffChain)
+import ArdanaDollar.Utils (datumForOffchain)
 import ArdanaDollar.Vault (dUSDAsset)
 
 data BufferAuctioning
@@ -212,6 +212,6 @@ findBuffer treasury = do
   utxos <- utxoAt (bufferAddress treasury danaAssetClass)
   return $ case Map.toList utxos of
     [(oref, o)] -> do
-      datum <- getDatumOffChain o
+      datum <- datumForOffchain o
       return (oref, o, datum)
     _ -> Nothing

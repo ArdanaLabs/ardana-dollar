@@ -35,7 +35,7 @@ module ArdanaDollar.Vault (
 -- TODO
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite))
-import ArdanaDollar.Utils (collaterizationRatio, getDatumOffChain, valuePaidBy, valueUnlockedBy)
+import ArdanaDollar.Utils (collaterizationRatio, datumForOffchain, valuePaidBy, valueUnlockedBy)
 import Control.Monad (forever, guard, void)
 import Data.Aeson qualified as JSON
 import Data.Kind (Type)
@@ -250,7 +250,7 @@ findUtxo addr = do
   -- pick the first utxo with a `VaultDatum`
   let ud =
         getFirst $
-          foldMap (\(ref, tx) -> First $ fmap ((,,) ref tx) (getDatumOffChain tx)) $
+          foldMap (\(ref, tx) -> First $ fmap ((,,) ref tx) (datumForOffchain tx)) $
             Map.toAscList utxos
   return ud
 

@@ -70,6 +70,8 @@ common deps
     , containers
     , data-default
     , freer-extras
+    , lens
+    , mtl
     , playground-common
     , plutus-contract
     , plutus-core
@@ -100,6 +102,11 @@ library
     ArdanaDollar.Buffer.OffChain
     ArdanaDollar.Buffer.OnChain
     ArdanaDollar.Buffer.Types
+    ArdanaDollar.DanaStakePool.Contracts
+    ArdanaDollar.DanaStakePool.DanaCurrency
+    ArdanaDollar.DanaStakePool.Endpoints
+    ArdanaDollar.DanaStakePool.Utils
+    ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
@@ -109,10 +116,8 @@ library
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
-    MyModule
-    Plutus.Contracts.Game
 
-  hs-source-dirs:  src examples/src
+  hs-source-dirs:  src
 
 test-suite ardana-dollar-test
   import:         lang
@@ -122,6 +127,7 @@ test-suite ardana-dollar-test
   main-is:        Main.hs
   other-modules:
     Test.ArdanaDollar.BufferAuctionTraceTest
+    Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
 
   hs-source-dirs: test
