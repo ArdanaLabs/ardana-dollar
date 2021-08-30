@@ -81,6 +81,23 @@ data Redeemer
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
+instance Eq GlobalData where
+  {-# INLINEABLE (==) #-}
+  GlobalData a b c d == GlobalData a' b' c' d' =
+    a == a' && b == b' && c == c' && d == d'
+
+instance Eq TraversalState where
+  {-# INLINEABLE (==) #-}
+  x == y = case (x, y) of
+    (TraversalInactive, TraversalInactive) -> True
+    (TraversalActive a b, TraversalActive a' b') -> a == a' && b == b'
+    (_, _) -> False
+
+instance Eq Balance where
+  {-# INLINEABLE (==) #-}
+  (Balance a b) == (Balance a' b') =
+    a == a' && b == b'
+
 instance PlutusTx.Semigroup.Semigroup Balance where
   (<>) x y = Balance (balance'stake x + balance'stake y) (balance'reward x + balance'reward y)
 
