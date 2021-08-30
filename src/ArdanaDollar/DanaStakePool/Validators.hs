@@ -17,10 +17,6 @@ import PlutusTx.Ratio qualified as R
 import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.Utils (datumForOnchain)
 
-import Control.Monad (join)
-
--------------------------------------------------------------------------------
-
 {-# INLINEABLE positive #-}
 positive :: Ledger.Value -> Bool
 positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
@@ -66,8 +62,8 @@ datumTxOutTuple info txOut = do
 {-# INLINEABLE mkUserInitProofPolicy #-}
 mkUserInitProofPolicy :: NFTAssetClass -> () -> Ledger.ScriptContext -> Bool
 mkUserInitProofPolicy nftAC _ ctx =
-  let outputs = join $ toList . datumTxOutTuple @Datum info <$> Ledger.txInfoOutputs info
-      inputs = join $ toList . datumTxOutTuple @Datum info <$> (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
+  let outputs = Ledger.txInfoOutputs info >>= toList . datumTxOutTuple @Datum info
+      inputs = Ledger.txInfoInputs info >>= (toList . datumTxOutTuple @Datum info) . Ledger.txInInfoResolved
    in case (inputs, outputs) of
         ([(t1, GlobalDatum d1)], [(t2, GlobalDatum d2), (t3, UserDatum d3)]) -> validate (t1, d1) (t2, d2) (t3, d3)
         ([(t1, GlobalDatum d1)], [(t2, UserDatum d2), (t3, GlobalDatum d3)]) -> validate (t1, d1) (t3, d3) (t2, d2)
@@ -106,10 +102,7 @@ mkUserInitProofPolicy nftAC _ ctx =
       [(cs, tn', amt)] -> cs == Ledger.ownCurrencySymbol ctx && tn' == Value.TokenName emptyByteString && amt == 1
       _ -> False
 
--------------------------------------------------------------------------------
-
 {- ORMOLU_DISABLE -}
-
 {-# INLINEABLE mkValidator #-}
 mkValidator ::
   DanaAssetClass ->
@@ -312,5 +305,4 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoForge info) of
       [(cs, tn', amt)] -> unUserInitProofAssetClass userInitProofAC == Value.AssetClass (cs, tn') && amt == 1
       _ -> False
-
 {- ORMOLU_ENABLE -}
