@@ -160,7 +160,10 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                    (Ledger.txOutValue gOutTxOut)
                                )
                             && traceIfFalse "user stake has changed"
-                               (balance'stake (userData'balance uInData) == balance'stake (userData'balance uOutData))
+                               (
+                                   isNothing maybeUser -- user UTXO is not provided when starting rewards distribution
+                                || (balance'stake (userData'balance uInData) == balance'stake (userData'balance uOutData))
+                               )
 
           -- delegate validation to minting policy
           InitializeUser    -> checkUserInitProofMinted
