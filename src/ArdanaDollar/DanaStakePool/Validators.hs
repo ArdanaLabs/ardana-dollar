@@ -2,7 +2,6 @@
 {-# OPTIONS_GHC -fno-specialize #-}
 
 module ArdanaDollar.DanaStakePool.Validators (
-  addTotalStake,
   rewardHelper,
   mkUserInitProofPolicy,
   mkValidator,
@@ -21,14 +20,18 @@ import ArdanaDollar.Utils (datumForOnchain)
 positive :: Ledger.Value -> Bool
 positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
 
-{-# INLINEABLE txOutValid #-}
-txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
-txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
+{-# INLINEABLE userTxOutValid #-}
+userTxOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
+userTxOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
   Just (UserDatum dat) ->
     let value = Ledger.txOutValue txOut
         balance = userData'balance dat
 
-        syncOk = value == balance'reward balance <> balance'stake balance <> Value.assetClassValue tokenAssetClass 1
+        syncOk =
+          value == balance'reward balance
+            <> balance'stake balance
+            <> Value.assetClassValue tokenAssetClass 1
+
         rewardOk = (positive . balance'reward) balance
         stakeOk = (positive . balance'stake) balance
      in syncOk && rewardOk && stakeOk
@@ -49,9 +52,6 @@ reward totalStake totalReward userStake =
    in fold $
         (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
           <$> Value.flattenValue totalReward
-
-addTotalStake :: GlobalData -> Value.Value -> GlobalData
-addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
 
 {-# INLINEABLE datumTxOutTuple #-}
 datumTxOutTuple :: forall a. PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
@@ -81,7 +81,7 @@ mkUserInitProofPolicy nftAC _ ctx =
         && traceIfFalse "not signed"
            (Ledger.txSignedBy info (userData'pkh uOutData))
         && traceIfFalse "user out tx invalid"
-           (txOutValid ownAssetClass info t3)
+           (userTxOutValid ownAssetClass info t3)
         && traceIfFalse "incorrect id assigned to user UTXO"
            (userData'id uOutData == globalData'count gInData)
         && traceIfFalse "global datum unexpected change"
@@ -198,17 +198,17 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     isSigned dat = userData'pkh dat `elem` Ledger.txInfoSignatories info
 
     isValid :: Ledger.TxOut -> Bool
-    isValid txOut = txOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
+    isValid txOut = userTxOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
 
     hasNFT :: Ledger.TxOut -> Bool
-    hasNFT txOut =
-      1
-        == Value.assetClassValueOf
-          (Ledger.txOutValue txOut)
-          (unNFTAssetClass nftAC)
+    hasNFT txOut = 1 == Value.assetClassValueOf
+                        (Ledger.txOutValue txOut)
+                        (unNFTAssetClass nftAC)
 
     hasUserToken :: Ledger.TxOut -> Bool
-    hasUserToken txOut = Value.assetClassValueOf (Ledger.txOutValue txOut) (unUserInitProofAssetClass userInitProofAC) == 1
+    hasUserToken txOut = 1 == Value.assetClassValueOf
+                         (Ledger.txOutValue txOut)
+                         (unUserInitProofAssetClass userInitProofAC)
 
     globalDatum :: Ledger.TxOut -> Maybe GlobalData
     globalDatum txOut = case datumForOnchain @Datum info txOut of

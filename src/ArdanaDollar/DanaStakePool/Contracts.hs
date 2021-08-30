@@ -97,6 +97,9 @@ totalBalance = fold
 balanceToUserValue :: NFTAssetClass -> Balance -> Value.Value
 balanceToUserValue nftAC b = balance'stake b <> balance'reward b <> Value.assetClassValue (userInitProofAssetClass nftAC) 1
 
+addTotalStake :: GlobalData -> Value.Value -> GlobalData
+addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
+
 spendWithConstRedeemer :: Redeemer -> UtxoMap -> Constraints.TxConstraints Redeemer Datum
 spendWithConstRedeemer r utxos =
   mconcat
