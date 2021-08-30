@@ -107,6 +107,7 @@ library
     ArdanaDollar.DanaStakePool.Endpoints
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
+    ArdanaDollar.DanaStakePool.ValidatorsTH
     ArdanaDollar.DanaStakePool.Types
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints

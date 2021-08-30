@@ -1,35 +1,62 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialize #-}
 
 module ArdanaDollar.DanaStakePool.Validators (
-  NFTAssetClass (..),
-  ValidatorTypes,
-  spInst,
-  spValidator,
-  spAddress,
-  userInitProofAssetClass,
-  userInitProofPolicy,
   addTotalStake,
   rewardHelper,
+  mkUserInitProofPolicy,
+  mkValidator,
 ) where
-
-import PlutusTx.Prelude
-
-import Ledger qualified
-import Ledger.Typed.Scripts qualified as Scripts
-import Ledger.Value qualified as Value
-import PlutusTx qualified
-import PlutusTx.Ratio qualified as R
-import PlutusTx.TH qualified as TH
 
 import Prelude qualified as Haskell
 
-import ArdanaDollar.DanaStakePool.DanaCurrency qualified as DanaCurrency
+import Ledger qualified
+import Ledger.Value qualified as Value
+import PlutusTx qualified
+import PlutusTx.Prelude
+import PlutusTx.Ratio qualified as R
+
 import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.Utils (datumForOnchain)
 
 import Control.Monad (join)
+
+-------------------------------------------------------------------------------
+
+{-# INLINEABLE positive #-}
+positive :: Ledger.Value -> Bool
+positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
+
+{-# INLINEABLE txOutValid #-}
+txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
+txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
+  Just (UserDatum dat) ->
+    let value = Ledger.txOutValue txOut
+        balance = userData'balance dat
+
+        syncOk = value == balance'reward balance <> balance'stake balance <> Value.assetClassValue tokenAssetClass 1
+        rewardOk = (positive . balance'reward) balance
+        stakeOk = (positive . balance'stake) balance
+     in syncOk && rewardOk && stakeOk
+  _ -> False
+
+{-# INLINEABLE rewardHelper #-}
+rewardHelper :: Value.AssetClass -> Value.Value -> Value.Value -> Value.Value -> Value.Value
+rewardHelper danaAsset totalStake totalReward stake =
+  reward
+    (Value.assetClassValueOf totalStake danaAsset)
+    totalReward
+    (Value.assetClassValueOf stake danaAsset)
+
+{-# INLINEABLE reward #-}
+reward :: Integer -> Value.Value -> Integer -> Value.Value
+reward totalStake totalReward userStake =
+  let ratio = userStake R.% totalStake
+   in fold $
+        (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
+          <$> Value.flattenValue totalReward
 
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
 addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
@@ -53,7 +80,7 @@ mkUserInitProofPolicy nftAC _ ctx =
       traceIfFalse "minting more than 1" checkMintedAmount
         && traceIfFalse "nonempty out balance" (userData'balance outputUser Haskell.== mempty)
         && traceIfFalse "not signed" (Ledger.txSignedBy info (userData'pkh outputUser))
-        && traceIfFalse "user out tx invalid" (txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info t3)
+        && traceIfFalse "user out tx invalid" (txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, Value.TokenName emptyByteString)) info t3)
         && traceIfFalse "incorrect id" (userData'id outputUser == globalData'count inputGlobal)
         && traceIfFalse "global datum unexpected change" (globalData'count inputGlobal + 1 == globalData'count outputGlobal)
         -- && traceIfFalse "global datum unexpected change" (inputGlobal{dUserDatumCount = (dUserDatumCount inputGlobal + 1)} == outputGlobal)
@@ -68,25 +95,6 @@ mkUserInitProofPolicy nftAC _ ctx =
     checkMintedAmount = case Value.flattenValue (Ledger.txInfoForge info) of
       [(cs, tn', amt)] -> cs == Ledger.ownCurrencySymbol ctx && tn' == Value.TokenName emptyByteString && amt == 1
       _ -> False
-
-{-# INLINEABLE userInitProofPolicy #-}
-userInitProofPolicy :: NFTAssetClass -> Scripts.MintingPolicy
-userInitProofPolicy nftAC =
-  Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||Scripts.wrapMintingPolicy . mkUserInitProofPolicy||])
-      `PlutusTx.applyCode` PlutusTx.liftCode nftAC
-
-{-# INLINEABLE userInitProofSymbol #-}
-userInitProofSymbol :: NFTAssetClass -> Value.CurrencySymbol
-userInitProofSymbol = Ledger.scriptCurrencySymbol . userInitProofPolicy
-
-{-# INLINEABLE userInitProofTokenName #-}
-userInitProofTokenName :: Value.TokenName
-userInitProofTokenName = Value.TokenName emptyByteString
-
-{-# INLINEABLE userInitProofAssetClass #-}
-userInitProofAssetClass :: NFTAssetClass -> Value.AssetClass
-userInitProofAssetClass nftAC = Value.AssetClass (userInitProofSymbol nftAC, userInitProofTokenName)
 
 -------------------------------------------------------------------------------
 
@@ -153,8 +161,8 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                (isSigned dat)
                             && traceIfFalse "global not present"
                                (isJust maybeGlobal)
-          ProvideRewards ->    False
-          DistributeRewards -> traceIfFalse "global not present"
+          ProvideRewards    -> False
+          DistributeRewards -> traceIfFalse "global not present" -- anyone can triger
                                (isJust maybeGlobal)
                             && traceIfFalse "stake not preserved"
                                ( let ((_, inData), (_, outData)) = ownUser
@@ -289,71 +297,3 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
       _ -> False
 
 {- ORMOLU_ENABLE -}
-
--------------------------------------------------------------------------------
-
-data ValidatorTypes
-instance Scripts.ValidatorTypes ValidatorTypes where
-  type DatumType ValidatorTypes = Datum
-  type RedeemerType ValidatorTypes = Redeemer
-
-{-# INLINEABLE inst #-}
-inst :: DanaAssetClass -> NFTAssetClass -> UserInitProofAssetClass -> Scripts.TypedValidator ValidatorTypes
-inst danaAsset nft symbol =
-  Scripts.mkTypedValidator @ValidatorTypes
-    ( $$(PlutusTx.compile [||mkValidator||])
-        `PlutusTx.applyCode` PlutusTx.liftCode danaAsset
-        `PlutusTx.applyCode` PlutusTx.liftCode nft
-        `PlutusTx.applyCode` PlutusTx.liftCode symbol
-    )
-    $$(PlutusTx.compile [||wrap||])
-  where
-    wrap = Scripts.wrapValidator @Datum @Redeemer
-
---
-{-# INLINEABLE spInst #-}
-spInst :: NFTAssetClass -> Scripts.TypedValidator ValidatorTypes
-spInst nftAC = inst (DanaAssetClass DanaCurrency.danaAsset) nftAC (UserInitProofAssetClass (userInitProofAssetClass nftAC))
-
-{-# INLINEABLE spValidator #-}
-spValidator :: NFTAssetClass -> Ledger.Validator
-spValidator nftAC = Scripts.validatorScript $ spInst nftAC
-
-{-# INLINEABLE spAddress #-}
-spAddress :: NFTAssetClass -> Ledger.Address
-spAddress nftAC = Ledger.scriptAddress $ spValidator nftAC
-
--------------------------------------------------------------------------------
-
-{-# INLINEABLE positive #-}
-positive :: Ledger.Value -> Bool
-positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
-
-{-# INLINEABLE txOutValid #-}
-txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
-txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
-  Just (UserDatum dat) ->
-    let value = Ledger.txOutValue txOut
-        balance = userData'balance dat
-
-        syncOk = value == balance'reward balance <> balance'stake balance <> Value.assetClassValue tokenAssetClass 1
-        rewardOk = (positive . balance'reward) balance
-        stakeOk = (positive . balance'stake) balance
-     in syncOk && rewardOk && stakeOk
-  _ -> False
-
-{-# INLINEABLE rewardHelper #-}
-rewardHelper :: Value.AssetClass -> Value.Value -> Value.Value -> Value.Value -> Value.Value
-rewardHelper danaAsset totalStake totalReward stake =
-  reward
-    (Value.assetClassValueOf totalStake danaAsset)
-    totalReward
-    (Value.assetClassValueOf stake danaAsset)
-
-{-# INLINEABLE reward #-}
-reward :: Integer -> Value.Value -> Integer -> Value.Value
-reward totalStake totalReward userStake =
-  let ratio = userStake R.% totalStake
-   in fold $
-        (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
-          <$> Value.flattenValue totalReward

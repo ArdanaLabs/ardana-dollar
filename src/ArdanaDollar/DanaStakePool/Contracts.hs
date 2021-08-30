@@ -36,6 +36,7 @@ import ArdanaDollar.DanaStakePool.DanaCurrency
 import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.DanaStakePool.Utils
 import ArdanaDollar.DanaStakePool.Validators
+import ArdanaDollar.DanaStakePool.ValidatorsTH
 import ArdanaDollar.Utils
 import ArdanaDollar.Vault as Vault
 

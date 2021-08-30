@@ -9,7 +9,7 @@ module Test.ArdanaDollar.DanaStakePoolTest (
 
 import ArdanaDollar.DanaStakePool.DanaCurrency
 import ArdanaDollar.DanaStakePool.Endpoints as PEndpoints
-import ArdanaDollar.DanaStakePool.Validators (NFTAssetClass (..))
+import ArdanaDollar.DanaStakePool.Types (NFTAssetClass (..))
 import ArdanaDollar.Vault as Vault
 
 import Prelude
