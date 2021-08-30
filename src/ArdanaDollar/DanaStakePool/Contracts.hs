@@ -211,21 +211,22 @@ distributeRewardsTrigger nft = do
 
   let totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
       globalData = snd global
+      newGlobalData = globalData {globaldata'traversal = TraversalActive totalReward 0, globalData'locked = True}
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs (Map.fromList [fst global])
       tx =
-        Constraints.mustPayToTheScript (GlobalDatum $ globalData {globaldata'traversal = TraversalActive totalReward 0}) totalReward
+        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) totalReward
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
 
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
   void $ waitNSlots 5
 
-distributeRewardsUser :: forall (s :: Row Type). NFTAssetClass -> Value.Value -> ((Ledger.TxOutRef, Ledger.TxOutTx), UserData) -> Contract (Last Datum) s Text ()
-distributeRewardsUser nft totalReward (tuple', userData) = do
+distributeRewardsUser :: forall (s :: Row Type). NFTAssetClass -> Value.Value -> Bool -> ((Ledger.TxOutRef, Ledger.TxOutTx), UserData) -> Contract (Last Datum) s Text ()
+distributeRewardsUser nft totalReward locked (tuple', userData) = do
   global <- globalUtxo nft
 
   let oldGlobalData = snd global
@@ -233,7 +234,7 @@ distributeRewardsUser nft totalReward (tuple', userData) = do
         if userData'id userData == globalData'count oldGlobalData - 1
           then TraversalInactive
           else TraversalActive totalReward $ userData'id userData + 1
-      newGlobalData = oldGlobalData {globaldata'traversal = newTraversal}
+      newGlobalData = oldGlobalData {globaldata'traversal = newTraversal, globalData'locked = locked}
       totalStake = globalData'totalStake $ snd global
       reward' = rewardHelper danaAsset totalStake totalReward (balance'stake $ userData'balance userData)
       currentTotalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
@@ -264,7 +265,7 @@ distributeRewards nft _ = do
       totalStakeGlobal = globalData'totalStake (snd global)
       totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
       sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
-      txs = mapM_ (distributeRewardsUser nft totalReward) sorted
+      txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted)
   if
       | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
       | totalStakeGlobal == PlutusTx.Prelude.mempty -> logInfo @String $ "total stake is zero"
@@ -275,6 +276,7 @@ distributeRewards nft _ = do
           logInfo @String $ "found utxos" ++ show (length sorted) ++ show sorted
           distributeRewardsTrigger nft
           txs
+          distributeRewardsUser nft totalReward False (last sorted)
 
 withdrawRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
 withdrawRewards nft _ = do
