@@ -139,6 +139,51 @@ testDistribute2 = do
   callEndpoint @"withdrawRewards" h1 ()
   void $ Emulator.waitNSlots 5
 
+testDistribute3 :: EmulatorTrace ()
+testDistribute3 = do
+  ac <- initializeSystem
+
+  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
+  h2 <- activateContractWallet (Wallet 2) (PEndpoints.endpoints ac)
+  h3 <- activateContractWallet (Wallet 3) (PEndpoints.endpoints ac)
+
+  callEndpoint @"initializeUser" h1 ()
+  void $ Emulator.waitNSlots 5
+  callEndpoint @"initializeUser" h2 ()
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"provideRewards" h3 503
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"deposit" h1 60
+  void $ Emulator.waitNSlots 5
+  callEndpoint @"deposit" h2 40
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"distributeRewards" h3 ()
+  void $ Emulator.waitNSlots 30
+
+  callEndpoint @"withdrawRewards" h1 ()
+  void $ Emulator.waitNSlots 5
+  callEndpoint @"withdrawRewards" h2 ()
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"provideRewards" h3 11
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"withdraw" h1 10
+  void $ Emulator.waitNSlots 5
+  callEndpoint @"deposit" h2 10
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"distributeRewards" h3 ()
+  void $ Emulator.waitNSlots 30
+
+  callEndpoint @"withdrawRewards" h1 ()
+  void $ Emulator.waitNSlots 5
+  callEndpoint @"withdrawRewards" h2 ()
+  void $ Emulator.waitNSlots 5
+
 testDeposit' :: TestTree
 testDeposit' =
   checkPredicateOptions
@@ -176,6 +221,16 @@ testDistribute2' =
     )
     testDistribute2
 
+testDistribute3' :: TestTree
+testDistribute3' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "two reward distribution sessions"
+    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 307 <> Value.assetClassValue danaAsset (-50))
+        .&&. walletFundsChange (Wallet 2) (Value.assetClassValue Vault.dUSDAsset 207 <> Value.assetClassValue danaAsset (-50))
+    )
+    testDistribute3
+
 danaStakePoolTests :: TestTree
 danaStakePoolTests =
   testGroup
@@ -184,4 +239,5 @@ danaStakePoolTests =
     , testWithdraw'
     , testDistribute1'
     , testDistribute2'
+    , testDistribute3'
     ]
