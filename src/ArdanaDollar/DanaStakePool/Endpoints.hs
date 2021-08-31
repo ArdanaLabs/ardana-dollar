@@ -35,21 +35,24 @@ type SystemInitializationSchema =
 
 initializeSystemEndpoint :: Contract (Last NFTAssetClass) SystemInitializationSchema Text ()
 initializeSystemEndpoint = do
-  forever
-    (endpoint @"initializeSystem" >> initializeSystem)
+  forever $ awaitPromise (endpoint @"initializeSystem" $ const initializeSystem)
 
 endpoints :: NFTAssetClass -> Contract (Last Datum) Schema Text ()
 endpoints f = do
   forever $
-    (endpoint @"initializeUser" >> initializeUser f)
-      `select` (endpoint @"deposit" >>= deposit f)
-      `select` (endpoint @"withdraw" >>= withdraw f)
-      `select` (endpoint @"provideRewards" >>= provideRewards f)
-      `select` (endpoint @"distributeRewards" >>= distributeRewards f)
-      `select` (endpoint @"withdrawRewards" >>= withdrawRewards f)
+    selectList
+      [ endpoint @"initializeUser" (const $ initializeUser f)
+      , endpoint @"deposit" $ deposit f
+      , endpoint @"withdraw" $ withdraw f
+      , endpoint @"provideRewards" $ provideRewards f
+      , endpoint @"distributeRewards" $ distributeRewards f
+      , endpoint @"withdrawRewards" $ withdrawRewards f
+      ]
 
 queryEndpoints :: NFTAssetClass -> Contract (Last [UserData]) QuerySchema Text ()
 queryEndpoints f = do
   forever $
-    (endpoint @"queryUser" >>= queryUser f)
-      `select` (endpoint @"querySelf" >> querySelf f)
+    selectList
+      [ endpoint @"queryUser" $ queryUser f
+      , endpoint @"querySelf" (const $ querySelf f)
+      ]

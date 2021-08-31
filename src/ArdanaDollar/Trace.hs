@@ -29,7 +29,11 @@ vaultTrace = do
   return ()
 
 config :: Emulator.EmulatorConfig
-config = Emulator.EmulatorConfig (Left (Map.singleton (Wallet 1) (Ada.lovelaceValueOf 1_000_000_000)))
+config =
+  Emulator.EmulatorConfig
+    (Left (Map.singleton (Wallet 1) (Ada.lovelaceValueOf 1_000_000_000)))
+    def
+    def
 
 runVaultTrace :: IO ()
-runVaultTrace = Emulator.runEmulatorTraceIO' def config def vaultTrace
+runVaultTrace = Emulator.runEmulatorTraceIO' def config vaultTrace

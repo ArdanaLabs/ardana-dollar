@@ -66,7 +66,7 @@ data TreasuryStateTokenParams = TreasuryStateTokenParams
 
 data TreasuryDatum = TreasuryDatum
   { auctionDanaAmount :: !Integer
-  , costCenters :: !(UniqueMap.Map ByteString Value.Value)
+  , costCenters :: !(UniqueMap.Map BuiltinByteString Value.Value)
   }
   deriving stock (Show, Generic, Prelude.Eq)
   deriving anyclass (FromJSON, ToJSON)
@@ -74,14 +74,14 @@ data TreasuryDatum = TreasuryDatum
 data TreasuryDepositParams = TreasuryDepositParams
   { treasuryDepositAmount :: !Integer
   , treasuryDepositCurrency :: !Value.AssetClass
-  , treasuryDepositCostCenter :: !ByteString
+  , treasuryDepositCostCenter :: !BuiltinByteString
   }
   deriving stock (Generic, Show)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
 data TreasurySpendParams = TreasurySpendParams
   { treasurySpendValue :: Value.Value
-  , treasurySpendCostCenter :: ByteString
+  , treasurySpendCostCenter :: BuiltinByteString
   , treasurySpendBeneficiary :: Ledger.PubKeyHash
   }
   deriving stock (Generic, Show)
@@ -91,7 +91,7 @@ data TreasurySpendParams = TreasurySpendParams
 data TreasuryAction
   = BorrowForAuction
   | DepositFundsWithCostCenter TreasuryDepositParams
-  | SpendFundsFromCostCenter ByteString
+  | SpendFundsFromCostCenter BuiltinByteString
   | AllowMint
   | AllowBurn
   | InitiateUpgrade
@@ -123,7 +123,7 @@ mkDanaMintingPolicy :: Value.TokenName -> () -> Contexts.ScriptContext -> Bool
 mkDanaMintingPolicy danaToken _ sc =
   traceIfFalse "DANA isn't minted" $ danaToken `elem` tokenList
   where
-    valuesFromCtx = Value.flattenValue . Ledger.txInfoForge . Ledger.scriptContextTxInfo
+    valuesFromCtx = Value.flattenValue . Ledger.txInfoMint . Ledger.scriptContextTxInfo
     tokenList = (\(_, tokenName, _) -> tokenName) <$> valuesFromCtx sc
 
 {-# INLINEABLE danaMintingPolicy #-}

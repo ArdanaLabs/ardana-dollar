@@ -27,6 +27,7 @@ import Prelude (Semigroup (..), String, show)
 
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
+import Ledger.Crypto qualified as Crypto
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
@@ -127,7 +128,7 @@ depositFundsWithCostCenter ::
   TreasuryDepositParams ->
   Contract w s e ()
 depositFundsWithCostCenter treasury params = do
-  pkh <- Contexts.pubKeyHash <$> ownPubKey
+  pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo ("called depositFundsWithCostCenter with params: " ++ show params)
   let ac = treasuryDepositCurrency params
       amount = treasuryDepositAmount params
@@ -163,7 +164,7 @@ queryCostCenters ::
   forall (s :: Row Type) (e :: Type).
   (AsContractError e) =>
   Treasury ->
-  Contract (OutputBus (Vector (ByteString, Value.Value))) s e ()
+  Contract (OutputBus (Vector (BuiltinByteString, Value.Value))) s e ()
 queryCostCenters treasury = do
   logInfo @String "called queryCostCenters"
   findTreasury treasury >>= \case

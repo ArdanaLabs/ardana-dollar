@@ -121,7 +121,7 @@ outputHasToken tok sc = case ownOutput sc of
   Nothing -> traceIfFalse "expected exactly one output with script's datum" False
 
 {-# INLINEABLE nextDatum #-}
-nextDatum :: forall (a :: Type). PlutusTx.IsData a => Value.AssetClass -> Ledger.ScriptContext -> Maybe a
+nextDatum :: forall (a :: Type). PlutusTx.FromData a => Value.AssetClass -> Ledger.ScriptContext -> Maybe a
 nextDatum tok sc = do
   output <- ownOutput sc
   guard (Value.assetClassValueOf (Ledger.txOutValue output) tok == 1)
@@ -134,7 +134,7 @@ nextDatum tok sc = do
 
 -- a stub before we will figure out usage of vaults' state tokens
 {-# INLINEABLE nextDatum' #-}
-nextDatum' :: forall (a :: Type). PlutusTx.IsData a => Ledger.ScriptContext -> Maybe a
+nextDatum' :: forall (a :: Type). PlutusTx.FromData a => Ledger.ScriptContext -> Maybe a
 nextDatum' sc = do
   output <- ownOutput sc
   dh <- Ledger.txOutDatumHash output
@@ -147,7 +147,7 @@ nextDatum' sc = do
 {-# INLINEABLE mkDUSDMintingPolicy #-}
 mkDUSDMintingPolicy :: Value.TokenName -> () -> Ledger.ScriptContext -> Bool
 mkDUSDMintingPolicy dusdToken _ Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-  map (\(_, tokenName, _) -> tokenName) (Value.flattenValue (Ledger.txInfoForge txInfo)) == [dusdToken]
+  map (\(_, tokenName, _) -> tokenName) (Value.flattenValue (Ledger.txInfoMint txInfo)) == [dusdToken]
 
 {-# INLINEABLE dUSDMintingPolicy #-}
 dUSDMintingPolicy :: Ledger.MintingPolicy
@@ -209,7 +209,7 @@ mkVaultValidator dusd user vd vr sc@Ledger.ScriptContext {scriptContextTxInfo = 
                   let debtDiff = vaultDebt nd - vaultDebt vd
                    in traceIfFalse
                         "wrong dUSD mint amount"
-                        (Ledger.txInfoForge txInfo == Value.assetClassValue dusd debtDiff)
+                        (Ledger.txInfoMint txInfo == Value.assetClassValue dusd debtDiff)
                         && traceIfFalse "cannot borrow this much" cRatioOk
 
 data Vaulting
@@ -410,8 +410,10 @@ repayDUSD amount = do
 vaultContract :: Contract (Last VaultDatum) VaultSchema Text ()
 vaultContract =
   forever $
-    (endpoint @"initializeVault" >> initializeVault)
-      `select` (endpoint @"depositCollateral" >>= depositCollateral)
-      `select` (endpoint @"withdrawCollateral" >>= withdrawCollateral)
-      `select` (endpoint @"mintDUSD" >>= mintDUSD)
-      `select` (endpoint @"repayDUSD" >>= repayDUSD)
+    selectList
+      [ endpoint @"initializeVault" $ const initializeVault
+      , endpoint @"depositCollateral" depositCollateral
+      , endpoint @"withdrawCollateral" withdrawCollateral
+      , endpoint @"mintDUSD" mintDUSD
+      , endpoint @"repayDUSD" repayDUSD
+      ]

@@ -54,13 +54,11 @@ with import ./nix { };
       pab.plutus_pab_client
 
       ### Example contracts
-      plutus.plutus-currency
-      plutus.plutus-atomic-swap
-
+      plutus.plutus-pab-examples
     ] ++ (builtins.attrValues pab.plutus_pab_exes);
 
   nativeBuildInputs = (with plutus.pkgs;
-    [ zlib pkg-config libsodium systemd ]
-    ++ (lib.optionals (!stdenv.isDarwin) [ rPackages.plotly R ]));
+    [ zlib pkg-config libsodium-vrf R ]
+    ++ (lib.optionals (!stdenv.isDarwin) [ rPackages.plotly systemd ]));
 
 }))

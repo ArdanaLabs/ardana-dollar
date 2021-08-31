@@ -54,7 +54,7 @@ reward totalStake totalReward userStake =
           <$> Value.flattenValue totalReward
 
 {-# INLINEABLE datumTxOutTuple #-}
-datumTxOutTuple :: forall a. PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
+datumTxOutTuple :: forall a. PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
 datumTxOutTuple info txOut = do
   r <- datumForOnchain @a info txOut
   return (txOut, r)
@@ -98,7 +98,7 @@ mkUserInitProofPolicy nftAC _ ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     checkMintedAmount :: Bool
-    checkMintedAmount = case Value.flattenValue (Ledger.txInfoForge info) of
+    checkMintedAmount = case Value.flattenValue (Ledger.txInfoMint info) of
       [(cs, tn', amt)] -> cs == Ledger.ownCurrencySymbol ctx && tn' == Value.TokenName emptyByteString && amt == 1
       _ -> False
 
@@ -308,7 +308,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
            in okReward' && leftoverOk && positive diff
 
     checkUserInitProofMinted :: Bool
-    checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoForge info) of
+    checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoMint info) of
       [(cs, tn', amt)] -> unUserInitProofAssetClass userInitProofAC == Value.AssetClass (cs, tn') && amt == 1
       _ -> False
 {- ORMOLU_ENABLE -}

@@ -206,24 +206,24 @@ valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
 
 {-# INLINEABLE datumFor #-}
-datumFor :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
+datumFor :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
 datumFor txOut f = do
   dh <- Ledger.txOutDatum txOut
   Ledger.Datum d <- f dh
   PlutusTx.fromBuiltinData d
 
-datumForOffchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxOutTx -> Maybe a
+datumForOffchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOutTx -> Maybe a
 datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
 
 {-# INLINEABLE datumForOnchain #-}
-datumForOnchain :: forall (a :: Type). PlutusTx.IsData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
+datumForOnchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
 datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
 
 -- | On-chain helper function checking immutability of the validator's datum
 {-# INLINEABLE validateDatumImmutable #-}
 validateDatumImmutable ::
   forall (datum :: Type).
-  (Eq datum, PlutusTx.IsData datum) =>
+  (Eq datum, PlutusTx.FromData datum) =>
   datum ->
   Contexts.ScriptContext ->
   Bool
