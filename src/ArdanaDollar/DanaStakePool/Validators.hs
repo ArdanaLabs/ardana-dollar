@@ -1,126 +1,99 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialize #-}
 
 module ArdanaDollar.DanaStakePool.Validators (
-  ValidatorTypes,
-  spInst,
-  spValidator,
-  spAddress,
-  Datum (..),
-  UserData (..),
-  GlobalData (..),
-  Redeemer (..),
-  Balance (..),
-  userInitProofAssetClass,
-  userInitProofPolicy,
-  addTotalStake,
   rewardHelper,
+  mkUserInitProofPolicy,
+  mkValidator,
 ) where
 
-import PlutusTx.Prelude
-
 import Ledger qualified
-import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import PlutusTx qualified
-import PlutusTx.Monoid qualified
+import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
-import PlutusTx.Semigroup qualified
 
-import Prelude qualified as Haskell
-
-import ArdanaDollar.DanaStakePool.DanaCurrency qualified as DanaCurrency
-import ArdanaDollar.DanaStakePool.Utils (intersectionWith)
+import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.Utils (datumForOnchain)
 
-import Control.Monad (join)
+{-# INLINEABLE positive #-}
+positive :: Ledger.Value -> Bool
+positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
 
-import GHC.Generics (Generic)
+{-# INLINEABLE userTxOutValid #-}
+userTxOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
+userTxOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
+  Just (UserDatum dat) ->
+    let value = Ledger.txOutValue txOut
+        balance = userData'balance dat
 
-import Data.Aeson qualified as JSON
+        syncOk =
+          value == balance'reward balance
+            <> balance'stake balance
+            <> Value.assetClassValue tokenAssetClass 1
 
-data Balance = Balance
-  { dStake :: Value.Value
-  , dReward :: Value.Value
-  }
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
+        rewardOk = (positive . balance'reward) balance
+        stakeOk = (positive . balance'stake) balance
+     in syncOk && rewardOk && stakeOk
+  _ -> False
 
-instance PlutusTx.Semigroup.Semigroup Balance where
-  (<>) x y = Balance (dStake x + dStake y) (dReward x + dReward y)
+{-# INLINEABLE rewardHelper #-}
+rewardHelper :: Value.AssetClass -> Value.Value -> Value.Value -> Value.Value -> Value.Value
+rewardHelper danaAsset totalStake totalReward stake =
+  reward
+    (Value.assetClassValueOf totalStake danaAsset)
+    totalReward
+    (Value.assetClassValueOf stake danaAsset)
 
-instance Haskell.Semigroup Balance where
-  (<>) x y = x PlutusTx.Semigroup.<> y
+{-# INLINEABLE reward #-}
+reward :: Integer -> Value.Value -> Integer -> Value.Value
+reward totalStake totalReward userStake =
+  let ratio = userStake R.% totalStake
+   in fold $
+        (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
+          <$> Value.flattenValue totalReward
 
-instance PlutusTx.Monoid.Monoid Balance where
-  mempty = Balance mempty mempty
-
-instance Haskell.Monoid Balance where
-  mempty = PlutusTx.Monoid.mempty
-
-data UserData = UserData
-  { dPkh :: Ledger.PubKeyHash
-  , dBalance :: Balance
-  }
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-newtype GlobalData = GlobalData
-  { dTotalStake :: Value.Value
-  }
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-addTotalStake :: GlobalData -> Value.Value -> GlobalData
-addTotalStake (GlobalData s) v = GlobalData (s <> v)
-
-data Datum = UserDatum UserData | GlobalDatum GlobalData
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-PlutusTx.makeIsDataIndexed ''Balance [('Balance, 0)]
-PlutusTx.makeIsDataIndexed ''UserData [('UserData, 0)]
-PlutusTx.makeIsDataIndexed ''GlobalData [('GlobalData, 0)]
-PlutusTx.makeIsDataIndexed
-  ''Datum
-  [ ('UserDatum, 0)
-  , ('GlobalDatum, 1)
-  ]
-
-data Redeemer
-  = DepositOrWithdraw
-  | ProvideRewards
-  | DistributeRewards
-  | WithdrawRewards
-  deriving stock (Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-
-PlutusTx.makeIsDataIndexed
-  ''Redeemer
-  [ ('DepositOrWithdraw, 0)
-  , ('ProvideRewards, 1)
-  , ('DistributeRewards, 2)
-  , ('WithdrawRewards, 3)
-  ]
-
--------------------------------------------------------------------------------
+{-# INLINEABLE datumTxOutTuple #-}
+datumTxOutTuple :: forall a. PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Ledger.TxOut, a)
+datumTxOutTuple info txOut = do
+  r <- datumForOnchain @a info txOut
+  return (txOut, r)
 
 {-# INLINEABLE mkUserInitProofPolicy #-}
-mkUserInitProofPolicy :: () -> Ledger.ScriptContext -> Bool
-mkUserInitProofPolicy _ ctx =
-  let outputs = filter (PlutusTx.Prelude.isJust . datumForOnchain @Datum info) (Ledger.txInfoOutputs info)
-      unique = head outputs
-   in if length outputs == 1
-        then case datumForOnchain @Datum info unique of
-          Just (UserDatum (UserData key balance)) ->
-            balance Haskell.== mempty
-              && checkMintedAmount
-              && Ledger.txSignedBy info key
-              && txOutValid (Value.AssetClass (Ledger.ownCurrencySymbol ctx, userInitProofTokenName)) info unique
-          _ -> False
-        else False
+mkUserInitProofPolicy :: NFTAssetClass -> () -> Ledger.ScriptContext -> Bool
+mkUserInitProofPolicy nftAC _ ctx =
+  let outputs = Ledger.txInfoOutputs info >>= toList . datumTxOutTuple @Datum info
+      inputs = Ledger.txInfoInputs info >>= (toList . datumTxOutTuple @Datum info) . Ledger.txInInfoResolved
+   in case (inputs, outputs) of
+        ([(t1, GlobalDatum d1)], [(t2, GlobalDatum d2), (t3, UserDatum d3)]) -> validate (t1, d1) (t2, d2) (t3, d3)
+        ([(t1, GlobalDatum d1)], [(t2, UserDatum d2), (t3, GlobalDatum d3)]) -> validate (t1, d1) (t3, d3) (t2, d2)
+        _ -> traceIfFalse "exactly one user UTXO and global UTXO expected" False
   where
+    ownAssetClass = Value.AssetClass (Ledger.ownCurrencySymbol ctx, Value.TokenName emptyByteString)
+    {- ORMOLU_DISABLE -}
+    validate (gInTxOut, gInData) (gOutTxOut, gOutData) (t3, uOutData) =
+           traceIfFalse "minting more or less than one"
+           checkMintedAmount
+        && traceIfFalse "global UTXO is locked"
+           (not $ globalData'locked gInData)
+        && traceIfFalse "nonempty out balance"
+           (userData'balance uOutData == mempty)
+        && traceIfFalse "not signed"
+           (Ledger.txSignedBy info (userData'pkh uOutData))
+        && traceIfFalse "user out tx invalid"
+           (userTxOutValid ownAssetClass info t3)
+        && traceIfFalse "incorrect id assigned to user UTXO"
+           (userData'id uOutData == globalData'count gInData)
+        && traceIfFalse "global datum unexpected change"
+           (gOutData == gInData{globalData'count = globalData'count gInData + 1})
+        && traceIfFalse "rewards changed"
+           (Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut)
+        && traceIfFalse "no nft at input"
+           (Value.assetClassValueOf (Ledger.txOutValue gInTxOut) (unNFTAssetClass nftAC) == 1)
+        && traceIfFalse "no nft at output"
+           (Value.assetClassValueOf (Ledger.txOutValue gOutTxOut) (unNFTAssetClass nftAC) == 1)
+    {- ORMOLU_ENABLE -}
+
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 
@@ -129,112 +102,119 @@ mkUserInitProofPolicy _ ctx =
       [(cs, tn', amt)] -> cs == Ledger.ownCurrencySymbol ctx && tn' == Value.TokenName emptyByteString && amt == 1
       _ -> False
 
-{-# INLINEABLE userInitProofPolicy #-}
-userInitProofPolicy :: Scripts.MintingPolicy
-userInitProofPolicy =
-  Ledger.mkMintingPolicyScript
-    $$(PlutusTx.compile [||Scripts.wrapMintingPolicy mkUserInitProofPolicy||])
-
-{-# INLINEABLE userInitProofSymbol #-}
-userInitProofSymbol :: Value.CurrencySymbol
-userInitProofSymbol = Ledger.scriptCurrencySymbol userInitProofPolicy
-
-{-# INLINEABLE userInitProofTokenName #-}
-userInitProofTokenName :: Value.TokenName
-userInitProofTokenName = Value.TokenName emptyByteString
-
-{-# INLINEABLE userInitProofAssetClass #-}
-userInitProofAssetClass :: Value.AssetClass
-userInitProofAssetClass = Value.AssetClass (userInitProofSymbol, userInitProofTokenName)
-
--------------------------------------------------------------------------------
-
 {- ORMOLU_DISABLE -}
-
 {-# INLINEABLE mkValidator #-}
 mkValidator ::
-  Value.AssetClass ->
-  Value.CurrencySymbol ->
-  Value.CurrencySymbol ->
+  DanaAssetClass ->
+  NFTAssetClass ->
+  UserInitProofAssetClass ->
   Datum ->
   Redeemer ->
   Ledger.ScriptContext ->
   Bool
-mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
+mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
+  let ((gInTxOut, gInData), (gOutTxOut, gOutData)) = justGlobal
+      ((_, uInData),        (_, uOutData))         = justUser
+
+      totalStakeDiff = globalData'totalStake gOutData - globalData'totalStake gInData
+  in
   case datum of
     GlobalDatum _ ->
-        traceIfFalse "incorrect global" (isJust maybeGlobal)
-     && let ((gInTxOut, gInData), (gOutTxOut, gOutData)) = justGlobal
-        in case redeemer of
-          DepositOrWithdraw -> traceIfFalse "tinkering with rewards"
-                               (Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut)
-                            && traceIfFalse "no unique user"
-                               (PlutusTx.Prelude.maybe False id $ (\l -> length l == 1) <$> maybeUsers)
-                            && traceIfFalse "total stake incorrect"
-                               ( let ((uInTxOut, _), (uOutTxOut, _)) = uniqueUser
-                                 in dTotalStake gOutData - dTotalStake gInData
-                                      ==
-                                    Ledger.txOutValue uOutTxOut - Ledger.txOutValue uInTxOut
+        traceIfFalse "no valid & unique global UTXO"
+        (isJust maybeGlobal)
+     && case redeemer of
+          DepositOrWithdraw -> traceIfFalse "is locked"
+                               (not $ globalData'locked gInData)
+                            && traceIfFalse "no valid & unique user UTXO"
+                               (isJust maybeUser)
+                            && traceIfFalse "signature missing"
+                               (isSigned uInData)
+                            && traceIfFalse "global and user stake not in sync"
+                               (
+                                   totalStakeDiff
+                                     ==
+                                   balance'stake (userData'balance uOutData) - balance'stake (userData'balance uInData)
+                               )
+                            && traceIfFalse "not only total stake changed in global UTXO"
+                               (
+                                   gOutData == gInData {globalData'totalStake = globalData'totalStake gOutData}
+                                && Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut
                                )
                             && traceIfFalse "stake not in dana"
-                               (danaOnly (dTotalStake gOutData - dTotalStake gInData))
+                               (danaOnly totalStakeDiff)
 
-          ProvideRewards    -> traceIfFalse "total stak has changed"
-                               (dTotalStake gOutData == dTotalStake gInData)
-                            && traceIfFalse "stealing rewards"
+          ProvideRewards    -> traceIfFalse "not only reward changed in global UTXO"
+                               (gOutData == gInData)
+                            && traceIfFalse "reward has decreased"
                                (positive $ Ledger.txOutValue gOutTxOut - Ledger.txOutValue gInTxOut)
 
-          DistributeRewards -> traceIfFalse "total stak has changed"
-                               (dTotalStake gOutData == dTotalStake gInData)
+          DistributeRewards -> traceIfFalse "total stake has changed"
+                               (totalStakeDiff == mempty)
+                            && traceIfFalse "user count has changed"
+                               (globalData'count gOutData == globalData'count gInData)
                             && traceIfFalse "wrong reward distribution"
-                               ( distributionOk
-                                  (dTotalStake gOutData)
-                                  (Ledger.txOutValue gInTxOut)
-                                  (Ledger.txOutValue gOutTxOut)
+                               (  distributionOk
+                                   gInData
+                                   gOutData
+                                   (Ledger.txOutValue gInTxOut <> negate nftToken)
+                                   (Ledger.txOutValue gOutTxOut <> negate nftToken)
+                               )
+                            && traceIfFalse "user stake has changed"
+                               (
+                                   isNothing maybeUser -- user UTXO is not provided when starting rewards distribution
+                                || (balance'stake (userData'balance uInData) == balance'stake (userData'balance uOutData))
                                )
 
-          WithdrawRewards   -> traceIfFalse "cannot use redeemer" False
+          -- delegate validation to minting policy
+          InitializeUser    -> checkUserInitProofMinted
 
-    UserDatum dat ->
-        traceIfFalse "own input is not valid"
-        (isJust maybeUsers) -- that could be optimized
+          -- for those redeemers global UTXO cannot be spent
+          WithdrawRewards   -> traceIfFalse "cannot spend this utxo"
+                               False
+
+    UserDatum _ ->
+        traceIfFalse "no valid & unique user UTXO"
+        (isJust maybeUser)
      && case redeemer of
-          DepositOrWithdraw -> traceIfFalse "signature missing"
-                               (isSigned dat)
-                            && traceIfFalse "global not present"
+          -- delegate to global UTXO validation
+          DepositOrWithdraw -> traceIfFalse "global not present"
                                (isJust maybeGlobal)
-          ProvideRewards ->    False
           DistributeRewards -> traceIfFalse "global not present"
                                (isJust maybeGlobal)
+
+          -- global UTXO is not required so validation has to happen here
+          WithdrawRewards   -> traceIfFalse "signature missing"
+                               (isSigned uInData)
                             && traceIfFalse "stake not preserved"
-                               ( let ((_, inData), (_, outData)) = ownUser
-                                 in dStake (dBalance inData) == dStake (dBalance outData)
-                               )
-          WithdrawRewards ->   traceIfFalse "signature missing"
-                               (isSigned dat)
-                            && traceIfFalse "stake not preserved"
-                               ( let ((_, inData), (_, outData)) = ownUser
-                                 in dStake (dBalance inData) == dStake (dBalance outData)
-                               )
+                               (balance'stake (userData'balance uInData) == balance'stake (userData'balance uOutData))
+
+          -- for those redeemers user UTXO cannot be spent
+          ProvideRewards    -> traceIfFalse "cannot spend this utxo"
+                               False
+          InitializeUser    -> traceIfFalse "cannot spend this utxo"
+                               False
   where
+    nftToken :: Value.Value
+    nftToken = Value.assetClassValue (unNFTAssetClass nftAC) 1
+
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 
     isSigned :: UserData -> Bool
-    isSigned dat = dPkh dat `elem` Ledger.txInfoSignatories info
+    isSigned dat = userData'pkh dat `elem` Ledger.txInfoSignatories info
 
     isValid :: Ledger.TxOut -> Bool
-    isValid txOut = txOutValid (Value.AssetClass (userInitProofSymbol_, userInitProofTokenName)) info txOut
+    isValid txOut = userTxOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
 
     hasNFT :: Ledger.TxOut -> Bool
-    hasNFT txOut =
-      1
-        == Value.assetClassValueOf
-          (Ledger.txOutValue txOut)
-          (Value.AssetClass (nftSymbol, Value.TokenName emptyByteString))
+    hasNFT txOut = 1 == Value.assetClassValueOf
+                        (Ledger.txOutValue txOut)
+                        (unNFTAssetClass nftAC)
 
     hasUserToken :: Ledger.TxOut -> Bool
-    hasUserToken txOut = Value.assetClassValueOf (Ledger.txOutValue txOut) (Value.AssetClass (userInitProofSymbol_, userInitProofTokenName)) == 1
+    hasUserToken txOut = 1 == Value.assetClassValueOf
+                         (Ledger.txOutValue txOut)
+                         (unUserInitProofAssetClass userInitProofAC)
 
     globalDatum :: Ledger.TxOut -> Maybe GlobalData
     globalDatum txOut = case datumForOnchain @Datum info txOut of
@@ -256,133 +236,79 @@ mkValidator danaAsset nftSymbol userInitProofSymbol_ datum redeemer ctx =
           [(txOut, Just dat)] -> Just (txOut, dat)
           _ -> Nothing
 
+    maybeUser :: Maybe ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
+    maybeUser = do
+      a@(_, d1) <- f (Ledger.getContinuingOutputs ctx)
+      b@(_, d2) <- f (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
+      -- id and pkh cannot ever change, common validation
+      let idOk = userData'id d1 == userData'id d2
+      let pkhOk = userData'pkh d1 == userData'pkh d2
+      if idOk && pkhOk then
+        return (b, a)
+      else
+        Nothing
+      where
+        f txOuts = case map (\txOut -> (txOut, userDatum txOut))
+                         $ filter isValid
+                         $ filter hasUserToken txOuts
+                   of
+          -- valid only if unique such UTXO found
+          [(txOut, Just dat)] -> Just (txOut, dat)
+          _ -> Nothing
+
     justGlobal = case maybeGlobal of
       Just o -> o
-      Nothing -> PlutusTx.Prelude.traceError "global"
+      Nothing -> PlutusTx.Prelude.traceError "global missing"
 
-    maybeUsers :: Maybe [((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))]
-    maybeUsers =
-      let iUsers = f (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
-          oUsers = f (Ledger.getContinuingOutputs ctx)
-          combined = intersectionWith (,) (g iUsers) (g oUsers)
-          sync = length combined == length iUsers && length combined == length oUsers
-       in if unique iUsers && unique oUsers && sync
-            then Just $ snd <$> combined
-            else Nothing
-      where
-        f txOuts =
-          join $
-            map (\txOut -> toList $ (txOut,) `fmap` userDatum txOut) $
-              filter isValid $
-              filter hasUserToken txOuts
-
-        g users = (\t@(_, d) -> (dPkh d, t)) `fmap` users
-
-        unique users =
-          let pkhs = dPkh . snd <$> users in
-          length (nub pkhs) == length pkhs
-
-    justUsers :: [((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))]
-    justUsers = PlutusTx.Prelude.fromMaybe (traceError "cannot retrieve users") maybeUsers
-
-    uniqueUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
-    uniqueUser = case maybeUsers of
-      Just [u] -> u
-      _ -> PlutusTx.Prelude.traceError "no unique user"
-
-    maybeOwnUser :: Maybe ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
-    maybeOwnUser = do
-      users <- maybeUsers
-      own <- Ledger.txInInfoResolved <$> Ledger.findOwnInput ctx
-      find (\((inTxInfo, _), _) -> inTxInfo == own) users
-
-    ownUser :: ((Ledger.TxOut, UserData), (Ledger.TxOut, UserData))
-    ownUser = case maybeOwnUser of
-      Just d -> d
-      Nothing -> traceError "no output for user utxo"
+    justUser = case maybeUser of
+      Just o -> o
+      Nothing -> PlutusTx.Prelude.traceError "user missing"
 
     danaOnly :: Value.Value -> Bool
-    danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass danaAsset]
+    danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass $ unDanaAssetClass danaAC]
 
-    distributionOk :: Value.Value -> Value.Value -> Value.Value -> Bool
-    distributionOk totalStake totalReward leftover =
-      let users = justUsers
-       in all ok users && (leftover == totalReward - distributed users) && positive leftover
+    distributionOk :: GlobalData -> GlobalData -> Value.Value -> Value.Value -> Bool
+    distributionOk gInData gOutData totalRewardBeforeT totalRewardAfterT =
+      case (globalData'count gInData, globaldata'traversal gInData, globaldata'traversal gOutData) of
+         (num, _, _)                                              | num == 0
+            -> traceIfFalse "0 case" False
+
+         (_, TraversalInactive, TraversalActive r' id')           | id' == 0 && globalData'locked gOutData
+            -> traceIfFalse "1 case" $
+               r' == totalRewardBeforeT
+            && r' == totalRewardAfterT
+
+         (num, TraversalActive r' id', TraversalInactive)         | id' == num - 1 && not (globalData'locked gOutData)
+            -> traceIfFalse "2 case" $
+               ok r'
+            && userId == id'
+
+         (num, TraversalActive r' id', TraversalActive r'' id'')  | id' < num - 1 && id'' == id' + 1 && globalData'locked gOutData
+            -> traceIfFalse "3 case" $
+               r' == r''
+            && ok r'
+            && userId == id'
+
+         _  -> traceIfFalse "4 case" False
       where
-        ok ((_, UserData _ inBalance), (_, UserData _ outBalance)) =
-          dReward outBalance - dReward inBalance == rewardHelper danaAsset totalStake totalReward (dStake inBalance)
+        userId = userData'id $ snd $ fst justUser
 
-        distributed users =
-          fold $
-            (\((_, UserData _ inBalance), (_, UserData _ outBalance)) -> dReward outBalance - dReward inBalance)
-              <$> users
+        okReward totalReward inBalance outBalance =
+          let diff = balance'reward outBalance - balance'reward inBalance
+              reward' = rewardHelper (unDanaAssetClass danaAC)
+                                     (globalData'totalStake gInData)
+                                     totalReward
+                                     (balance'stake inBalance)
+           in (diff == reward', diff)
 
+        ok totalReward =
+          let ((_, UserData _ inBalance _), (_, UserData _ outBalance _)) = justUser
+              (okReward', diff) = okReward totalReward inBalance outBalance
+              leftoverOk = (diff == totalRewardBeforeT - totalRewardAfterT)
+           in okReward' && leftoverOk && positive diff
+
+    checkUserInitProofMinted :: Bool
+    checkUserInitProofMinted = case Value.flattenValue (Ledger.txInfoMint info) of
+      [(cs, tn', amt)] -> unUserInitProofAssetClass userInitProofAC == Value.AssetClass (cs, tn') && amt == 1
+      _ -> False
 {- ORMOLU_ENABLE -}
-
--------------------------------------------------------------------------------
-
-data ValidatorTypes
-instance Scripts.ValidatorTypes ValidatorTypes where
-  type DatumType ValidatorTypes = Datum
-  type RedeemerType ValidatorTypes = Redeemer
-
-{-# INLINEABLE inst #-}
-inst :: Value.AssetClass -> Value.CurrencySymbol -> Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
-inst danaAsset nft symbol =
-  Scripts.mkTypedValidator @ValidatorTypes
-    ( $$(PlutusTx.compile [||mkValidator||])
-        `PlutusTx.applyCode` PlutusTx.liftCode danaAsset
-        `PlutusTx.applyCode` PlutusTx.liftCode nft
-        `PlutusTx.applyCode` PlutusTx.liftCode symbol
-    )
-    $$(PlutusTx.compile [||wrap||])
-  where
-    wrap = Scripts.wrapValidator @Datum @Redeemer
-
---
-{-# INLINEABLE spInst #-}
-spInst :: Value.CurrencySymbol -> Scripts.TypedValidator ValidatorTypes
-spInst nft = inst DanaCurrency.danaAsset nft userInitProofSymbol
-
-{-# INLINEABLE spValidator #-}
-spValidator :: Value.CurrencySymbol -> Ledger.Validator
-spValidator nft = Scripts.validatorScript $ spInst nft
-
-{-# INLINEABLE spAddress #-}
-spAddress :: Value.CurrencySymbol -> Ledger.Address
-spAddress nft = Ledger.scriptAddress $ spValidator nft
-
--------------------------------------------------------------------------------
-
-{-# INLINEABLE positive #-}
-positive :: Ledger.Value -> Bool
-positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
-
-{-# INLINEABLE txOutValid #-}
-txOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
-txOutValid tokenAssetClass info txOut = case datumForOnchain info txOut of
-  Just (UserDatum dat) ->
-    let value = Ledger.txOutValue txOut
-        balance = dBalance dat
-
-        syncOk = value == dReward balance <> dStake balance <> Value.assetClassValue tokenAssetClass 1
-        rewardOk = (positive . dReward) balance
-        stakeOk = (positive . dStake) balance
-     in syncOk && rewardOk && stakeOk
-  _ -> False
-
-{-# INLINEABLE rewardHelper #-}
-rewardHelper :: Value.AssetClass -> Value.Value -> Value.Value -> Value.Value -> Value.Value
-rewardHelper danaAsset totalStake totalReward stake =
-  reward
-    (Value.assetClassValueOf totalStake danaAsset)
-    totalReward
-    (Value.assetClassValueOf stake danaAsset)
-
-{-# INLINEABLE reward #-}
-reward :: Integer -> Value.Value -> Integer -> Value.Value
-reward totalStake totalReward userStake =
-  let ratio = userStake R.% totalStake
-   in fold $
-        (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
-          <$> Value.flattenValue totalReward

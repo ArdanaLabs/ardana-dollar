@@ -9,7 +9,6 @@ module ArdanaDollar.DanaStakePool.Endpoints (
 import PlutusTx.Prelude
 
 import Ledger (PubKeyHash)
-import Ledger.Value qualified as Value
 import Plutus.Contract
 
 import Control.Monad (forever)
@@ -17,7 +16,7 @@ import Data.Monoid (Last)
 import Data.Text (Text)
 
 import ArdanaDollar.DanaStakePool.Contracts
-import ArdanaDollar.DanaStakePool.Validators
+import ArdanaDollar.DanaStakePool.Types
 
 type Schema =
   Endpoint "initializeUser" ()
@@ -34,11 +33,11 @@ type QuerySchema =
 type SystemInitializationSchema =
   Endpoint "initializeSystem" ()
 
-initializeSystemEndpoint :: Contract (Last Value.AssetClass) SystemInitializationSchema Text ()
-initializeSystemEndpoint =
+initializeSystemEndpoint :: Contract (Last NFTAssetClass) SystemInitializationSchema Text ()
+initializeSystemEndpoint = do
   forever $ awaitPromise (endpoint @"initializeSystem" $ const initializeSystem)
 
-endpoints :: Value.CurrencySymbol -> Contract (Last Datum) Schema Text ()
+endpoints :: NFTAssetClass -> Contract (Last Datum) Schema Text ()
 endpoints f = do
   forever $
     selectList
@@ -50,7 +49,7 @@ endpoints f = do
       , endpoint @"withdrawRewards" $ withdrawRewards f
       ]
 
-queryEndpoints :: Value.CurrencySymbol -> Contract (Last UserData) QuerySchema Text ()
+queryEndpoints :: NFTAssetClass -> Contract (Last [UserData]) QuerySchema Text ()
 queryEndpoints f = do
   forever $
     selectList
