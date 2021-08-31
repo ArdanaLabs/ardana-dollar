@@ -40,6 +40,9 @@ import ArdanaDollar.DanaStakePool.ValidatorsTH
 import ArdanaDollar.Utils
 import ArdanaDollar.Vault as Vault
 
+nftToken :: NFTAssetClass -> Value.Value
+nftToken nftAC = Value.assetClassValue (unNFTAssetClass nftAC) 1
+
 mintNFT :: forall (s :: Row Type) (w :: Type). Contract w s Text Ledger.AssetClass
 mintNFT = do
   self <- Ledger.pubKeyHash <$> ownPubKey
@@ -209,8 +212,8 @@ distributeRewardsTrigger :: forall (s :: Row Type). NFTAssetClass -> Contract (L
 distributeRewardsTrigger nft = do
   global <- globalUtxo nft
 
-  let totalReward' = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
-      totalReward = totalReward' <> (Numeric.negate $ Value.assetClassValue (unNFTAssetClass nft) 1)
+  let globalTxOutValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      totalReward = globalTxOutValue <> Numeric.negate (nftToken nft)
       globalData = snd global
       newGlobalData = globalData {globaldata'traversal = TraversalActive totalReward 0, globalData'locked = True}
 
@@ -219,7 +222,7 @@ distributeRewardsTrigger nft = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs (Map.fromList [fst global])
       tx =
-        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) totalReward'
+        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) globalTxOutValue
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
 
   ledgerTx <- submitTxConstraintsWith lookups tx
@@ -267,8 +270,8 @@ distributeRewards nft _ = do
 
   let totalStakeUtxo = balance'stake $ totalBalance $ userData'balance . snd <$> utxos
       totalStakeGlobal = globalData'totalStake (snd global)
-      totalReward' = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
-      totalReward = totalReward' <> (Numeric.negate $ Value.assetClassValue (unNFTAssetClass nft) 1)
+      globalTxOutValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      totalReward = globalTxOutValue <> Numeric.negate (nftToken nft)
       sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
       txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted)
   if
