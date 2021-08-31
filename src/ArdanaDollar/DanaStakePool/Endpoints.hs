@@ -48,7 +48,7 @@ endpoints f = do
       `select` (endpoint @"distributeRewards" >>= distributeRewards f)
       `select` (endpoint @"withdrawRewards" >>= withdrawRewards f)
 
-queryEndpoints :: NFTAssetClass -> Contract (Last UserData) QuerySchema Text ()
+queryEndpoints :: NFTAssetClass -> Contract (Last [UserData]) QuerySchema Text ()
 queryEndpoints f = do
   forever $
     (endpoint @"queryUser" >>= queryUser f)
