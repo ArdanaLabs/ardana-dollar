@@ -90,8 +90,8 @@ invariant behaviors
 - under no circumstances can the script-locked DANA reduce from interacting with this endpoint.
 - if the user supplies a negative, error out.
 
-Calls script actions:
-`Governance DepositAct`
+Calls `GovernanceValidator` with redeemer `DepositAct`
+Can Mint `UserStakeDetail`
 
 #### Withdraw
 prerequisite: Governance Validator locks specified amount of DANA or greater, held for the address of the user/wallet calling this endpoint only
@@ -111,8 +111,8 @@ invariant behaviors:
 - under no circumstances can the script locked funds increase
 - if the user supplies a negative, error out
 
-Calls script actions:
-`Governance WithdrawAct`
+Calls `GovernanceValidator` with redeemer `WithdrawAct`
+Can Burn `UserStakeDetail`
 
 #### QueryStakeBalance
 prerequisite: none/contract is instantiated
@@ -141,8 +141,7 @@ behavior:
 - when the next Epoch completes, this will be dispersed to stakers as rewards, at the proportions that the stakers had AT THAT POINT IN TIME.,
 - If there are no stakers when the epoch completes, then the funds are preserved until an epoch completes and there are stakers.,
 
-calls script actions:
-`Governance ProvideRewardAct`
+Calls `GovernanceValidator` with redeemer `ProvideRewardAct` 
 
 #### Query RewardBalance,
 
@@ -165,22 +164,23 @@ this can only use the address of the caller, this cannot be queried for arbitrar
 
 -- TODO
 
-calls script actions:
-`Governance FinishRewardsForEpochAct`
+calls `GovernanceValidator` with redeemer `FinishRewardsForEpochAct`
+can burn `LastEpochScriptState`
+
 
 #### RegisterProposalFactory
 
 -- TODO
 
-calls script actions:
-`Governance RegisterProposalFactory`
+calls `GovernanceValidator` with redeemer `RegisterProposalFactoryAct`
 
 #### TriggerEpoch
 
 -- TODO
 
-calls script actions
-`Governance TriggerEpoch`
+
+calls `GovernanceValidator` with redeemer `TriggerEpochAct`
+can mint `LastEpochScriptState`
 
 ## Section III: Ardana-Dollar Protocol
 
@@ -209,19 +209,20 @@ expected behaviour:
 
 calling this endpoint instantiates a Vault Contract for the user's address with `VaultConfig` as its config params (one vault per `supportedToken`, per user), such that the user can then activate the Vault Contract with their Wallet and immediately call `MintUSD`
 
-calls script actions:
-`AdminValidator InitVaultAct`
+
+calls `AdminValidator` with redeemer `InitVaultAct`
+mints `VaultRecord`
+mints `VaultState`
 
 #### UpdateAdminState
 
 prerequisite:  the user's address must match a hardcoded value
 
-input: { configs :: [(VaultConfig, Rational)], -- asset class and the default stability fee multiplier for dUSD loans backed by that asset class
-       , liquidationBenefitCap :: Rational
-       , liquidationBenefitFloor :: Rational
-       , minCollateralRatio :: Rational
-       }
--- TODO - replace with Vault config and AdminState types defined in utxo-design
+input:
+```
+UpdateAdminState AdminState
+```
+
 
 behavior: updates collateralRatio and other critical config for all existing vaults, as well any new vaults will use the supplied configs.
 
@@ -230,8 +231,7 @@ VaultConfig assetClasses must ALL be supported by the Oracle Price feed
 
 `liquidationBenefitCap` must be greater than `liquidationBenefitFloor` and neither can have a zero in the denominator position, or be negative.
 
-calls scriptActions
-`Admin Validator UpdateAdminStateAct`
+calls `AdminValidator` with redeemer `UpdateAdminStateAct`
 
 #### InitiateUpgrade
 prerequisite: user's address must match a hardcoded value
@@ -239,9 +239,8 @@ prerequisite: user's address must match a hardcoded value
 input: { newContract :: Address }
 
 
-calls Script actions:
-`Admin InitiateUpgradeAct`
-`Treasury InitiateUpgradeAct`
+calls `AdminValidator` with redeemer `InitiateUpgradeAct`
+calls `TreasuryValidator` with redeemer `InitiateUpgradeAct`
 
 #### QueryAllVaults
 returns all vaults for the user
@@ -287,8 +286,7 @@ if the user has less than this amount, error out
 
 error out if `amount` is negative
 
-calls script actions:
-`Vault AddCollateralAct`
+calls `VaultValidator` with redeemer `AddCollateralAct`
 
 #### RemoveCollateral
 prerequisites: Vault for token must be instantiated, 
@@ -307,9 +305,8 @@ otherwise, move `amount` of the Vault's assetClass from the script to the user.
 
 error out if `amount` is negative
 
-calls script actions:
-`Vault UpdateStabilityFeeAct`
-`Vault RemoveCollateralAct`
+calls `VaultValidator` with redeemer `UpdateStabilityFeeAct`
+calls `VaultValidator` with redeemer `RemoveCollateralAct`
 
 #### AddBorrow
 
@@ -333,9 +330,10 @@ under no circumstances (ie, negative input) can this endpoint RELEASE underlying
 
 error out if `amount` is negative
 
-calls script actions:
-`Vault UpdateStabilityFeeAct`
-`Vault AddBorrowAct`
+
+calls `VaultValidator` with redeemer `UpdateStabilityFeeAct`
+calls `VaultValidator` with redeemer `AddBorrowAct`
+can mint $dUSD
 
 #### RepayBorrow
 prerequisites:
@@ -362,16 +360,9 @@ if a loan is taken out and repaid between Oracle.SetPrice calls, then there is n
 
 the Vault script will split the fees betwen the DanaStakePool and the Treasury
 
-calls script actions:
-`Vault UpdateStabilityFeeAct`
-`Vault RepayBorrowAct`
-
-#### UpdateVaultState
-
--- TODO 
-
-calls script actions:
-`Vault UpdateVaultStateAct`
+calls `VaultValidator` with redeemer `UpdateStabilityFeeAct`
+calls `VaultValidator` with redeemer `RepayBorrowAct`
+can burn $dUSD
 
 ### Oracle
 
@@ -416,8 +407,9 @@ calculating stability fees:
 
 No Matter how many times `SetPrice` is called, this endpoint should only execute every 10 minutes
 
-calls script actions
-`Oracle UpdateAct`
+
+calls `OracleValidator` with redeemer `UpdateOracleAct`
+can burn $dUSD
 
 ### Buffer Schema
 
@@ -452,6 +444,10 @@ calls script actions
 `Vault LiquidationCallAct`
 `Buffer LiquidationPurchaseAct`
 
+calls `VaultValidator` with redeemer `UpdateStabilityFeeAct`
+calls `VaultValidator` with redeemer `LiquidationCallAct`
+calls `BufferValidator` with redeemer `LiquidationPurchaseAct`
+
 #### DebtAuction
 prerequisites: 
 there is more DUSD in circulation than total collateral value in Ada.
@@ -466,9 +462,8 @@ user purchases `amount` of DANA tokens using DUSD at `currentDebtAuctionPrice`
 
 DANA is not minted during this process
 
-calls script actions:
-`Buffer DebtAuctionAct`
-`Treasury SpendFromCostCenterAct`
+calls `BufferValidator` with redeemer `DebtAuctionAct`
+calls `TreasuryValidator` with redeemer `SpendFromCostCenterAct`
 
 #### SurplusAuction
 prerequisites:
@@ -487,10 +482,8 @@ user purchases `amount` of DUSD using DANA at `currentSurplusAuctionPrice`
 
 dUSD is minted using the Treasury during this process.
 
-calls script actions:
-`Buffer SurplusAuctionAct`
-`Treasury DepositFundsWithCostCenterAct`
-
+calls `BufferValidator` with redeemer `SurplusAuctionAct`
+calls `TreasuryValidator` with redeemer `DepositFundsWithCostCenterAct`
 ## Section IV: Treasury
 
 ### Treasury Schema
@@ -531,8 +524,7 @@ these cost centers will function as a key-value pair, which allow us to track av
 
 no negative inputs permitted
 
-calls script actions:
-`Treasury DepositFundsWithCostCenterAct`
+calls `TreasuryValidator` with `DepositFundsWithCostCenterAct`
 
 #### SpendFromCostCenter
 prerequisite: the transaction must witness proof of the Admin contract's code (specifically a minted token that the admin contract has exclusive rights to mint).
@@ -552,8 +544,7 @@ pay `value` from `costCenter` to `beneficiary`, if the funds are available
 
 no negative inputs permitted
 
-calls script actions:
-`Treasury SpendFromCostCenterAct`
+calls `TreasuryValidator` with `SpendFromCostCenterAct`
 
 #### QueryCostCenters
 prerequisite: none
