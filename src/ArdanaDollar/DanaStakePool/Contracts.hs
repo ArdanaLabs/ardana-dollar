@@ -209,7 +209,8 @@ distributeRewardsTrigger :: forall (s :: Row Type). NFTAssetClass -> Contract (L
 distributeRewardsTrigger nft = do
   global <- globalUtxo nft
 
-  let totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+  let totalReward' = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      totalReward = totalReward' <> (Numeric.negate $ Value.assetClassValue (unNFTAssetClass nft) 1)
       globalData = snd global
       newGlobalData = globalData {globaldata'traversal = TraversalActive totalReward 0, globalData'locked = True}
 
@@ -218,7 +219,7 @@ distributeRewardsTrigger nft = do
           <> Constraints.otherScript (spValidator nft)
           <> Constraints.unspentOutputs (Map.fromList [fst global])
       tx =
-        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) totalReward
+        Constraints.mustPayToTheScript (GlobalDatum newGlobalData) totalReward'
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global])
 
   ledgerTx <- submitTxConstraintsWith lookups tx
@@ -239,6 +240,7 @@ distributeRewardsUser nft totalReward locked (tuple', userData) = do
       reward' = rewardHelper danaAsset totalStake totalReward (balance'stake $ userData'balance userData)
       currentTotalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
       leftover = currentTotalReward <> Numeric.negate reward'
+      newUserData = adbalance'reward userData reward'
 
       lookups =
         Constraints.typedValidatorLookups (spInst nft)
@@ -246,11 +248,13 @@ distributeRewardsUser nft totalReward locked (tuple', userData) = do
           <> Constraints.unspentOutputs (Map.fromList [fst global, tuple'])
       tx =
         Constraints.mustPayToTheScript (GlobalDatum newGlobalData) leftover
-          <> Constraints.mustPayToTheScript (UserDatum $ adbalance'reward userData reward') (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
+          <> Constraints.mustPayToTheScript (UserDatum newUserData) (reward' <> Ledger.txOutValue (Ledger.txOutTxOut $ snd tuple'))
           <> spendWithConstRedeemer DistributeRewards (Map.fromList [fst global, tuple'])
 
+  logInfo @String $ "sending transaction with sdfasdf: %s" ++ show currentTotalReward
+  logInfo @String $ "sending transaction with reward: %s" ++ show leftover
   logInfo @String $ "sending transaction with: %s" ++ show newGlobalData
-  logInfo @String $ "sending transaction with: %s" ++ show userData
+  logInfo @String $ "sending transaction with: %s" ++ show newUserData
 
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -263,7 +267,8 @@ distributeRewards nft _ = do
 
   let totalStakeUtxo = balance'stake $ totalBalance $ userData'balance . snd <$> utxos
       totalStakeGlobal = globalData'totalStake (snd global)
-      totalReward = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      totalReward' = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      totalReward = totalReward' <> (Numeric.negate $ Value.assetClassValue (unNFTAssetClass nft) 1)
       sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
       txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted)
   if

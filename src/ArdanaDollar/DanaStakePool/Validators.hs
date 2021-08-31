@@ -156,8 +156,8 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
                                (  distributionOk
                                    gInData
                                    gOutData
-                                   (Ledger.txOutValue gInTxOut)
-                                   (Ledger.txOutValue gOutTxOut)
+                                   (Ledger.txOutValue gInTxOut <> negate nftToken)
+                                   (Ledger.txOutValue gOutTxOut <> negate nftToken)
                                )
                             && traceIfFalse "user stake has changed"
                                (
@@ -194,6 +194,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
           InitializeUser    -> traceIfFalse "cannot spend this utxo"
                                False
   where
+    nftToken :: Value.Value
+    nftToken = Value.assetClassValue (unNFTAssetClass nftAC) 1
+
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 

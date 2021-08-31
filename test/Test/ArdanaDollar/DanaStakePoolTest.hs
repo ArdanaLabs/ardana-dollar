@@ -2,7 +2,8 @@ module Test.ArdanaDollar.DanaStakePoolTest (
   testDeposit,
   testWithdraw,
   testProvide,
-  testDistribute,
+  testDistribute1,
+  testDistribute2,
   danaStakePoolTests,
   runTrace,
 ) where
@@ -87,8 +88,8 @@ testProvide = do
   callEndpoint @"provideRewards" h1 7
   void $ Emulator.waitNSlots 5
 
-testDistribute :: EmulatorTrace ()
-testDistribute = do
+testDistribute1 :: EmulatorTrace ()
+testDistribute1 = do
   ac <- initializeSystem
 
   h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
@@ -116,6 +117,28 @@ testDistribute = do
   callEndpoint @"withdrawRewards" h2 ()
   void $ Emulator.waitNSlots 5
 
+testDistribute2 :: EmulatorTrace ()
+testDistribute2 = do
+  ac <- initializeSystem
+
+  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
+  h3 <- activateContractWallet (Wallet 3) (PEndpoints.endpoints ac)
+
+  callEndpoint @"initializeUser" h1 ()
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"provideRewards" h3 503
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"deposit" h1 60
+  void $ Emulator.waitNSlots 5
+
+  callEndpoint @"distributeRewards" h3 ()
+  void $ Emulator.waitNSlots 30
+
+  callEndpoint @"withdrawRewards" h1 ()
+  void $ Emulator.waitNSlots 5
+
 testDeposit' :: TestTree
 testDeposit' =
   checkPredicateOptions
@@ -134,15 +157,24 @@ testWithdraw' =
     )
     testWithdraw
 
-testDistribute' :: TestTree
-testDistribute' =
+testDistribute1' :: TestTree
+testDistribute1' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "two users collect rewards"
     ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 301 <> Value.assetClassValue danaAsset (-60))
         .&&. walletFundsChange (Wallet 2) (Value.assetClassValue Vault.dUSDAsset 201 <> Value.assetClassValue danaAsset (-40))
     )
-    testDistribute
+    testDistribute1
+
+testDistribute2' :: TestTree
+testDistribute2' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "one user collects rewards"
+    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 503 <> Value.assetClassValue danaAsset (-60))
+    )
+    testDistribute2
 
 danaStakePoolTests :: TestTree
 danaStakePoolTests =
@@ -150,5 +182,6 @@ danaStakePoolTests =
     "dana stake pool tests"
     [ testDeposit'
     , testWithdraw'
-    , testDistribute'
+    , testDistribute1'
+    , testDistribute2'
     ]
