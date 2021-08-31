@@ -168,6 +168,8 @@ testDistribute3 = do
   callEndpoint @"withdrawRewards" h2 ()
   void $ Emulator.waitNSlots 5
 
+  -- the same as testDistribute1
+
   callEndpoint @"provideRewards" h3 11
   void $ Emulator.waitNSlots 5
 
