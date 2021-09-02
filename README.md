@@ -7,8 +7,16 @@ large dependencies we use IOHK's nix binary cache.
 Here are the instructions to set up the binary cache:
 https://github.com/input-output-hk/plutus/tree/4551bba244a2f3ff890c4d2fd12a105692126d8d#iohk-binary-cache
 
-`nix-build`-based build is currently in progress.
-The project can currently be built inside a nix shell with cabal:
+Nix-based build: run
+
+```
+nix-build -A ardana-dollar.components.exes.ardana-pab
+```
+
+in the repository root directory. You should obtain an executable
+under `./result/bin/ardana-pab`
+
+The project can also be built inside a nix shell with cabal:
 
 ```
 nix-shell
