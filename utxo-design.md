@@ -665,7 +665,6 @@ AdminMintingParams
   , treasuryAddress :: ValidatorHash
   , treasuryCurrencySymbol :: CurrencySymbol
   , adminStateCurrencySymbol :: CurrencySymbol
-  , adminMintingCurrencySymbol :: CurrencySymbol
   , adminOperator :: PubKeyHash
   , ownerAddress :: PubKeyHash
   }
