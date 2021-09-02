@@ -1,7 +1,7 @@
 module ArdanaDollar.Types (CollaterizationRatio (Zero, Finite, Infinity)) where
 
 import PlutusTx.Prelude
-import qualified Prelude as Haskell
+import Prelude qualified as Haskell
 
 -- | This type represents collateral/stablecoin ratio value of a vault
 data CollaterizationRatio

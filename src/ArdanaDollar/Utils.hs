@@ -10,14 +10,22 @@ module ArdanaDollar.Utils (
   valueUnlockedBy,
   pubKeyInputsAt,
   valuePaidBy,
+  datumForOffchain,
+  datumForOnchain,
+  validateDatumImmutable,
 ) where
 
+import Data.Kind (Type)
+import Data.Map qualified as Map
+
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
+import Ledger qualified
+import Ledger.Contexts qualified as Contexts
+import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import PlutusTx qualified
 import PlutusTx.Prelude
-import qualified PlutusTx.Ratio as R
-import qualified Prelude as Haskell
-import qualified Ledger
-import Ledger.Credential (Credential(PubKeyCredential, ScriptCredential))
+import PlutusTx.Ratio qualified as R
+import Prelude qualified as Haskell
 
 {-# INLINEABLE collaterizationRatio #-}
 
@@ -148,45 +156,87 @@ availableToWithdraw exr liqRatio coll debt =
 {-# INLINEABLE scriptInputsAt #-}
 
 {- | The values of UTXO inputs being spent
- from the script address in the pending transaction -}
+ from the script address in the pending transaction
+-}
 scriptInputsAt :: Ledger.ValidatorHash -> Ledger.TxInfo -> [Ledger.Value]
 scriptInputsAt h txInfo =
   [ value
   | Ledger.TxInInfo
-      { Ledger.txInInfoResolved = Ledger.TxOut
-        { Ledger.txOutAddress = Ledger.Address (ScriptCredential s) _
-        , Ledger.txOutValue = value
-        }
-      } <- Ledger.txInfoInputs txInfo,
-    s == h
+      { Ledger.txInInfoResolved =
+        Ledger.TxOut
+          { Ledger.txOutAddress = Ledger.Address (ScriptCredential s) _
+          , Ledger.txOutValue = value
+          }
+      } <-
+      Ledger.txInfoInputs txInfo
+  , s == h
   ]
-
 
 {-# INLINEABLE valueUnlockedBy #-}
 
-{- | The total value unlocked by the given validator in this transaction -}
+-- | The total value unlocked by the given validator in this transaction
 valueUnlockedBy :: Ledger.TxInfo -> Ledger.ValidatorHash -> Ledger.Value
 valueUnlockedBy txInfo h = mconcat (scriptInputsAt h txInfo)
 
 {-# INLINEABLE pubKeyInputsAt #-}
 
-{-| The values of UTXO inputs paid by a public key address
- in a pending transaction -}
+{- | The values of UTXO inputs paid by a public key address
+ in a pending transaction
+-}
 pubKeyInputsAt :: Ledger.PubKeyHash -> Ledger.TxInfo -> [Ledger.Value]
 pubKeyInputsAt pk txInfo =
   [ value
   | Ledger.TxInInfo
-      { Ledger.txInInfoResolved = Ledger.TxOut
-        { Ledger.txOutAddress = Ledger.Address (PubKeyCredential pk') _
-        , Ledger.txOutValue = value
-        }
-      } <- Ledger.txInfoInputs txInfo,
-    pk == pk'
+      { Ledger.txInInfoResolved =
+        Ledger.TxOut
+          { Ledger.txOutAddress = Ledger.Address (PubKeyCredential pk') _
+          , Ledger.txOutValue = value
+          }
+      } <-
+      Ledger.txInfoInputs txInfo
+  , pk == pk'
   ]
 
 {-# INLINEABLE valuePaidBy #-}
 
-{-| Get the total value paid by a public key address
- in a pending transaction -}
+{- | Get the total value paid by a public key address
+ in a pending transaction
+-}
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
+
+{-# INLINEABLE datumFor #-}
+datumFor :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
+datumFor txOut f = do
+  dh <- Ledger.txOutDatum txOut
+  Ledger.Datum d <- f dh
+  PlutusTx.fromBuiltinData d
+
+datumForOffchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOutTx -> Maybe a
+datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
+
+{-# INLINEABLE datumForOnchain #-}
+datumForOnchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
+datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
+
+-- | On-chain helper function checking immutability of the validator's datum
+{-# INLINEABLE validateDatumImmutable #-}
+validateDatumImmutable ::
+  forall (datum :: Type).
+  (Eq datum, PlutusTx.FromData datum) =>
+  datum ->
+  Contexts.ScriptContext ->
+  Bool
+validateDatumImmutable td ctx =
+  traceIfFalse "datum has changed" (Just td == outputDatum)
+  where
+    info :: Contexts.TxInfo
+    info = Contexts.scriptContextTxInfo ctx
+
+    outputDatum :: Maybe datum
+    outputDatum = datumForOnchain info ownOutput
+
+    ownOutput :: Ledger.TxOut
+    ownOutput = case Contexts.getContinuingOutputs ctx of
+      [o] -> o
+      _ -> traceError "expected exactly one output"

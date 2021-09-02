@@ -1,13 +1,42 @@
 name: "Tests"
+
 on:
+  push:
+    paths:
+      - '**.hs'
+      - '**.nix'
+      - 'nix/sources.json'
+      - 'ardana-dollar.cabal'
+    branches:
+      - main
+      - staging
   pull_request:
+    paths:
+      - '**.hs'
+      - '**.nix'
+      - 'nix/sources.json'
+      - 'ardana-dollar.cabal'
+
 jobs:
-  nix-instantiate:
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  check-formatting:
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v2.3.4
-      - uses: nixbuild/nix-quick-install-action@v5
-      - run: nix-instantiate release.nix --restrict-eval -I . --allowed-uris 'https://github.com/NixOS/nixpkgs https://github.com/input-output-hk https://github.com/NixOS/nixpkgs-channels' --option trusted-public-keys "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" --option substituters "https://hydra.iohk.io https://iohk.cachix.org https://cache.nixos.org/" --show-trace
+
+      - run: ./.github/check_formatting.sh
+
+  lint:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - run: hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')
+        name: Run hlint
+
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2.3.4
+
+      - name: Build the full CI
+        run: nix-build ./nix/ci.nix -I nixpkgs=channel:nixos-21.05

@@ -1,39 +1,5 @@
-{packages ? import ./. {}}:
-let
-  inherit (packages) pkgs plutus-starter;
-  inherit (plutus-starter) haskell;
-  inherit (packages) project;
-
-in
-  project.shellFor {
-    withHoogle = false;
-
-    nativeBuildInputs = with plutus-starter; [
-      hlint
-      cabal-install
-      haskell-language-server
-      stylish-haskell
-      pkgs.niv
-      cardano-repo-tool
-    ];
-  }
-
-/*
-{ lib
-, sourcesFile ? ./nix/sources.json, system ? builtins.currentSystem
-, sources ? import ./nix/sources.nix { inherit system sourcesFile; }
-, plutus-latest ? import sources.plutus-latest { }
-, plutus ? import sources.plutus { }
-, pab ? (import ./nix/default.nix { inherit sourcesFile system; }).pab }:
-
-let
-  project = (import nix/pkgs/haskell/haskell.nix {
-    inherit sourcesFile sources plutus;
-    deferPluginErrors = true;
-  });
-  inherit (plutus) pkgs;
-in (project.shellFor (pab.env_variables // {
-
+with import ./nix { };
+(plutus.plutus.haskell.project.shellFor (pab.env_variables // {
   # Select packages who's dependencies should be added to the shell env
   packages = ps: [ ];
 
@@ -64,10 +30,10 @@ in (project.shellFor (pab.env_variables // {
       plutus.plutus.hlint
       haskellPackages.fourmolu
       nixfmt
+      niv
       haskellPackages.cabal-fmt
 
-      # Using plutus-latest, we get access to hls with ghc 8.10.4.20210212
-      plutus-latest.plutus.haskell-language-server
+      plutus.plutus.haskell-language-server
 
       # hls doesn't support preprocessors yet so this has to exist in PATH
       haskellPackages.record-dot-preprocessor
@@ -88,14 +54,11 @@ in (project.shellFor (pab.env_variables // {
       pab.plutus_pab_client
 
       ### Example contracts
-      plutus.plutus-currency
-      plutus.plutus-atomic-swap
-
+      plutus.plutus-pab-examples
     ] ++ (builtins.attrValues pab.plutus_pab_exes);
 
   nativeBuildInputs = (with plutus.pkgs;
-    [ cacert z3 zlib libsodium git cacert pkg-config ]
-    ++ (lib.optionals (!stdenv.isDarwin) [ rPackages.plotly R ]));
+    [ zlib pkg-config libsodium-vrf R ]
+    ++ (lib.optionals (!stdenv.isDarwin) [ rPackages.plotly systemd ]));
 
 }))
-*/

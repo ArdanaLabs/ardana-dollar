@@ -1,35 +1,9 @@
-{ checkMaterialization ? false
-, system ? builtins.currentSystem
-, sourcesOverride ? { }
-, sources ? import ./nix/sources.nix { inherit system; } // sourcesOverride
-}:
-
+{ sourcesFile ? ./nix/sources.json, system ? builtins.currentSystem
+, sources ? import ./nix/sources.nix { inherit system sourcesFile; }
+, plutus ? import sources.plutus { }, deferPluginErrors ? true
+, doCoverage ? true }:
 let
-  # Here a some of the various attributes for the variable 'packages':
-  #
-  # { pkgs
-  #   plutus-starter: {
-  #     haskell: {
-  #       project # The Haskell project created by haskell-nix.project
-  #       packages # All the packages defined by our project, including dependencies
-  #       projectPackages # Just the packages in the project
-  #     }
-  #     hlint
-  #     cabal-install
-  #     stylish-haskell
-  #     haskell-language-server
-  #   }
-  # }
-  packages = import ./nix {
-    inherit checkMaterialization;
+  project = import ./nix/haskell.nix {
+    inherit sourcesFile system sources plutus deferPluginErrors doCoverage;
   };
-
-  inherit (packages) pkgs plutus-starter;
-  project = plutus-starter.haskell.project;
-in
-{
-  inherit pkgs plutus-starter;
-
-  inherit project;
-  inherit packages;
-}
+in project
