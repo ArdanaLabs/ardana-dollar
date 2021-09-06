@@ -128,9 +128,7 @@
   - {name: fromIntegral, within: []}
 
 - extensions:
-  - { name: DuplicateRecordFields, within: [] }
   - { name: NamedFieldPuns, within: [] }
-  - { name: TupleSections, within: [] }
   - { name: OverloadedLabels, within: [] }
 
 # Better error messages
