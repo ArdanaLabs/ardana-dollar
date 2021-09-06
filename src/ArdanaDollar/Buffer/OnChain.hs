@@ -16,7 +16,7 @@ import PlutusTx.Prelude
 
 import ArdanaDollar.Buffer.Types
 import ArdanaDollar.Treasury.Types (Treasury (stateTokenSymbol))
-import ArdanaDollar.Utils (validateDatumImmutable)
+import ArdanaDollar.Utils (safeDivide, safeRemainder, validateDatumImmutable)
 
 {-# INLINEABLE mkBufferValidator #-}
 mkBufferValidator ::
@@ -105,8 +105,8 @@ validateSurplusAuction ::
 validateSurplusAuction danaAC dusdAsset bd ctx treasuryInput treasuryOutput dusdAmount =
   validateDatumImmutable bd ctx
     && traceIfFalse "non-positive amount of dUSD to withdraw" (dusdAmount > 0)
-    && traceIfFalse "non-positive amount of DANA to pay" (danaPrice > 0)
-    && traceIfFalse "indivisible amount of DANA to pay" (danaRem == 0)
+    && traceIfFalse "non-positive amount of DANA to pay" (maybe False (> 0) danaPrice)
+    && traceIfFalse "indivisible amount of DANA to pay" (Just 0 == danaRem)
     && traceIfFalse "DANA not burned" isDanaPaid
     && traceIfFalse "dUSD price not withdrawed" isSurplusWithdrawed
   where
@@ -114,17 +114,19 @@ validateSurplusAuction danaAC dusdAsset bd ctx treasuryInput treasuryOutput dusd
     currSurplus :: Integer
     currSurplus = currentSurplusAuctionPrice bd
 
-    danaPrice :: Integer
-    danaPrice = dusdAmount `divide` currSurplus
+    danaPrice :: Maybe Integer
+    danaPrice = dusdAmount `safeDivide` currSurplus
 
-    danaRem :: Integer
-    danaRem = dusdAmount `remainder` currSurplus
+    danaRem :: Maybe Integer
+    danaRem = dusdAmount `safeRemainder` currSurplus
 
     isDanaPaid :: Bool
-    isDanaPaid =
-      let inDana = dusdValue danaAC treasuryInput
-          outDana = dusdValue danaAC treasuryOutput
-       in outDana == inDana + danaPrice
+    isDanaPaid = case danaPrice of
+      Nothing -> False
+      Just dp ->
+        let inDana = dusdValue danaAC treasuryInput
+            outDana = dusdValue danaAC treasuryOutput
+         in outDana == inDana + dp
 
     isSurplusWithdrawed :: Bool
     isSurplusWithdrawed =

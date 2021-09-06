@@ -129,7 +129,7 @@ depositFundsWithCostCenter ::
   Contract w s e ()
 depositFundsWithCostCenter treasury params = do
   pkh <- Crypto.pubKeyHash <$> ownPubKey
-  logInfo ("called depositFundsWithCostCenter with params: " ++ show params)
+  logInfo ("called depositFundsWithCostCenter with params: " <> show params)
   let ac = treasuryDepositCurrency params
       amount = treasuryDepositAmount params
       centerName = treasuryDepositCostCenter params

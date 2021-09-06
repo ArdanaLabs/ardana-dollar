@@ -232,7 +232,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
       b <- f (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
       return (b, a)
       where
-        f txOuts = case map (\txOut -> (txOut, globalDatum txOut)) $ filter hasNFT txOuts of
+        f txOuts = case fmap (\txOut -> (txOut, globalDatum txOut)) $ filter hasNFT txOuts of
           [(txOut, Just dat)] -> Just (txOut, dat)
           _ -> Nothing
 
@@ -248,7 +248,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
       else
         Nothing
       where
-        f txOuts = case map (\txOut -> (txOut, userDatum txOut))
+        f txOuts = case fmap (\txOut -> (txOut, userDatum txOut))
                          $ filter isValid
                          $ filter hasUserToken txOuts
                    of

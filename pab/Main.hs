@@ -129,7 +129,7 @@ main = void $
     _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
     Simulator.waitNSlots 10
     queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
-    logBlueString $ "Deposited currently: " ++ show queriedCosts
+    logBlueString $ "Deposited currently: " <> show queriedCosts
     logCurrentBalances_
     Simulator.waitNSlots 20
 
@@ -162,7 +162,7 @@ main = void $
     wallets = Wallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
-    logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " ++ s) >> logNewLine
+    logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " <> s) >> logNewLine
 
     logCurrentBalances_ :: Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logCurrentBalances_ = do
@@ -207,15 +207,16 @@ handlers =
     interpret (contractHandler Builtin.handleBuiltin)
 
 -- helper functions
+{- HLINT ignore logTitleSequence "Avoid restricted function" -}
 logTitleSequence :: forall (t :: Type). Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
 logTitleSequence = do
   logWithBg ""
-  logWithBg $ spaceStr ++ ardanaName ++ spaceStr
+  logWithBg $ spaceStr <> ardanaName <> spaceStr
   logWithBg ""
   where
     ardanaName = "Ardana"
     titleWidth = 60
-    spaceWidth = (titleWidth - length ardanaName) `div` 2
+    spaceWidth = (titleWidth - length ardanaName) `div` 2 -- partial, but the divisor is not zero
     spaceStr = [' ' | _ <- [0 .. spaceWidth - 1]]
 
     logWithBg = logPrettyBgColor titleWidth (Vibrant Blue) (Standard White) >=> const logNewLine
@@ -233,7 +234,7 @@ logWalletBalance availableWallets w val = case w of
   where
     logWalletBalance' = do
       logNewLine
-      logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " ++ show w ++ "  ")
+      logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " <> show w <> "  ")
       logNewLine
       logPrettyColor (Standard Blue) (formatValue val)
       logNewLine
@@ -254,8 +255,8 @@ formatValue (Value.Value m) =
     formatTokenValue (name, value)
       | value == 0 = ""
       | otherwise = case name of
-        "" -> padRight ' ' 10 "ADA" ++ " : " ++ show value
-        tn -> padRight ' ' 10 (safeTokenNameToString tn) ++ " : " ++ show value
+        "" -> padRight ' ' 10 "ADA" <> " : " <> show value
+        tn -> padRight ' ' 10 (safeTokenNameToString tn) <> " : " <> show value
 
     safeTokenNameToString :: Value.TokenName -> String
     safeTokenNameToString tn@(Value.TokenName n) = case bsToString n of
@@ -265,5 +266,5 @@ formatValue (Value.Value m) =
     bsToString (BuiltinByteString bs) = Text.unpack <$> decodeUtf8' bs
 
     trimHash :: String -> String
-    trimHash ('0' : 'x' : rest) = "0x" ++ take 7 rest
+    trimHash ('0' : 'x' : rest) = "0x" <> take 7 rest
     trimHash hash = hash

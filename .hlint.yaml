@@ -1,0 +1,150 @@
+#####################################################################################
+#                                                                                   #
+#                      Settings borrowed from HLint --default                      #
+#                                                                                   #
+#####################################################################################
+- arguments: [--color, --cpp-simple, -XQuasiQuotes]
+- group: {name: generalise, enabled: true}
+
+#####################################################################################
+#                                                                                   #
+#                          Settings from MLabs styleguide                           #
+#                                                                                   #
+#####################################################################################
+#
+# Changes:
+# - Do not ignore "Use newtype instead of data"
+#
+#####################################################################################
+- ignore: {name: "Use <$>"}
+- warn: {name: Use explicit module import list}
+- warn: {name: Use module export list}
+
+#####################################################################################
+#                                                                                   #
+# Settings borrowed from https://github.com/NorfairKing/haskell-dangerous-functions #
+#                                                                                   #
+#####################################################################################
+#
+# Changes:
+# - Do not prohibit use of `return`
+# - Do not prohibit use of `DeriveAnyClass` extension (required by PAB anyway)
+# - Do not prohibit use of Lens library
+# - Print more meaningful warning messages for `foldl`, `nub`, `read`, `decodeUtf8`,
+#   `either`, and `unless`
+# - Prohibit use of PlutusTx's versions of `div`, `mod`, `rem`, and `quot`
+#
+#####################################################################################
+- ignore: { name: "Use unless" }
+
+- functions:
+  - {name: unsafeDupablePerformIO, within: []} # Unsafe
+  - {name: unsafeInterleaveIO, within: []} # Unsafe
+  - {name: unsafeFixIO, within: []} # Unsafe
+  - {name: unsafePerformIO, within: []} # Unsafe
+
+  # _VERY_ hard to get right, use the async library instead.
+  # See also https://github.com/informatikr/hedis/issues/165
+  - {name: forkIO, within: []}
+  # Mostly impossible to get right, rethink what you're doing entirely.
+  # See also https://www.reddit.com/r/haskell/comments/jsap9r/how_dangerous_is_forkprocess/
+  - {name: forkProcess, within: []}
+
+  - {name: undefined, within: []} # Purposely fails. Deal with errors appropriately instead.
+  - {name: throw, within: []} # Don't throw from pure code, use throwIO instead.
+  - {name: Prelude.error, within: []}
+
+  - {name: Data.List.tail, within: [], message: "partial function"}
+  - {name: Data.List.init, within: [], message: "partial function"}
+  - {name: Data.List.last, within: [], message: "partial function"}
+  - {name: 'Data.List.!!', within: [], message: "partial function"}
+  - {name: Data.List.genericIndex, within: [], message: "partial function"}
+
+  - {name: minimum, within: [], message: "partial function"}
+  - {name: minimumBy, within: [], message: "partial function"}
+  - {name: maximum, within: [], message: "partial function"}
+  - {name: maximumBy, within: [], message: "partial function"}
+
+  - {name: GHC.Enum.pred, within: [], message: "partial function"}
+  - {name: GHC.Enum.suc, within: [], message: "partial function"}
+  - {name: GHC.Enum.toEnum, within: [], message: "partial function"}
+  - {name: GHC.Enum.fromEnum, within: []} # Does not do what you think it does.
+  - {name: GHC.Enum.enumFrom, within: []} # Does not do what you think it does, depending on the type.
+  - {name: GHC.Enum.enumFromThen, within: []} # Does not do what you think it does, depending on the type.
+  - {name: GHC.Enum.enumFromTo, within: []} # Does not do what you think it does, depending on the type.
+  - {name: GHC.Enum.enumFromThenTo, within: []} # Does not do what you think it does, depending on the type.
+
+  - {name: either, within: [], message: "confusing; just use a case-match."}
+
+  - {name: sum, within: [], message: "lazy accumulator"}
+  - {name: product, within: [], message: "lazy accumulator"}
+
+  # Functions involving division
+  - {name: Prelude.quot, within: [], message: "partial function"} # see https://github.com/NorfairKing/haskell-WAT#num-int
+  - {name: PlutusTx.Prelude.quotient, within: [], message: "partial function"}
+  - {name: Prelude.div, within: [], message: "partial function"}
+  - {name: PlutusTx.Prelude.divide, within: [], message: "partial function"}
+  - {name: Prelude.rem, within: [], message: "partial function"}
+  - {name: PlutusTx.Prelude.remainder, within: [], message: "partial function"}
+  - {name: Prelude.mod, within: [], message: "partial function"}
+  - {name: PlutusTx.Prelude.modulo, within: [], message: "partial function"}
+  - {name: Prelude.quotRem, within: [], message: "partial function"}
+  - {name: Prelude.divMod, within: [], message: "partial function"}
+
+  # Does unexpected things, see
+  # https://github.com/NorfairKing/haskell-WAT#real-double
+  - {name: realToFrac, within: []}
+
+  # Don't use string for command-line output.
+  - {name: System.IO.putChar, within: []}
+  - {name: System.IO.putStr, within: []}
+  - {name: System.IO.putStrLn, within: []}
+  - {name: System.IO.print, within: []}
+
+  # Don't use string for command-line input either.
+  - {name: System.IO.getChar, within: []}
+  - {name: System.IO.getLine, within: []}
+  - {name: System.IO.getContents, within: []} # Does lazy IO.
+  - {name: System.IO.interact, within: []}
+  - {name: System.IO.readIO, within: []}
+  - {name: System.IO.readLn, within: []}
+
+  # Don't use strings to interact with files
+  - {name: System.IO.readFile, within: []}
+  - {name: System.IO.writeFile, within: []}
+  - {name: System.IO.appendFile, within: []}
+
+  # Can succeed in dev, but fail in prod, because of encoding guessing
+  # It's also Lazy IO.
+  # See https://www.snoyman.com/blog/2016/12/beware-of-readfile/ for more info.
+  - {name: Data.Text.IO.readFile, within: [], message: "introduces encoding errors"}
+  - {name: Data.Text.IO.Lazy.readFile, within: [], message: "introduces encoding errors"}
+
+  - {name: fromJust, within: [], message: "partial function"}
+
+  # Does silent truncation:
+  # > fromIntegral (300 :: Word) :: Word8
+  # 44
+  - {name: fromIntegral, within: []}
+
+- extensions:
+  - { name: DuplicateRecordFields, within: [] }
+  - { name: NamedFieldPuns, within: [] }
+  - { name: TupleSections, within: [] }
+  - { name: OverloadedLabels, within: [] }
+
+# Better error messages
+- warn: {name: "Avoid lazy foldl", lhs: foldl, rhs: foldl', note: "lazy; use foldl' instead"}
+- warn: {name: "Avoid partial read", lhs: read, rhs: Text.Read.readMaybe, note: "partial function"}
+- warn: {name: "Avoid unless", lhs: unless, rhs: when . not, note: "confusing"}
+- warn: {name: "Avoid head", lhs: Data.List.head, rhs: listToMaybe, note: "partial function"}
+- warn:
+    name: "Avoid using nub because of time complexity"
+    lhs: nub
+    rhs: Data.Containers.ListUtils.nubOrd
+    note: "O(n^2)"
+- warn:
+    name: "Avoid throwing decode"
+    lhs: Data.Text.Encoding.decodeUtf8
+    rhs: Data.Text.Encoding.decodeUtf8'
+    note: "throws on invalid UTF-8 data"
