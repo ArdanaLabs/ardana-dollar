@@ -142,7 +142,7 @@ pabSimulation = do
 
   -- Start buffer
   logBlueString "Start buffer contract"
-  _ <- Simulator.activateContract (knownWallet 1) (BufferStart treasury)
+  _ <- Simulator.activateContract (knownWallet 1) (BufferStart treasury (50, 50))
   Simulator.waitNSlots 10
   logCurrentBalances_
 
@@ -166,7 +166,7 @@ pabSimulation = do
   shutdown
   where
     wallets :: [Wallet]
-    wallets = Wallet <$> [1 .. 2]
+    wallets = knownWallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " <> s) >> logNewLine
@@ -181,7 +181,7 @@ data ArdanaContracts
   = VaultContract
   | TreasuryContract Treasury
   | TreasuryStart
-  | BufferStart Treasury
+  | BufferStart Treasury (Integer, Integer)
   | BufferContract Treasury
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -197,7 +197,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
     TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
-    BufferStart _ -> Builtin.endpointsToSchemas @EmptySchema
+    BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
 
   getContract :: ArdanaContracts -> SomeBuiltin
@@ -205,7 +205,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> SomeBuiltin vaultContract
     TreasuryStart -> SomeBuiltin treasuryStartContract
     TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
-    BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
+    BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)

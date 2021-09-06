@@ -74,12 +74,13 @@ bufferValidator t dac = Scripts.validatorScript $ bufferInst t dac
 bufferAddress :: Treasury -> Value.AssetClass -> Ledger.Address
 bufferAddress t dac = Ledger.scriptAddress $ bufferValidator t dac
 
-startBuffer :: (AsContractError e) => Treasury -> Contract w EmptySchema e ()
-startBuffer treasury = do
+startBuffer :: (AsContractError e) => Treasury -> (Integer, Integer) -> Contract w EmptySchema e ()
+startBuffer treasury (initialDebt, initialSurplus) = do
+  -- TODO: prices should be computed
   let bd =
         BufferDatum
-          { currentDebtAuctionPrice = 50
-          , currentSurplusAuctionPrice = 50
+          { currentDebtAuctionPrice = initialDebt
+          , currentSurplusAuctionPrice = initialSurplus
           }
       tx = Constraints.mustPayToTheScript bd mempty
   ledgerTx <- submitTxConstraints (bufferInst treasury danaAssetClass) tx
@@ -111,25 +112,24 @@ debtAuction treasury danaAmount = do
   pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo @String $ printf "User %s has called debtAuction" (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
-  case maybeArgs of
-    Nothing -> return ()
-    Just args -> do
-      let dusdPrice = currentDebtAuctionPrice (bufferDatum args) * danaAmount
-          danaValue = Value.assetClassValue danaAssetClass danaAmount
-          treasuryValue =
-            (treasuryOutput args ^. Ledger.ciTxOutValue)
-              <> Value.assetClassValue dUSDAsset dusdPrice
-              <> negate danaValue
-          td = treasuryDatum args
-          bd = bufferDatum args
+  flip (maybe $ return ()) maybeArgs $ \args -> do
+    let dusdPrice = currentDebtAuctionPrice (bufferDatum args) * danaAmount
+        danaValue = Value.assetClassValue danaAssetClass danaAmount
+        treasuryValue =
+          (treasuryOutput args ^. Ledger.ciTxOutValue)
+            <> Value.assetClassValue dUSDAsset dusdPrice
+            <> negate danaValue
+        bufferValue = bufferOutput args ^. Ledger.ciTxOutValue
+        td = treasuryDatum args
+        bd = bufferDatum args
 
-          tx =
-            txConstraintsCtr args td treasuryValue bd mempty (MkDebtBid danaAmount)
-              <> Constraints.mustPayToPubKey pkh danaValue
-      ledgerTx <- submitTxConstraintsWith (txLookups args) tx
-      awaitTxConfirmed $ Ledger.txId ledgerTx
-      logInfo @String $
-        printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
+        tx =
+          txConstraintsCtr args td treasuryValue bd bufferValue (MkDebtBid danaAmount)
+            <> Constraints.mustPayToPubKey pkh danaValue
+    ledgerTx <- submitTxConstraintsWith (txLookups args) tx
+    awaitTxConfirmed $ Ledger.txId ledgerTx
+    logInfo @String $
+      printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
 
 surplusAuction ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
@@ -152,9 +152,10 @@ surplusAuction treasury dusdAmount = do
               (treasuryOutput args ^. Ledger.ciTxOutValue)
                 <> Value.assetClassValue danaAssetClass danaPrice
                 <> negate dusdValue
+            bufferValue = bufferOutput args ^. Ledger.ciTxOutValue
 
             tx =
-              txConstraintsCtr args td treasuryValue bd mempty (MkSurplusBid dusdAmount)
+              txConstraintsCtr args td treasuryValue bd bufferValue (MkSurplusBid dusdAmount)
                 <> Constraints.mustPayToPubKey pkh dusdValue
          in if danaRem /= 0
               then

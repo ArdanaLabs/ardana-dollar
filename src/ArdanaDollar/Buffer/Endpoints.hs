@@ -27,6 +27,7 @@ bufferStartContract ::
   forall (w :: Type) (e :: Type).
   (AsContractError e) =>
   Treasury ->
+  (Integer, Integer) ->
   Contract w EmptySchema e ()
 bufferStartContract = startBuffer
 

@@ -94,7 +94,7 @@ instance ContractModel BufferModel where
       void $ Emulator.waitNSlots 5
       treasury <- getBus cTreasuryId
       void $ Emulator.waitNSlots 5
-      _ <- Emulator.activateContractWallet w1 (bufferStartContract @() @ContractError treasury <* Contract.waitNSlots 5)
+      _ <- Emulator.activateContractWallet w1 (bufferStartContract @() @ContractError treasury (50, 50) <* Contract.waitNSlots 5)
       void $ Emulator.waitNSlots 15
     DebtAuction w i -> do
       callEndpoint @"debtAuction" (handle $ BufferAuction w) i
