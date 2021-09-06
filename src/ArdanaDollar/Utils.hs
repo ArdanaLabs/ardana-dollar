@@ -13,6 +13,9 @@ module ArdanaDollar.Utils (
   datumForOffchain,
   datumForOnchain,
   validateDatumImmutable,
+  safeDivide,
+  safeRemainder,
+  safeDivMod,
 ) where
 
 import Data.Kind (Type)
@@ -240,3 +243,23 @@ validateDatumImmutable td ctx =
     ownOutput = case Contexts.getContinuingOutputs ctx of
       [o] -> o
       _ -> traceError "expected exactly one output"
+
+-- Both `safeDiv` and `safeRem` works on Integers; Haskell's Integral instance
+-- for Integer throws only on 0, hence we are allowed to ignore the HLint by
+-- pattern-matching on the divisor
+{- HLINT ignore safeDivide "Avoid restricted function" -}
+{-# INLINEABLE safeDivide #-}
+safeDivide :: Integer -> Integer -> Maybe Integer
+a `safeDivide` b
+  | b == 0 = Nothing
+  | otherwise = Just $ a `divide` b
+
+{- HLINT ignore safeRemainder "Avoid restricted function" -}
+{-# INLINEABLE safeRemainder #-}
+safeRemainder :: Integer -> Integer -> Maybe Integer
+a `safeRemainder` b
+  | b == 0 = Nothing
+  | otherwise = Just $ a `remainder` b
+
+safeDivMod :: Integer -> Integer -> Maybe (Integer, Integer)
+a `safeDivMod` b = (,) <$> (a `safeDivide` b) <*> (a `safeRemainder` b)

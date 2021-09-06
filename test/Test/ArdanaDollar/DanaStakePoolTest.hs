@@ -18,7 +18,6 @@ import Prelude
 import Ledger.Value qualified as Value
 
 import Data.Map qualified as Map
-import Data.Maybe
 import Data.Monoid
 import Ledger.Ada as Ada
 import Plutus.Contract.Test
@@ -49,7 +48,10 @@ initializeSystem = do
   h <- activateContractWallet (Wallet 1) PEndpoints.initializeSystemEndpoint
   callEndpoint @"initializeSystem" h ()
   void $ Emulator.waitNSlots 5
-  fromJust . getLast <$> observableState h
+  mAssetClass <- getLast <$> observableState h
+  case mAssetClass of
+    Just assetClass -> return assetClass
+    Nothing -> throwError $ GenericError "Could not initialize system"
 
 testDeposit :: EmulatorTrace ()
 testDeposit = do

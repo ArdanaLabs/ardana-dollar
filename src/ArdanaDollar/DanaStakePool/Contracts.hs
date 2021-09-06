@@ -124,7 +124,7 @@ initializeSystem = do
 
   ledgerTx <- submitTxConstraints (spInst (NFTAssetClass nftAssetClass)) c
   awaitTxConfirmed $ Ledger.txId ledgerTx
-  logInfo @String $ "Initialized global state represented by token: " ++ show nftAssetClass
+  logInfo @String $ "Initialized global state represented by token: " <> show nftAssetClass
   tell $ Last $ Just (NFTAssetClass nftAssetClass)
   return ()
 
@@ -153,7 +153,7 @@ initializeUser nft = do
           <> Constraints.mustPayToTheScript (GlobalDatum newGlobalData) newGlobalValue
           <> spendWithConstRedeemer InitializeUser toSpend
 
-  logInfo @String $ "initializing user with: %s" ++ show newUserData
+  logInfo @String $ "initializing user with: %s" <> show newUserData
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -293,7 +293,7 @@ distributeRewards nft _ = do
       | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
-          logInfo @String $ "found utxos" ++ show (length sorted) ++ show sorted
+          logInfo @String $ "found utxos" <> show (length sorted) <> show sorted
           distributeRewardsTrigger nft
           txs
           distributeRewardsUser nft totalReward False (last sorted)

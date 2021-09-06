@@ -2,22 +2,18 @@ module Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests) where
 
 import Control.Lens
 import Control.Monad (void)
-import Control.Monad.Freer.Extras as Extras
 import Data.Aeson
 import Data.Default (Default (..))
 import Data.Map qualified as Map
-import Data.Row.Internal
 import Data.Semigroup qualified as Semigroup
 import Ledger.Ada as Ada
 import Ledger.Value as Value
 import Plutus.Contract (ContractError)
 import Plutus.Contract qualified as Contract
-import Plutus.Contract.Schema
 import Plutus.Contract.Test
 import Plutus.Trace.Emulator as Emulator
 import PlutusTx.Prelude
 import Test.Tasty
-import Prelude (String, undefined)
 
 import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.Treasury.Endpoints
@@ -143,14 +139,7 @@ draftTrace cont = do
 
 getBus ::
   forall w s e.
-  ( AllUniqueLabels (Input s)
-  , AllUniqueLabels (Output s)
-  , Forall (Input s) Unconstrained1
-  , Forall (Input s) FromJSON
-  , Forall (Input s) ToJSON
-  , Forall (Output s) Unconstrained1
-  , Forall (Output s) FromJSON
-  , Forall (Output s) ToJSON
+  ( ContractConstraints s
   , FromJSON e
   , FromJSON w
   , ToJSON w
@@ -161,4 +150,4 @@ getBus cId = do
   ob <- observableState cId
   case getOutputBus ob of
     Just (Semigroup.Last s) -> return s
-    Nothing -> Extras.logError @String "error in getOutputBus" >> undefined
+    Nothing -> throwError $ GenericError "error in getOutputBus"
