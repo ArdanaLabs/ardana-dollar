@@ -61,6 +61,8 @@ common lang
     -Wmissing-export-lists -Werror -Wincomplete-record-updates
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
+    -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
+    -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-identities
 
 common deps
   build-depends:
