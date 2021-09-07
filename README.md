@@ -23,6 +23,20 @@ nix-shell
 cabal build
 ```
 
+## Code coverage report
+
+Code coverage report can be produced with
+
+```
+make coverage
+```
+
+or
+
+```
+nix-build --arg doCoverage true -A projectCoverageReport
+```
+
 ## Core git branches
 
 `main` branch will hold the current working demo
