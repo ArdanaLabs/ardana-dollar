@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.Vault (
-  VaultDatum (vaultCollateral, vaultDebt),
+  VaultDatum (..),
   VaultRedeemer (CollateralRedeemer, DebtRedeemer),
   Vaulting,
   VaultSchema,
@@ -59,10 +59,10 @@ import Text.Printf (printf)
 import Prelude qualified as Haskell
 
 data VaultDatum = VaultDatum
-  { vaultCollateral :: Integer
-  , vaultDebt :: Integer
+  { vaultCollateral :: !Integer
+  , vaultDebt :: !Integer
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''VaultDatum [('VaultDatum, 0)]
 

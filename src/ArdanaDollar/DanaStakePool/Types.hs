@@ -52,7 +52,7 @@ data UserData = UserData
   , userData'balance :: Balance
   , userData'id :: Integer
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 data TraversalState = TraversalInactive | TraversalActive Value.Value Integer
@@ -69,7 +69,7 @@ data GlobalData = GlobalData
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 data Datum = UserDatum UserData | GlobalDatum GlobalData
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 data Redeemer
@@ -78,7 +78,7 @@ data Redeemer
   | DistributeRewards
   | WithdrawRewards
   | InitializeUser
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Show, Generic, Haskell.Eq)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 instance Eq GlobalData where

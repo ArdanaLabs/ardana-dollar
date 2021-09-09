@@ -3,6 +3,7 @@ module Main (main) where
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.Utils (vaultUnitTests)
+import Test.Roundtrips.JSON (jsonRoundtripTests)
 import Test.Tasty (defaultMain, testGroup)
 import Prelude (IO, ($))
 
@@ -11,7 +12,8 @@ main =
   defaultMain $
     testGroup
       "tests"
-      [ vaultUnitTests
+      [ jsonRoundtripTests
+      , vaultUnitTests
       , bufferTraceTests
       , danaStakePoolTests
       ]

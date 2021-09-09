@@ -90,8 +90,10 @@ common deps
 common test-deps
   import:        deps
   build-depends:
+    , hedgehog
     , lens
     , tasty
+    , tasty-hedgehog
     , tasty-hunit
 
 library
@@ -128,9 +130,13 @@ test-suite ardana-dollar-test
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
   other-modules:
+    Hedgehog.Gen.ArdanaDollar
+    Hedgehog.Gen.Extra
+    Hedgehog.Gen.Plutus
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
+    Test.Roundtrips.JSON
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts

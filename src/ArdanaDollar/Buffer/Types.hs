@@ -10,7 +10,7 @@ module ArdanaDollar.Buffer.Types (
 
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
-import Prelude (Show)
+import Prelude qualified
 
 --------------------------------------------------------------------------------
 
@@ -23,13 +23,13 @@ data BufferDatum = BufferDatum
   { currentDebtAuctionPrice :: !Integer
   , currentSurplusAuctionPrice :: !Integer
   }
-  deriving stock (Generic, Show)
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON)
 
 data BufferAction
   = MkDebtBid Integer
   | MkSurplusBid Integer
-  deriving (Show)
+  deriving (Prelude.Show)
 
 instance Eq BufferDatum where
   (BufferDatum debt1 surplus1) == (BufferDatum debt2 surplus2)
