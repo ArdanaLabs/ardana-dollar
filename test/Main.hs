@@ -1,5 +1,6 @@
 module Main (main) where
 
+import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.Utils (vaultUnitTests)
@@ -9,7 +10,9 @@ import Test.Tasty (defaultMain, testGroup)
 import Prelude (IO, ($))
 
 main :: IO ()
-main =
+main = do
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
   defaultMain $
     testGroup
       "tests"
