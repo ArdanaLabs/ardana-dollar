@@ -136,10 +136,11 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
+    Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
 
   hs-source-dirs: test
-  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
+  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
   build-depends:  ardana-dollar
 
 executable ardana-pab

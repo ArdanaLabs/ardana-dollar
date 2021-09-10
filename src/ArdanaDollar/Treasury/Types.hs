@@ -94,7 +94,7 @@ data TreasuryAction
   | AllowMint
   | AllowBurn
   | InitiateUpgrade
-  deriving (Prelude.Show)
+  deriving (Prelude.Eq, Prelude.Show)
 
 -- instances
 instance Eq TreasuryDatum where

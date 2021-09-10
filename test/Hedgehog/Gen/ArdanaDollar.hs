@@ -1,5 +1,7 @@
 module Hedgehog.Gen.ArdanaDollar (
   vaultDatum,
+  vaultRedeemer,
+  bufferAction,
   bufferDatum,
   danaNftAssetClass,
   danaBalance,
@@ -9,6 +11,7 @@ module Hedgehog.Gen.ArdanaDollar (
   danaDatum,
   danaRedeemer,
   treasury,
+  treasuryAction,
   treasuryStateTokenParams,
   treasuryDatum,
   treasuryDepositParams,
@@ -35,7 +38,10 @@ import Hedgehog.Gen.Plutus (
 import PlutusTx.Prelude qualified as P
 import PlutusTx.UniqueMap qualified as UniqueMap
 
-import ArdanaDollar.Buffer.Types qualified as Buffer (BufferDatum (..))
+import ArdanaDollar.Buffer.Types qualified as Buffer (
+  BufferAction (..),
+  BufferDatum (..),
+ )
 import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   Balance (..),
   Datum (..),
@@ -47,15 +53,29 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
   Treasury (..),
+  TreasuryAction (..),
   TreasuryDatum (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
   TreasuryStateTokenParams (..),
  )
-import ArdanaDollar.Vault (VaultDatum (..))
+import ArdanaDollar.Vault (
+  VaultDatum (..),
+  VaultRedeemer (CollateralRedeemer, DebtRedeemer),
+ )
 
 vaultDatum :: forall (m :: Type -> Type). MonadGen m => m VaultDatum
 vaultDatum = VaultDatum <$> integer <*> integer
+
+vaultRedeemer :: forall (m :: Type -> Type). MonadGen m => m VaultRedeemer
+vaultRedeemer = Gen.element [CollateralRedeemer, DebtRedeemer]
+
+bufferAction :: forall (m :: Type -> Type). MonadGen m => m Buffer.BufferAction
+bufferAction =
+  Gen.choice
+    [ Buffer.MkDebtBid <$> integer
+    , Buffer.MkSurplusBid <$> integer
+    ]
 
 bufferDatum :: forall (m :: Type -> Type). MonadGen m => m Buffer.BufferDatum
 bufferDatum = Buffer.BufferDatum <$> integer <*> integer
@@ -102,6 +122,17 @@ danaRedeemer =
 
 treasury :: forall (m :: Type -> Type). MonadGen m => m Treasury.Treasury
 treasury = Treasury.Treasury <$> assetClass <*> treasuryStateTokenParams
+
+treasuryAction :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryAction
+treasuryAction =
+  Gen.choice
+    [ pure Treasury.BorrowForAuction
+    , Treasury.DepositFundsWithCostCenter <$> treasuryDepositParams
+    , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
+    , pure Treasury.AllowMint
+    , pure Treasury.AllowBurn
+    , pure Treasury.InitiateUpgrade
+    ]
 
 treasuryStateTokenParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryStateTokenParams
 treasuryStateTokenParams = Treasury.TreasuryStateTokenParams <$> tokenName <*> txOutRef

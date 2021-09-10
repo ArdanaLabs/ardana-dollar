@@ -29,7 +29,7 @@ data BufferDatum = BufferDatum
 data BufferAction
   = MkDebtBid Integer
   | MkSurplusBid Integer
-  deriving (Prelude.Show)
+  deriving (Prelude.Eq, Prelude.Show)
 
 instance Eq BufferDatum where
   (BufferDatum debt1 surplus1) == (BufferDatum debt2 surplus2)

@@ -69,7 +69,7 @@ PlutusTx.makeIsDataIndexed ''VaultDatum [('VaultDatum, 0)]
 data VaultRedeemer
   = CollateralRedeemer
   | DebtRedeemer
-  deriving stock (Haskell.Show)
+  deriving stock (Haskell.Eq, Haskell.Show)
 PlutusTx.makeIsDataIndexed
   ''VaultRedeemer
   [ ('CollateralRedeemer, 0)
