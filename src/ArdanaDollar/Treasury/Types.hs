@@ -22,7 +22,6 @@ module ArdanaDollar.Treasury.Types (
 --------------------------------------------------------------------------------
 
 import GHC.Generics (Generic)
-import Prelude (Show)
 import Prelude qualified
 
 --------------------------------------------------------------------------------
@@ -54,7 +53,7 @@ data Treasury = Treasury
   { stateTokenSymbol :: Value.AssetClass
   , stateTokenParams :: TreasuryStateTokenParams
   }
-  deriving stock (Show, Generic)
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON)
 
 data TreasuryStateTokenParams = TreasuryStateTokenParams
@@ -68,7 +67,7 @@ data TreasuryDatum = TreasuryDatum
   { auctionDanaAmount :: !Integer
   , costCenters :: !(UniqueMap.Map BuiltinByteString Value.Value)
   }
-  deriving stock (Show, Generic, Prelude.Eq)
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON)
 
 data TreasuryDepositParams = TreasuryDepositParams
@@ -76,7 +75,7 @@ data TreasuryDepositParams = TreasuryDepositParams
   , treasuryDepositCurrency :: !Value.AssetClass
   , treasuryDepositCostCenter :: !BuiltinByteString
   }
-  deriving stock (Generic, Show)
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
 data TreasurySpendParams = TreasurySpendParams
@@ -84,7 +83,7 @@ data TreasurySpendParams = TreasurySpendParams
   , treasurySpendCostCenter :: BuiltinByteString
   , treasurySpendBeneficiary :: Ledger.PubKeyHash
   }
-  deriving stock (Generic, Show)
+  deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
 -- TODO: Should the Redeemer give more information?
@@ -95,7 +94,7 @@ data TreasuryAction
   | AllowMint
   | AllowBurn
   | InitiateUpgrade
-  deriving (Show)
+  deriving (Prelude.Eq, Prelude.Show)
 
 -- instances
 instance Eq TreasuryDatum where
