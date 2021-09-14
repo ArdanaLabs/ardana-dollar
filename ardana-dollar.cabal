@@ -111,6 +111,7 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
