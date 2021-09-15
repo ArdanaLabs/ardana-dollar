@@ -97,6 +97,7 @@ common test-deps
     , tasty
     , tasty-hedgehog
     , tasty-hunit
+    , tasty-plutus
 
 library
   import:          lang

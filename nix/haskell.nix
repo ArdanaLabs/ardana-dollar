@@ -80,7 +80,7 @@ in pkgs.haskell-nix.cabalProject rec {
     "https://github.com/input-output-hk/hedgehog-extras"."edf6945007177a638fbeb8802397f3a6f4e47c14" =
       "0wc7qzkc7j4ns2rz562h6qrx2f8xyq7yjcb7zidnj7f6j0pcd0i9";
 
-    "https://github.com/Liqwid-Labs/plutus-extra.git"."831cacd1f29c2fdec93278eb86d532bd61d6e494" =
-      "1bgbb5s19bdvc9bin9j4ymf43hxhilr6f4w6f8kq5249aw5p57xy";
+    "https://github.com/Liqwid-Labs/plutus-extra.git"."f10aadcedadf85118165d77d6df1a4c23446e112" =
+      "1n9bxfn1n8imaa9dav3y6cvxdihcnz45k9xh4mry751ka6j1kkfq";
   };
 }
