@@ -7,6 +7,7 @@ module Main (main) where
 import Data.Kind (Type)
 import Data.Semigroup qualified as Semigroup
 import GHC.Generics (Generic)
+import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
 
 --------------------------------------------------------------------------------
@@ -84,79 +85,84 @@ waitAndCallEndpoint cid endpoint i = do
   Simulator.waitNSlots 10
 
 main :: IO ()
-main = void $
-  Simulator.runSimulationWith handlers $ do
-    Simulator.logString @(Builtin ArdanaContracts)
-      "Starting Ardana demo PAB webserver on port 8080. Press enter to exit."
-    shutdown <- PAB.Server.startServerDebug
+main = do
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
+  void $ Simulator.runSimulationWith handlers pabSimulation
 
-    logTitleSequence
+pabSimulation :: Simulator.Simulation (Builtin ArdanaContracts) ()
+pabSimulation = do
+  Simulator.logString @(Builtin ArdanaContracts)
+    "Starting Ardana demo PAB webserver on port 8080. Press enter to exit."
+  shutdown <- PAB.Server.startServerDebug
 
-    cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
-    logCurrentBalances_
+  logTitleSequence
 
-    -- Init a vault
-    let callVaultEndpoint = waitAndCallEndpoint cVaultId
-    logBlueString "Mint dUSD"
-    Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
-    callVaultEndpoint "depositCollateral" 113_000_000
-    callVaultEndpoint "mintDUSD" 200
-    logCurrentBalances_
+  cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
+  logCurrentBalances_
 
-    -- Treasury
-    logBlueString "Init treasury"
-    cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
-    Simulator.waitNSlots 10
-    treasury <- getBus @Treasury cTreasuryId
-    logCurrentBalances_
+  -- Init a vault
+  let callVaultEndpoint = waitAndCallEndpoint cVaultId
+  logBlueString "Mint dUSD"
+  Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
+  callVaultEndpoint "depositCollateral" 113_000_000
+  callVaultEndpoint "mintDUSD" 200
+  logCurrentBalances_
 
-    -- Deposit funds in cost centers
-    logBlueString "Deposit funds in cost centers"
-    cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
-    Simulator.waitNSlots 10
-    let callDepositEndpoint cc = do
-          let params =
-                TreasuryDepositParams
-                  { treasuryDepositAmount = 10
-                  , treasuryDepositCurrency = dUSDAsset
-                  , treasuryDepositCostCenter = cc
-                  }
-          _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
-          Simulator.waitNSlots 10
-    callDepositEndpoint "TestCostCenter1"
-    callDepositEndpoint "TestCostCenter2"
-    callDepositEndpoint "TestCostCenter1"
-    _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
-    Simulator.waitNSlots 10
-    queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
-    logBlueString $ "Deposited currently: " <> show queriedCosts
-    logCurrentBalances_
-    Simulator.waitNSlots 20
+  -- Treasury
+  logBlueString "Init treasury"
+  cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
+  Simulator.waitNSlots 10
+  treasury <- getBus @Treasury cTreasuryId
+  logCurrentBalances_
 
-    -- Start buffer
-    logBlueString "Start buffer contract"
-    _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
-    Simulator.waitNSlots 10
-    logCurrentBalances_
+  -- Deposit funds in cost centers
+  logBlueString "Deposit funds in cost centers"
+  cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
+  Simulator.waitNSlots 10
+  let callDepositEndpoint cc = do
+        let params =
+              TreasuryDepositParams
+                { treasuryDepositAmount = 10
+                , treasuryDepositCurrency = dUSDAsset
+                , treasuryDepositCostCenter = cc
+                }
+        _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
+        Simulator.waitNSlots 10
+  callDepositEndpoint "TestCostCenter1"
+  callDepositEndpoint "TestCostCenter2"
+  callDepositEndpoint "TestCostCenter1"
+  _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
+  Simulator.waitNSlots 10
+  queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
+  logBlueString $ "Deposited currently: " <> show queriedCosts
+  logCurrentBalances_
+  Simulator.waitNSlots 20
 
-    cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
-    Simulator.waitNSlots 2
-    logCurrentBalances_
+  -- Start buffer
+  logBlueString "Start buffer contract"
+  _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
+  Simulator.waitNSlots 10
+  logCurrentBalances_
 
-    let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
+  cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
+  Simulator.waitNSlots 2
+  logCurrentBalances_
 
-    logBlueString "Debt auction"
-    callBufferEndpoint "debtAuction" 2
-    logCurrentBalances_
+  let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
 
-    logBlueString "Surplus auction"
-    callBufferEndpoint "surplusAuction" 50
-    logCurrentBalances_
+  logBlueString "Debt auction"
+  callBufferEndpoint "debtAuction" 2
+  logCurrentBalances_
 
-    logBlueString "Balances at the end of the simulation:"
-    logCurrentBalances_
+  logBlueString "Surplus auction"
+  callBufferEndpoint "surplusAuction" 50
+  logCurrentBalances_
 
-    shutdown
+  logBlueString "Balances at the end of the simulation:"
+  logCurrentBalances_
+
+  shutdown
   where
     wallets :: [Wallet]
     wallets = Wallet <$> [1 .. 2]
