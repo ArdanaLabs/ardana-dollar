@@ -51,7 +51,7 @@ in pkgs.haskell-nix.cabalProject rec {
     "https://github.com/input-output-hk/plutus.git"."${sources.plutus.rev}" =
       sources.plutus.sha256;
 
-    "https://github.com/michaelpj/flat.git"."ee59880f47ab835dbd73bea0847dab7869fc20d8" =
+    "https://github.com/Quid2/flat.git"."ee59880f47ab835dbd73bea0847dab7869fc20d8" =
       "1lrzknw765pz2j97nvv9ip3l1mcpf2zr4n56hwlz0rk7wq7ls4cm";
     "https://github.com/shmish111/purescript-bridge.git"."6a92d7853ea514be8b70bab5e72077bf5a510596" =
       "13j64vv116in3c204qsl1v0ajphac9fqvsjp7x3zzfr7n7g61drb";
