@@ -94,10 +94,12 @@ common test-deps
   build-depends:
     , hedgehog
     , lens
+    , QuickCheck
     , tasty
     , tasty-hedgehog
     , tasty-hunit
     , tasty-plutus
+    , tasty-quickcheck
 
 library
   import:          lang
@@ -140,6 +142,7 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
+    Test.ContractModel.Vault
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
 

@@ -8,6 +8,7 @@ module ArdanaDollar.Vault (
   Vaulting,
   VaultSchema,
   collAsset,
+  isCollaterizationRatioOk,
   dUSDTokenName,
   vaultTokenName,
   valueWithin,
@@ -86,6 +87,11 @@ liqRatio = Finite (150 R.% 100)
 {-# INLINEABLE price #-}
 price :: Rational
 price = 140 R.% 1_000_000
+
+{-# INLINEABLE isCollaterizationRatioOk #-}
+isCollaterizationRatioOk :: Integer -> Integer -> Bool
+isCollaterizationRatioOk collateral mintedDebt =
+  collaterizationRatio price collateral mintedDebt >= liqRatio
 
 {-# INLINEABLE dUSDTokenName #-}
 dUSDTokenName :: Value.TokenName
@@ -180,7 +186,7 @@ mkVaultValidator dusd user vd vr sc@Ledger.ScriptContext {scriptContextTxInfo = 
         (Nothing, _) -> traceIfFalse "output with script's datum missing" False
         (Just _, Nothing) -> traceIfFalse "failed to parse datum" False
         (Just _, Just nd) ->
-          let cRatioOk = collaterizationRatio price (vaultCollateral nd) (vaultDebt nd) >= liqRatio
+          let cRatioOk = isCollaterizationRatioOk (vaultCollateral nd) (vaultDebt nd)
            in case vr of
                 CollateralRedeemer ->
                   let collDiff = vaultCollateral nd - vaultCollateral vd
