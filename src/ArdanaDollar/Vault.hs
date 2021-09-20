@@ -36,7 +36,8 @@ module ArdanaDollar.Vault (
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite))
 import ArdanaDollar.Utils (collaterizationRatio, datumForOffchain, valuePaidBy, valueUnlockedBy)
-import Control.Monad (forever, guard, void)
+import Control.Lens ((^.))
+import Control.Monad (forM, forever, guard, void)
 import Data.Aeson qualified as JSON
 import Data.Kind (Type)
 import Data.Map.Strict qualified as Map
@@ -244,15 +245,13 @@ type VaultSchema =
 findUtxo ::
   forall (w :: Type) (s :: Row Type).
   Ledger.Address ->
-  Contract w s Text (Maybe (Ledger.TxOutRef, Ledger.TxOutTx, VaultDatum))
+  Contract w s Text (Maybe (Ledger.TxOutRef, Ledger.ChainIndexTxOut, VaultDatum))
 findUtxo addr = do
-  utxos <- utxoAt addr
-  -- pick the first utxo with a `VaultDatum`
-  let ud =
-        getFirst $
-          foldMap (\(ref, tx) -> First $ fmap ((,,) ref tx) (datumForOffchain tx)) $
-            Map.toAscList utxos
-  return ud
+  utxos <- utxosAt addr
+  maybeUtxos <- forM (Map.toAscList utxos) $ \(oref, o) -> do
+    datum <- datumForOffchain o
+    return $ (,,) oref o <$> datum
+  return $ getFirst (foldMap First maybeUtxos)
 
 initializeVault :: forall (s :: Row Type). Contract (Last VaultDatum) s Text ()
 initializeVault = do
@@ -288,7 +287,7 @@ depositCollateral amount = do
     Just (oref, o, vaultDatum@VaultDatum {vaultCollateral = vc}) -> do
       let newDatum = vaultDatum {vaultCollateral = vc + amount}
           valueToScript =
-            Ledger.txOutValue (Ledger.txOutTxOut o)
+            (o ^. Ledger.ciTxOutValue)
               Haskell.<> Value.assetClassValue collAsset amount
           lookups =
             Constraints.typedValidatorLookups (vaultInst pkh)
@@ -318,7 +317,7 @@ withdrawCollateral amount = do
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum {vaultCollateral = vc}) -> do
       let newDatum = vaultDatum {vaultCollateral = vc - amount}
-          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
+          stateTokenValue = o ^. Ledger.ciTxOutValue
           collateralValue = Value.assetClassValue collAsset amount
           lookups =
             Constraints.typedValidatorLookups (vaultInst pkh)
@@ -351,7 +350,7 @@ mintDUSD amount = do
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum {vaultDebt = dc}) -> do
       let newDatum = vaultDatum {vaultDebt = dc + amount}
-          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
+          stateTokenValue = o ^. Ledger.ciTxOutValue
           dusdValue = Value.assetClassValue dUSDAsset amount
           lookups =
             Constraints.typedValidatorLookups (vaultInst pkh)
@@ -384,7 +383,7 @@ repayDUSD amount = do
     Nothing -> throwError "no utxo at the script address"
     Just (oref, o, vaultDatum@VaultDatum {vaultDebt = dc}) -> do
       let newDatum = vaultDatum {vaultDebt = dc - amount}
-          stateTokenValue = Ledger.txOutValue (Ledger.txOutTxOut o)
+          stateTokenValue = o ^. Ledger.ciTxOutValue
           dusdValue = Value.assetClassValue dUSDAsset amount
           lookups =
             Constraints.typedValidatorLookups (vaultInst pkh)

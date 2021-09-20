@@ -9,6 +9,7 @@ module ArdanaDollar.Buffer.OffChain (
 
 --------------------------------------------------------------------------------
 
+import Control.Lens ((^.))
 import Control.Monad (void)
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -88,8 +89,8 @@ startBuffer treasury = do
 data BufferTreasuryAuctionArgs = BufferTreasuryAuctionArgs
   { treasuryDatum :: TreasuryDatum
   , bufferDatum :: BufferDatum
-  , treasuryOutput :: Ledger.TxOutTx
-  , bufferOutput :: Ledger.TxOutTx
+  , treasuryOutput :: Ledger.ChainIndexTxOut
+  , bufferOutput :: Ledger.ChainIndexTxOut
   , txLookups :: Constraints.ScriptLookups BufferAuctioning
   , txConstraintsCtr ::
       TreasuryDatum ->
@@ -116,7 +117,7 @@ debtAuction treasury danaAmount = do
       let dusdPrice = currentDebtAuctionPrice (bufferDatum args) * danaAmount
           danaValue = Value.assetClassValue danaAssetClass danaAmount
           treasuryValue =
-            Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
+            (treasuryOutput args ^. Ledger.ciTxOutValue)
               <> Value.assetClassValue dUSDAsset dusdPrice
               <> negate danaValue
           td = treasuryDatum args
@@ -148,7 +149,7 @@ surplusAuction treasury dusdAmount = do
       Just (danaPrice, danaRem) ->
         let dusdValue = Value.assetClassValue dUSDAsset dusdAmount
             treasuryValue =
-              Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
+              (treasuryOutput args ^. Ledger.ciTxOutValue)
                 <> Value.assetClassValue danaAssetClass danaPrice
                 <> negate dusdValue
 
@@ -206,11 +207,11 @@ bufferTreasuryAuction treasury = do
 findBuffer ::
   (AsContractError e) =>
   Treasury ->
-  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.TxOutTx, BufferDatum))
+  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.ChainIndexTxOut, BufferDatum))
 findBuffer treasury = do
-  utxos <- utxoAt (bufferAddress treasury danaAssetClass)
-  return $ case Map.toList utxos of
+  utxos <- utxosAt (bufferAddress treasury danaAssetClass)
+  case Map.toList utxos of
     [(oref, o)] -> do
       datum <- datumForOffchain o
-      return (oref, o, datum)
-    _ -> Nothing
+      return $ (,,) oref o <$> datum
+    _ -> return Nothing

@@ -18,13 +18,15 @@ module ArdanaDollar.Utils (
   safeDivMod,
 ) where
 
+import Control.Monad ((>=>))
 import Data.Kind (Type)
-import Data.Map qualified as Map
+import Data.Row (Row)
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import Ledger qualified
 import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import Plutus.Contract (AsContractError, Contract, datumFromHash)
 import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
@@ -208,19 +210,33 @@ pubKeyInputsAt pk txInfo =
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
 
-{-# INLINEABLE datumFor #-}
-datumFor :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
-datumFor txOut f = do
-  dh <- Ledger.txOutDatum txOut
-  Ledger.Datum d <- f dh
-  PlutusTx.fromBuiltinData d
-
-datumForOffchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOutTx -> Maybe a
-datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
+datumForOffchain ::
+  forall (a :: Type) (w :: Type) (s :: Row Type) (e :: Type).
+  (PlutusTx.FromData a, AsContractError e) =>
+  Ledger.ChainIndexTxOut ->
+  Contract w s e (Maybe a)
+datumForOffchain o = case o of
+  Ledger.PublicKeyChainIndexTxOut {} -> return Nothing
+  Ledger.ScriptChainIndexTxOut {_ciTxOutDatum = eitherDatum} ->
+    (fmap Ledger.getDatum >=> PlutusTx.fromBuiltinData) <$> datumFromEither eitherDatum
+  where
+    datumFromEither ::
+      Either Ledger.DatumHash Ledger.Datum ->
+      Contract w s e (Maybe Ledger.Datum)
+    datumFromEither (Left dh) = datumFromHash dh
+    datumFromEither (Right d) = return (Just d)
 
 {-# INLINEABLE datumForOnchain #-}
-datumForOnchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
-datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
+datumForOnchain ::
+  forall (a :: Type).
+  PlutusTx.FromData a =>
+  Ledger.TxInfo ->
+  Ledger.TxOut ->
+  Maybe a
+datumForOnchain info txOut = do
+  dh <- Ledger.txOutDatum txOut
+  Ledger.Datum d <- dh `Ledger.findDatum` info
+  PlutusTx.fromBuiltinData d
 
 -- | On-chain helper function checking immutability of the validator's datum
 {-# INLINEABLE validateDatumImmutable #-}

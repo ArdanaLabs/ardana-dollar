@@ -1,5 +1,5 @@
 -- Bump this if you need newer packages
-index-state: 2021-07-07T00:00:00Z
+index-state: 2021-08-14T00:00:00Z
 
 packages: ./.
 
@@ -41,12 +41,16 @@ source-repository-package
     quickcheck-dynamic
     web-ghc
     word-array
-  tag: 00e7cc3fce4d3af6e8a59be8ddaa108a7ae1964d
+    stubs/plutus-ghc-stub
+  tag: 289ac956a33c14fe1d75d6c0a6d6100f96a7d22c
 
 source-repository-package
   type: git
   location: https://github.com/Liqwid-Labs/plutus-extra.git
-  tag: 831cacd1f29c2fdec93278eb86d532bd61d6e494
+  tag: f10aadcedadf85118165d77d6df1a4c23446e112
+  subdir:
+    plutus-extra
+    tasty-plutus
 
 -- The following sections are copied from the 'plutus' repository cabal.project at the revision
 -- given above.
@@ -95,16 +99,11 @@ package ouroboros-consensus-cardano
 package cardano-api
   optimization: False
 
--- Turn off the tests for a while
-package plutus-metatheory
-  tests: False
-
 -- https://github.com/Quid2/flat/pull/22 fixes a potential exception
 -- when decoding invalid (e.g. malicious) text literals.
 source-repository-package
   type: git
-  -- location: https://github.com/Quid2/flat.git
-  location: https://github.com/michaelpj/flat.git
+  location: https://github.com/Quid2/flat.git
   tag: ee59880f47ab835dbd73bea0847dab7869fc20d8
 
 -- Needs some patches, but upstream seems to be fairly dead (no activity in > 1 year)
@@ -131,12 +130,12 @@ source-repository-package
     base-deriving-via
     binary
     binary/test
-    measures
-    orphans-deriving-via
-    slotting
     cardano-crypto-class
     cardano-crypto-praos
     cardano-crypto-tests
+    measures
+    orphans-deriving-via
+    slotting
     strict-containers
 
 source-repository-package
@@ -150,7 +149,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/ouroboros-network
-  tag: f149c1c1e4e4bb5bab51fa055e9e3a7084ddc30e
+  tag: 877ce057ff6fb086474c8eaad53f2b7f0e0fce6b
   subdir:
     monoidal-synchronisation
     typed-protocols
@@ -169,7 +168,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/iohk-monitoring-framework
-  tag: 34abfb7f4f5610cabb45396e0496472446a0b2ca
+  tag: 808724ff8a19a33d0ed06f9ef59fbd900b08553c
   subdir:
     iohk-monitoring
     tracer-transformers
@@ -183,7 +182,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/cardano-ledger-specs
-  tag: 12a0ef69d64a55e737fbf4e846bd8ed9fb30a956
+  tag: d5b184a820853c7ba202efd615b8fadca1acb52c
   subdir:
     byron/chain/executable-spec
     byron/crypto
@@ -206,7 +205,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/cardano-node.git
-  tag: 3a56ac245c83d3345f81123ec3bb496bb23477a3
+  tag: ed11e8b6429d4af1cb2539460e5cb2283a06b2dc
   subdir:
     cardano-api
     cardano-node
