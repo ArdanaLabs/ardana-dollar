@@ -27,27 +27,27 @@ import PlutusTx.Prelude
 import Prelude qualified as Haskell
 
 data OracleValidatorParams = OracleValidatorParams
-  { oracleMintingCurrencySymbol :: Value.CurrencySymbol
-  , operator :: Ledger.PubKey
-  , operatorPkh :: Ledger.PubKeyHash
-  , peggedCurrency :: BuiltinByteString
+  { oracleValidatorParams'oracleMintingCurrencySymbol :: Value.CurrencySymbol
+  , oracleValidatorParams'operator :: Ledger.PubKey
+  , oracleValidatorParams'operatorPkh :: Ledger.PubKeyHash
+  , oracleValidatorParams'peggedCurrency :: BuiltinByteString
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeLift ''OracleValidatorParams
 
 data PriceTracking = PriceTracking
-  { fiatPriceFeed :: AssocMap.Map BuiltinByteString Integer -- fiat currency id to price in lovelace
-  , cryptoPriceFeed :: AssocMap.Map Value.AssetClass Integer
-  , lastUpdate :: Ledger.POSIXTime
+  { priceTracking'fiatPriceFeed :: AssocMap.Map BuiltinByteString Integer
+  , priceTracking'cryptoPriceFeed :: AssocMap.Map Value.AssetClass Integer
+  , priceTracking'lastUpdate :: Ledger.POSIXTime
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''PriceTracking [('PriceTracking, 0)]
 
 data OracleMintingParams = OracleMintingParams
-  { operator :: Ledger.PubKey 
-  , operatorPkh :: Ledger.PubKeyHash
+  { oracleMintingParams'operator :: Ledger.PubKey 
+  , oracleMintingParams'operatorPkh :: Ledger.PubKeyHash
   }
   deriving stock (Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
