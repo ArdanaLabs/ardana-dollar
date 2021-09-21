@@ -4,9 +4,10 @@ import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.Utils (vaultUnitTests)
+import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
+import Test.ContractModel.Vault qualified as VaultModel (contractTests)
 import Test.Roundtrips.BuiltinData (builtinDataRoundtripTests)
 import Test.Roundtrips.JSON (jsonRoundtripTests)
-import Test.ContractModel.Vault qualified as VaultModel (contractTests)
 import Test.Tasty (defaultMain, testGroup)
 import Prelude (IO, ($))
 
@@ -22,5 +23,6 @@ main = do
       , danaStakePoolTests
       , jsonRoundtripTests
       , builtinDataRoundtripTests
+      , BufferModel.contractTests
       , VaultModel.contractTests
       ]

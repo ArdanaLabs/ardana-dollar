@@ -92,9 +92,11 @@ common deps
 common test-deps
   import:        deps
   build-depends:
+    , freer-simple
     , hedgehog
     , lens
     , QuickCheck
+    , streaming
     , tasty
     , tasty-hedgehog
     , tasty-hunit
@@ -142,9 +144,11 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
+    Test.ContractModel.Buffer
     Test.ContractModel.Vault
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
+    Test.TraceUtils
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
