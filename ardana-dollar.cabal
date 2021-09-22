@@ -114,6 +114,11 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.Map.Types
+    ArdanaDollar.Map.Validators
+    ArdanaDollar.Map.ValidatorsTH
+    ArdanaDollar.Map.Contracts
+    ArdanaDollar.Map.Endpoints
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
@@ -136,6 +141,7 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils

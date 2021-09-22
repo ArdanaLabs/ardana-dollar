@@ -3,6 +3,7 @@ module Main (main) where
 import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
+import Test.ArdanaDollar.MapTest
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.Roundtrips.BuiltinData (builtinDataRoundtripTests)
 import Test.Roundtrips.JSON (jsonRoundtripTests)
@@ -21,4 +22,5 @@ main = do
       , danaStakePoolTests
       , jsonRoundtripTests
       , builtinDataRoundtripTests
+      , mapTests
       ]
