@@ -63,18 +63,18 @@ checkMessageOutput ::
   Oracle.SignedMessage PriceTracking ->
   Bool
 checkMessageOutput
-  op
-  oracle
+  oracleOperatorPubKey
+  oracleValidator_
   range
-  outVal
-  out
+  outputValue
+  output
   (Oracle.SignedMessage sig hash dat) =
   traceIfFalse "cryptographic signature is incorrect"
-    (isRight $ Oracle.checkSignature hash op sig)
+    (isRight $ Oracle.checkSignature hash oracleOperatorPubKey sig)
   && traceIfFalse "does not go to oracle validator"
-    (Ledger.toValidatorHash (Ledger.txOutAddress out) == Just oracle)
+    (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just oracleValidator_)
   && traceIfFalse "incorrect output value"
-    (Ledger.txOutValue out == outVal)
+    (Ledger.txOutValue output == outputValue)
   && traceIfFalse "incorrect PriceTracking datum"
       (case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum dat) of
          Nothing ->
