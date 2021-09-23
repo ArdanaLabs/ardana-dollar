@@ -84,6 +84,12 @@ checkMessageOutput
            && AssocMap.null cryptoFeed
            && upd `Ledger.member` range)
 
+{-# INLINEABLE withinInterval #-}
+withinInterval :: Integer -> Ledger.TxInfo -> Bool
+withinInterval interval txInfo = case width (Ledger.txInfoValidRange txInfo) of
+  Nothing -> False
+  Just ms -> ms <= interval
+
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy :: Ledger.ValidatorHash
                       -> OracleMintingParams
@@ -96,9 +102,7 @@ mkOracleMintingPolicy
   _
   sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
   let narrowInterval :: Bool
-      narrowInterval = case width (Ledger.txInfoValidRange txInfo) of
-        Nothing -> False
-        Just ms -> ms <= 10000 -- magic number of 10 seconds here
+      narrowInterval = withinInterval 10000 txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       expected :: Ledger.Value
@@ -149,9 +153,7 @@ mkOracleValidator
   _
   sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
   let narrowInterval :: Bool
-      narrowInterval = case width (Ledger.txInfoValidRange txInfo) of
-        Nothing -> False
-        Just ms -> ms <= 10000 -- magic number of 10 seconds here
+      narrowInterval = withinInterval 10000 txInfo
       expectedOutVal :: Ledger.Value
       expectedOutVal = Value.singleton curSymbol
                                        (Value.TokenName "PriceTracking") 1
