@@ -22,8 +22,8 @@ import Ledger.Value qualified as Value
 import Ledger.Typed.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Interval.Extra (width)
 import PlutusTx qualified
-import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Prelude
+import PlutusTx.UniqueMap qualified as UniqueMap
 import Prelude qualified as Haskell
 
 data OracleValidatorParams = OracleValidatorParams
@@ -37,8 +37,8 @@ data OracleValidatorParams = OracleValidatorParams
 PlutusTx.makeLift ''OracleValidatorParams
 
 data PriceTracking = PriceTracking
-  { priceTracking'fiatPriceFeed :: AssocMap.Map BuiltinByteString Integer
-  , priceTracking'cryptoPriceFeed :: AssocMap.Map Value.AssetClass Integer
+  { priceTracking'fiatPriceFeed :: UniqueMap.Map BuiltinByteString Integer
+  , priceTracking'cryptoPriceFeed :: UniqueMap.Map Value.AssetClass Integer
   , priceTracking'lastUpdate :: Ledger.POSIXTime
   }
   deriving stock (Haskell.Show, Generic)
@@ -80,8 +80,8 @@ checkMessageOutput
          Nothing ->
            False
          Just (PriceTracking fiatFeed cryptoFeed upd) ->
-           AssocMap.null fiatFeed
-           && AssocMap.null cryptoFeed
+           UniqueMap.null fiatFeed
+           && UniqueMap.null cryptoFeed
            && upd `Ledger.member` range)
 
 {-# INLINEABLE withinInterval #-}
