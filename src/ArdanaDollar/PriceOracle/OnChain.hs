@@ -105,23 +105,23 @@ mkOracleMintingPolicy
   (OracleMintingParams op opPkh)
   _
   sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
-  let narrowInterval :: Bool
-      narrowInterval = withinInterval 10000 txInfo
-      minted :: Ledger.Value
-      minted = Ledger.txInfoMint txInfo
-      expected :: Ledger.Value
-      expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
-      correctMinting = traceIfFalse "incorrect minted amount"
-                         (minted == expected)
-      txSignedByOperator = traceIfFalse "not signed by oracle operator"
-                             (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
-          checkMessageOutput op oracle (Ledger.txInfoValidRange txInfo)
-                             expected output dat
-        _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found" False
-  in narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
+  narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
+  where narrowInterval :: Bool
+        narrowInterval = withinInterval 10000 txInfo
+        minted :: Ledger.Value
+        minted = Ledger.txInfoMint txInfo
+        expected :: Ledger.Value
+        expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
+        correctMinting = traceIfFalse "incorrect minted amount"
+                           (minted == expected)
+        txSignedByOperator = traceIfFalse "not signed by oracle operator"
+                               (Ledger.txSignedBy txInfo opPkh)
+        priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+          [(output, dat)] ->
+            checkMessageOutput op oracle (Ledger.txInfoValidRange txInfo)
+                               expected output dat
+          _ ->
+            traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
@@ -155,19 +155,19 @@ mkOracleValidator
   _
   _
   sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
-  let narrowInterval :: Bool
-      narrowInterval = withinInterval 10000 txInfo
-      expectedOutVal :: Ledger.Value
-      expectedOutVal = stateTokenValue curSymbol
-      txSignedByOperator :: Bool
-      txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
-          checkMessageOutput op (Ledger.ownHash sc)
-            (Ledger.txInfoValidRange txInfo) expectedOutVal output dat
-        _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found" False
-  in narrowInterval && txSignedByOperator && priceMessageToOracle
+  narrowInterval && txSignedByOperator && priceMessageToOracle
+  where narrowInterval :: Bool
+        narrowInterval = withinInterval 10000 txInfo
+        expectedOutVal :: Ledger.Value
+        expectedOutVal = stateTokenValue curSymbol
+        txSignedByOperator :: Bool
+        txSignedByOperator = Ledger.txSignedBy txInfo opPkh
+        priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+          [(output, dat)] ->
+            checkMessageOutput op (Ledger.ownHash sc)
+              (Ledger.txInfoValidRange txInfo) expectedOutVal output dat
+          _ ->
+            traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 data PriceOracling
 instance Scripts.ValidatorTypes PriceOracling where
