@@ -53,8 +53,6 @@ data OracleMintingParams = OracleMintingParams
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeLift ''OracleMintingParams
 
-type OracleDatum = Oracle.SignedMessage PriceTracking
-
 {-# INLINEABLE checkMessageOutput #-}
 checkMessageOutput ::
   Ledger.PubKey ->
@@ -62,7 +60,7 @@ checkMessageOutput ::
   Ledger.POSIXTimeRange ->
   Ledger.Value ->
   Ledger.TxOut -> 
-  OracleDatum ->
+  Oracle.SignedMessage PriceTracking ->
   Bool
 checkMessageOutput
   op
@@ -110,7 +108,7 @@ mkOracleMintingPolicy
                          (minted == expected)
       txSignedByOperator = traceIfFalse "not signed by oracle operator"
                              (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getScriptOutputsWithDatum @OracleDatum sc of
+      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput op oracle (Ledger.txInfoValidRange txInfo)
                              expected output dat
@@ -141,7 +139,7 @@ oracleCurrencySymbol oracle params =
 {-# INLINEABLE mkOracleValidator #-}
 mkOracleValidator ::
   OracleValidatorParams ->
-  OracleDatum ->
+  Oracle.SignedMessage PriceTracking ->
   () ->
   Ledger.ScriptContext ->
   Bool
@@ -159,7 +157,7 @@ mkOracleValidator
                                        (Value.TokenName "PriceTracking") 1
       txSignedByOperator :: Bool
       txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-      priceMessageToOracle = case getScriptOutputsWithDatum @OracleDatum sc of
+      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput op (Ledger.ownHash sc)
             (Ledger.txInfoValidRange txInfo) expectedOutVal output dat
@@ -169,7 +167,7 @@ mkOracleValidator
 
 data PriceOracling
 instance Scripts.ValidatorTypes PriceOracling where
-  type DatumType PriceOracling = OracleDatum 
+  type DatumType PriceOracling = Oracle.SignedMessage PriceTracking 
   type RedeemerType PriceOracling = ()
 
 {-# INLINEABLE oracleInst #-}
@@ -181,7 +179,7 @@ oracleInst params =
     )
     $$(PlutusTx.compile [||wrap||])
   where
-    wrap = Scripts.wrapValidator @OracleDatum @()
+    wrap = Scripts.wrapValidator @(Oracle.SignedMessage PriceTracking) @()
 
 {-# INLINEABLE oracleValidator #-}
 oracleValidator :: OracleValidatorParams -> Ledger.Validator
