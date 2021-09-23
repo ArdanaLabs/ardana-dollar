@@ -90,6 +90,10 @@ withinInterval interval txInfo = case width (Ledger.txInfoValidRange txInfo) of
   Nothing -> False
   Just ms -> ms <= interval
 
+{-# INLINEABLE stateTokenValue #-}
+stateTokenValue :: Value.CurrencySymbol -> Ledger.Value
+stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
+
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy :: Ledger.ValidatorHash
                       -> OracleMintingParams
@@ -106,8 +110,7 @@ mkOracleMintingPolicy
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       expected :: Ledger.Value
-      expected = Value.singleton (Ledger.ownCurrencySymbol sc)
-                                 (Value.TokenName "PriceTracking") 1
+      expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
       correctMinting = traceIfFalse "incorrect minted amount"
                          (minted == expected)
       txSignedByOperator = traceIfFalse "not signed by oracle operator"
@@ -155,8 +158,7 @@ mkOracleValidator
   let narrowInterval :: Bool
       narrowInterval = withinInterval 10000 txInfo
       expectedOutVal :: Ledger.Value
-      expectedOutVal = Value.singleton curSymbol
-                                       (Value.TokenName "PriceTracking") 1
+      expectedOutVal = stateTokenValue curSymbol
       txSignedByOperator :: Bool
       txSignedByOperator = Ledger.txSignedBy txInfo opPkh
       priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
