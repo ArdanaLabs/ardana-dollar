@@ -1214,6 +1214,9 @@ Purpose: A Permission token which signifies permission to Mint $dUSD, or spend f
 
 carries no datum
 
+-- note: we should consider splitting this token into two different tokens to make permissions more granular. perhaps the VaultRecord token can be useful here.
+Vaults should not have the right to spend,   additionally it would be _ideal_ if we did not need extra permission tokens for the vaults, however this may harm upgradeability.
+
 Minting & Burning:
 - the UpgradeContract token from Treasury Validator Script will have a `newContract` value with an address attached to it, the second UpgradeContract token must be from that `newContract` address.
 
