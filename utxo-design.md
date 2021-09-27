@@ -13,7 +13,7 @@ This will cover all on-chain components necessary to implement the endpoint-spec
 -- TODO $dUSD Savings system
 ## Specification Conventions
 
-In order to simplify and clarify the specification, this document makes a few adopts a few basic conventions 
+In order to simplify and clarify the specification, this document makes a few adopts a few basic conventions
 This document describes the ardana-dollar project as a lower-level description of the EUTXO transaction behaviors required by the protocol.
 
 Specifically this will describe all Monetary Policies, Validators, and the relative Native Tokens required for the protocol to function as described in the endpoint-spec, and how they relate to each other.
@@ -64,30 +64,30 @@ These are non-fungible tokens that should be parameterized only on  UTXO inputs,
 
 One-shot tokens within the system are:
 
-### GovernanceState token 
+### GovernanceState token
 
   Token Type: State token for script
 
   purpose: allows us to manage stateful data relating to totals of important funds held by the Governance Validator
 
-  carries datum: 
+  carries datum:
   ```
   GovernanceState { stakeTotal: Integer
-                  , rewardsTotal: Value 
+                  , rewardsTotal: Value
                   , lastEpoch :: PosixTime
                   }
   ```
- 
-  initialized to 
+
+  initialized to
   ```
   GovernanceState { stakeTotal = 0
-                  , rewardsTotal = Value.empty 
+                  , rewardsTotal = Value.empty
                   , lastEpoch = currentTime
                   }
   ```
 
   mint: can always mint.
-  
+
   burn: can never be burned
 
   inputs:
@@ -100,13 +100,13 @@ One-shot tokens within the system are:
 ### AdminState token
 
   Token type: State token for script, this is also a Signed token, which allows the data to be validated and used in many transactions simultaneously without a bottleneck. the token and corresponding datum are used as a source of truth off-chain.
-  
+
   purpose: allows us to manage stateful data relating to Admin-level configuration, for the purpose of propigating state from Admin ownerAddress to all vaults.
-  
+
   carries datum `SignedMessage AdminState` where:
   ```
   AdminState
-    { configs :: [VaultConfig], 
+    { configs :: [VaultConfig],
     , liquidationBenefitCap :: Rational
     , liquidationBenefitFloor :: Rational
     , minCollateralRatio :: Rational
@@ -114,10 +114,10 @@ One-shot tokens within the system are:
     , savingsAddress :: Maybe Address
     }
   ```
-  initialized to 
+  initialized to
   ```
-  AdminState 
-    { configs = [], 
+  AdminState
+    { configs = [],
     , liquidationBenefitCap = 1 % 5 -- 20%
     , liquidationBenefitFloor = 1 % 20 -- 5%
     , minCollateralRatio = 3 % 1 -- 150%
@@ -129,9 +129,9 @@ One-shot tokens within the system are:
   *known issue: the `configs` can hypothetically expand until it is unusable, this should be replaced with a record token*
   *known issue: we may need to extend this AdminState type to manage the percentage of funds that go to the Savings address*
   *known issue: this essentially addes a keeper to the system, ideally we will eliminate this*
-  
+
 ## Governance Minting Policy
-parameters: 
+parameters:
 ```
 GovStateMintingParams { governanceScriptAddress :: ValidatorHash
                       , governanceStateCurrencySymbol :: CurrencySymbol
@@ -149,17 +149,17 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 
   purpose: allows us to manage stateful data relevant to a User's interaction with the Governance Validator, which is a stake pool structure (users deposit $DANA Tokens (minted externally) into the pool so that their votes can be counted and rewards can be accurately distributed).
 
-  carries datum: 
+  carries datum:
   ```
   UserStakeDetail { userAddress :: Address
                   , amountStaked :: Integer
-                  , lastReward :: PosixTime 
+                  , lastReward :: PosixTime
                   , lockedUntil :: Maybe PosixTime
-                  , lockedBy :: MaybeAddress
+                  , lockedBy :: Maybe Address
                   }
   ```
-  
-  initialized to 
+
+  initialized to
   ```
   UserStakeDetail { userAddress = DepositAct.address -- determined by validator
                   , amountStaked = DepositAct.amount -- determined by validator
@@ -174,7 +174,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
   *known issue: we need to ultimately allow vote cancellation*
 
   *known issue: the reward distribution system is subject to change as we find an optimal implementation*
-  
+
   inputs:
 - fee/collateral UTXO
 - GovernanceState UTXO (from Governance Validator)
@@ -186,32 +186,32 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 
 
 ### LastEpochScriptState token (1 per epoch)
-  
-  Token Type: State token for script, only needed on specific actions. 
-  
+
+  Token Type: State token for script, only needed on specific actions.
+
   purpose: This datum is needed as part of the reward distribution procedure, to record the exact state of the rewards and stakepool sizes so that they might be used to calculate reward dividends for each staker of $DANA at the end of a given reward period/epoch.
-  
-  carries datum: 
+
+  carries datum:
   ```
   LastEpochScriptState { stakeTotal :: Integer
                        , rewardsTotal :: Value
                        }
   ```
-  
-  initialized to 
+
+  initialized to
   ```
   LastEpochScriptState { stakeTotal = GovernanceState.stakeTotal
-                       , rewardsTotal = GovernanceState.rewardsTotal 
+                       , rewardsTotal = GovernanceState.rewardsTotal
                        -- values determined by Validator.
                        }
   ```
-  
+
   mint & burn: must include the GovernanceState UTXO
-  
+
   *known issue: this token/UTXO/datum may need to be duplicated in order to parallelize the reward distribution procedure*
 
   *known issue: at time of writing (Aug 28/2021) we are investigating a proof-of-concept that will change reward distribution design significantly. components relating to Reward distribution are expected to be updated and are not a stable portion of the spec*
-  
+
   inputs:
 - fee/collateral UTXO
 - GovernanceState UTXO (from Governance Validator)
@@ -222,15 +222,15 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 - LastEpochScriptState (MINTED) -> Governance Validator
 
 
-### CanLockStake Token 
-  
+### CanLockStake Token
+
   Token Type: Permission Token for a Script to have additional rights to modify Governance states.
-  
+
   Purpose: This token is used by a ProposalFactory during voting and/or vote cancellation in order to prevent infinite voting exploits.  In particular, can force a user to lock their staked $DANA tokens until the proposal voting period ends.
-  
+
   carries no datum
-  
-  mint & burn: 
+
+  mint & burn:
 - must include the GovernanceState UTXO
 - must include signature from `ownerAddress`
 
@@ -245,7 +245,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 
 
 ## Governance Validator
-parameters: 
+parameters:
 ```
 GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol,
                           , ownerAddress :: PubKeyHash
@@ -253,7 +253,7 @@ GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol,
                           }
 ```
 
-Datum: 
+Datum:
 ```
 GovernanceState
 ```
@@ -262,18 +262,18 @@ defined as a State token datum under _One Shot Tokens_
 Redeemer:
 ```
 = DepositAct { amount :: Integer
-             , address :: Address 
+             , address :: Address
              }
 | WithdrawAct { amount :: Integer
-              , address :: Address 
+              , address :: Address
               }
 | ProvideRewardAct { value :: PlutusTx.Value }
-| ClaimRewardAct { address :: Address 
-                 , epoch :: Integer 
+| ClaimRewardAct { address :: Address
+                 , epoch :: Integer
                  }
 | FinishRewardsForEpochAct
 | RegisterProposalFactoryAct { scriptAddress :: ValidatorHash }
-| LockForVotingAct { voterAddress :: Address 
+| LockForVotingAct { voterAddress :: Address
                    , lockedUntil :: Integer}
 | TriggerEpochAct
 ```
@@ -283,9 +283,9 @@ The Governance Validator controls transactions relating to two main protocol fea
 - measuring Vote weight of $DANA holders
 - distributing dividends and rewards to $DANA holders
 
-The Governance Validator is meant to integrate with any number of `ProposalFactory` validators and their corresponding `IndividualProposal`s 
+The Governance Validator is meant to integrate with any number of `ProposalFactory` validators and their corresponding `IndividualProposal`s
 
-scope notes: 
+scope notes:
 - since the Governance Minting Policy is Parameterized on the address of the Governance Validator, the governance validator can compute the `govMintingPolicyCurrencySymbol`.
 - whenever referring to UserStakeDetail, it must be verified that the contract always contains exactly 1 user stake detail token per user address.
 
@@ -299,7 +299,7 @@ Validation rules:
 - user must have provided 1 or more UTXO's containing a total of at least `DepositAct.amount` of $DANA (Deposit UTXOS)
 - user may have included a `UserStakeDetail` from the Governance validator script matching their `DepositAct.address`.
 
-  if not, then one should be Minted from `GovernanceMintingPolicy`, with the user's `address` as the `address` parameter, currentTime as `lastReward` parameter, and `Nothing` as the `lockedUntil` and `lockedBy` parameters, 
+  if not, then one should be Minted from `GovernanceMintingPolicy`, with the user's `address` as the `address` parameter, currentTime as `lastReward` parameter, and `Nothing` as the `lockedUntil` and `lockedBy` parameters,
 
   in both cases, the resulting UserStakeDetail should be sent (back) to the Governance Validator script address.
 
@@ -426,7 +426,7 @@ inputs:
 outputs:
 - fee/collateral UTXO remainder -> user Wallet
 - CanLockStake token (Return to ProposalFactory)
-- UserStakeDetail -> Governance Validator Script (set lockedUntil = LockForVotingAct.lockedUntil, set lockedBy = ProposalFactory address) 
+- UserStakeDetail -> Governance Validator Script (set lockedUntil = LockForVotingAct.lockedUntil, set lockedBy = ProposalFactory address)
 
 ### TriggerEpochAct
 
@@ -449,7 +449,7 @@ LastEpochScriptState state token (MINTED)-> Governance Validator Script (set `La
 ## Proposal Minting Policy (example)
 parameters:
 ```
-ProposalMintingParams { proposalFactoryAddress :: Address 
+ProposalMintingParams { proposalFactoryAddress :: Address
                       , governanceMintingCurrencySymbol :: CurrencySymbol
                       }
 ```
@@ -460,25 +460,25 @@ note: this will not actually be implemented, it's intended as a guide for those 
 
 ### ProposalState Token
   Token Type: State token for IndividualProposal Validator script.
-  
+
   Carries Datum:
   ```
   ProposalState
     { totalVote :: Integer
     , voterList :: [Address]
-    } 
+    }
   ```
   initialized to:
 ```
   ProposalState
     { totalVote = 0
     , voterList = []
-    } 
+    }
   ```
   *known issue: this is one of several vote tabulation arrangements, this will change as we find the optimum implementation for vote cancellation*
 
   *known issue: the `voterList` can hypothetically expand until it is unusable, this should be replaced with a record token*
-  
+
   Minting & Burning:
 - must include an arbitrary utxo from the `proposalFactoryAddress`.
 
@@ -495,12 +495,12 @@ Parameters:
 ```
 ProposalFactoryParams { govAddress :: Address
                       . governanceMintingCurrencySymbol :: CurrencySymbol
-                      } 
+                      }
 ```
 
 Purpose:
 A ProposalFactory will integrate with the Governance script directly, providing the structure and logic to make a governance decision on a particular kind of question.
-Since this is an example, certain details that would otherwise be described on other parts of the spec are not available at this time. 
+Since this is an example, certain details that would otherwise be described on other parts of the spec are not available at this time.
 
 This is an example for any service (Ardana Dex, Ardana-Dollar v2) that may perform an integration with the Governance Validator script
 
@@ -531,7 +531,7 @@ outputs:
 - ProposalState token (MINTED)-> IndividualProposal Validator Script
 
 ## IndividualProposal (Example)
-Parameters: 
+Parameters:
 ```
 data IndividualProposalParams a = IndividualProposalParams
   { proposalFactoryAddress :: Address
@@ -546,7 +546,7 @@ This script manages the act of voting on a particular proposal, the precise data
 
 Datum:
 ```
-ProposalState 
+ProposalState
 ```
 defined at _Proposal Minting Policy_
 
@@ -559,7 +559,7 @@ Redeemer:
 Purpose: to record a user's vote on a particular proposed value.
 
 Validation Rules
-- user must not be on `ProposalState.voterList` 
+- user must not be on `ProposalState.voterList`
 - user must sign transaction
 
 inputs:
@@ -574,44 +574,44 @@ outputs:
 - $DANA token UTXO for user -> Governance Validator Script
 - UserStakeDetail -> Governance validator Script (set `UserStakeDetail.lockedBy` to IndividualProposal Validator Address and `UserStakeDetail.lockedUntil` to the end of the voting time for the proposal OR the current value of `lockedUntil` whichever is greater/further in the future.
 - CanLockStake -> Proposal Factory
-- ProposalState -> IndividualProposal (increase vote by total dana in $DANA token UTXO, add user's address to `ProposalState.voterList`) 
+- ProposalState -> IndividualProposal (increase vote by total dana in $DANA token UTXO, add user's address to `ProposalState.voterList`)
 
 
 
 ## Admin Minting Policy
-Parameters: 
+Parameters:
 ```
 AdminMintingParams { targetCurrency :: ByteString -- fiat currency identifier
                    , adminStateCurrencySymbol :: CurrencySymbol
                    , adminValidatorAddress :: ValidatorHash
-                   } 
+                   }
 ```
 
 Purpose: The Admin Minting Policy mints various tokens used primarily by the Admin and Vault Validators.
 
 ### VaultRecord tokens (1 per vault)
   Purpose: - A record token to witness the creation of a vault within the Admin Validator such that vaults can easily be queried off-chain, or otherwise managed and confirmed to be valid.
-  
+
   carries datum:
   ```
-  VaultRecord 
+  VaultRecord
     { userAddress :: Address
-    , scriptAddress :: Address 
+    , scriptAddress :: Address
     , collateralCurrency :: AssetClass
     }
   ```
   initialized to:
   ```
-  VaultRecord 
+  VaultRecord
     { userAddress = InitVaultAct.address
-    , scriptAddress = scriptAddress 
+    , scriptAddress = scriptAddress
     , collateralCurrency = assetClass
     -- values determined by Validator
     }
   ```
-  
-  mint & burn: requires an AdminState token, which can be identified with the `AdminMintingParams.adminStateCurrencySymbol` 
-  
+
+  mint & burn: requires an AdminState token, which can be identified with the `AdminMintingParams.adminStateCurrencySymbol`
+
 inputs:
 - fee/collateral UTXO (from USER)
 - AdminState token (from Admin Validator)
@@ -628,7 +628,7 @@ outputs:
   ```
   VaultState
   { collateralCurrency :: AssetClass
-  , collateral :: Integer, 
+  , collateral :: Integer,
   , borrowPrincipal :: Integer
   , interestAccrued :: Integer
   , lastStabilityFeeTime :: PosixTime
@@ -637,7 +637,7 @@ outputs:
   Initialized to
   ```
   VaultState
-  { collateralCurrency = InitVaultAct.collateralCurrency 
+  { collateralCurrency = InitVaultAct.collateralCurrency
   , collateral = 0
   , borrowPrincipal = 0
   , interestAccrued = 0
@@ -658,10 +658,10 @@ outputs:
 ## Admin Validator
 Parameters:
 ```
-AdminMintingParams 
+AdminMintingParams
   { targetCurrency :: ByteString -- fiat currency identifier
   , oracleAddress :: ValidatorHash
-  , oracleOperator :: PubKeyHash 
+  , oracleOperator :: PubKeyHash
   , treasuryAddress :: ValidatorHash
   , treasuryCurrencySymbol :: CurrencySymbol
   , adminStateCurrencySymbol :: CurrencySymbol
@@ -674,7 +674,7 @@ Purpose: the Admin Validator serves as a hub between all vaults, and serves to m
 
 Note that in the future (v2) the Admin Validator functions may instead be performed by a Proposal Factory and a much smaller script used exclusively for vault initialization.
 
-Datum: 
+Datum:
 `AdminState`
 
 Redeemer Type:
@@ -709,7 +709,7 @@ outputs:
 ### UpdateAdminStateAct
 Purpose: Allows the `ownerAddress` to modify critical configuration in realtime without redeploying scripts.
 
-this can also be used to disable all, or a subset of vaults in an emergency situation 
+this can also be used to disable all, or a subset of vaults in an emergency situation
 
 Validation rules:
 - must be signed by the `ownerAddress`
@@ -717,7 +717,7 @@ Validation rules:
 
 *known issue: in order to service a massive number of vaults, a parallelized data copy strategy might be needed here*
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - AdminState token (from Admin Validator Script)
 - PriceTracking token (from Oracle Validator script)
@@ -777,7 +777,7 @@ the Vault has access to a constant, `vaultStateExpiryTime`, which should initial
 
 this is also used to check for the expiration of oracle info as well.
 
-datum: 
+datum:
 ```
 VaultState
 ```
@@ -785,7 +785,7 @@ defined in _Admin Minting Policy_
 
 Redeemer:
 ```
-= AddCollateralAct 
+= AddCollateralAct
    { amount :: Integer
    , adminState :: SignedMessage AdminState
    }
@@ -829,7 +829,7 @@ Validation Rules:
 if the user has a previous UTXO with collateral, it should be consolidated
 user may provide collateral in 1 or more seperate UTXOs
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from Vault Validator Script)
 - Collateral UTXO (1 or more) (from USER)
@@ -852,7 +852,7 @@ Validation Rules:
 - Stability fees must be applied, if there is a previous borrow amount
 - the resulting `VaultState` after decrementing `VaultState.collateral` and applying stabilitiy fees must not be below the `minimumCollateralRatio`.
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from vault Validator Script)
 - collateral UTXO (from Vault validator script)
@@ -874,7 +874,7 @@ Validation Rules:
 - Stability fees must be applied, if there is a previous borrow amount
 - The resulting `VaultState` after incrementing `VaultState.borrow` and applying stabilitiy fees must not be below the `minimumCollateralRatio`.
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from vault Validator Script)
 - CanMintOrSpend (from Vault Validator Script)
@@ -897,7 +897,7 @@ Validation Rules:
 - the user may include 1 or more $dUSD Payment UTXOs
 - payment is issued against `stabilityFeeAccrued` first, then `borrowPrincipal`
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from vault Validator Script)
 - CanMintOrSpend (from Vault Validator Script)
@@ -910,7 +910,7 @@ outputs:
 - VaultState token -> Vault Validator script (decrement borrowPrinciple, interestAccrued by AddBorrowAct.amount)
 - CanMintOrSpend -> Vault Validator Script
 - Optional $dUSD against principal (BURN) (only if RepayBorrowAct.amount is greater than stability fees applied to the principal)
-- $dUSD against accruedStabilityFees -> Governance Validator Address ProvideRewardAct (portion) 
+- $dUSD against accruedStabilityFees -> Governance Validator Address ProvideRewardAct (portion)
 - $dUSD against accruedStabilityFees -> `ownerAddress` (portion)
 - $dUSD remainder -> User Wallet (only if provided amount exceeds RepayBorrowAct.amount)
 
@@ -923,9 +923,9 @@ Validation Rules:
 - PriceTracking data must be signed by the `oracleOperator`
 - Stability fees must be applied.
 - Stability fee calculation is verified on chain.
-- (`VaultState.stabilityFeeMultiplier` * stabilityFeeBaseRate) is used to calculate the stability fee against both principal and any previously accruedStabilityFees, 
+- (`VaultState.stabilityFeeMultiplier` * stabilityFeeBaseRate) is used to calculate the stability fee against both principal and any previously accruedStabilityFees,
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from vault Validator Script)
 
@@ -936,7 +936,7 @@ outputs:
 ### LiquidationCallAct
 Purpose: must happen in tandem with a LiquidationPurchaseAct on the Buffer, this validates a liquidation state within the vault
 
-Validation Rules: 
+Validation Rules:
 - AdminState must not be expired, AdminState Signature must be validated with `adminOperator`
 - PriceTracking data must not have expired
 - PriceTracking data must be signed by the `oracleOperator`
@@ -946,7 +946,7 @@ Validation Rules:
 
 note: the user may supply 1 or more Liquidation Payment utxos
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from Vault Validator Script, expired)
 - Collateral UTXO (from Vault Validator Script)
@@ -966,18 +966,18 @@ outputs:
 ## Oracle Minting Policy
 Parameters:
 ```
-OracleMintingParams 
+OracleMintingParams
   { operator :: Address
   }
 ```
 
 Purpose: Mints tokens used by the Oracle to determine legitimate prices.
 
-### PriceTracking Token 
+### PriceTracking Token
   Purpose: used to signify legitmate pricing for both fiat currencies, and for non-Ada supported collateral types to get a price in Ada.
-  
+
   Token Type: The PriceTracking token is both a State token for the Oracle contract, and a Signed Token used for authentic pricing information from a centralized source, this token must carry the signed data to prevent bottlenecks on decentralized datum duplication.
-  
+
   carries datum:
   ```
   SignedMessage PriceTracking
@@ -990,7 +990,7 @@ Purpose: Mints tokens used by the Oracle to determine legitimate prices.
     , lastUpdate :: PosixTime
     }
   ```
-  Initiated to: 
+  Initiated to:
   ```
   PriceTracking:
     { fiatPriceFeed = AssocMap.empty
@@ -998,17 +998,17 @@ Purpose: Mints tokens used by the Oracle to determine legitimate prices.
     , lastUpdate = currentTime
     }
   ```
-  
+
 *known issue: `AssocMap` can grow infinitely and may cause transactions to hit size limits, we may need to parameterize the Oracle Minting Policy further in order to accomodate the requirements*
 
   mint & burn: must be performed by the `operator`
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 
 outputs:
 - fee/collateral UTXO remainder -> user Wallet
-- PriceTracking token -> Oracle Validator 
+- PriceTracking token -> Oracle Validator
 
 ## Oracle Validator
 parameters:
@@ -1036,10 +1036,10 @@ UpdateOracleAct (SignedMessage PriceTracking)
 Purpose: allow the `operator` to post new pricing information
 
 Validation rules:
-- tx must be signed by `operator` 
+- tx must be signed by `operator`
 
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - PriceTracking Oracle Token (from oracle Validator Script)
 
@@ -1065,8 +1065,8 @@ Purpose: Mints state & record tokens relating to the buffer, used to determine a
   ```
   BufferState
     { currentDiscount = 1 % 5
-    , debtPrice = oracleMessageDebtPrice 
-    , surplusPrice = oracleMessageSurplusPrice 
+    , debtPrice = oracleMessageDebtPrice
+    , surplusPrice = oracleMessageSurplusPrice
     }
   ```
 *known issue: we should break the `currentDiscount` into a distributed mapping from assetClass to Ratio, since different currencies may have prices that move independently.
@@ -1074,16 +1074,16 @@ Purpose: Mints state & record tokens relating to the buffer, used to determine a
 *known issue: how do we track the un-backed $dUSD? or amount of outstanding liquidatable collateral? we likely need to add record tokens*
 
 ## Buffer Validator
-Parameters: 
+Parameters:
 ```
-BufferValidatorParams 
+BufferValidatorParams
   { oracleAddress :: ValidatorHash
-  , oracleOperator :: PubKeyHash 
+  , oracleOperator :: PubKeyHash
   , peggedCurrency :: ByteString -- Fiat currency identifier
   }
   ```
 
-Purpose: To orchestrate Ardana-dollar's 3 auctions: 
+Purpose: To orchestrate Ardana-dollar's 3 auctions:
 - Liquidation (Collateral for $dUSD)
 - Debt ($DANA for dUSD)
 - Surplus (dUSD for $DANA)
@@ -1121,7 +1121,7 @@ Validation rules:
 - the user may provide one or more liquidation payment UTXO containing $dUSD
 - prevent total liquidation if a partial liquidation is viable
 
-inputs: 
+inputs:
 - fee/collateral UTXO (from USER)
 - VaultState token (from Vault Validator Script, expired)
 - Collateral UTXO (from Vault Validator Script)
@@ -1146,14 +1146,14 @@ outputs:
 -- TODO
 
 ## Treasury Minting Policy
-Parameters: 
+Parameters:
 ```
-TreasuryMintingParams 
-  { initialOwner :: PubKeyHash 
-  , peggedCurrency :: ByteString 
+TreasuryMintingParams
+  { initialOwner :: PubKeyHash
+  , peggedCurrency :: ByteString
   }
   ```
-  
+
 Purpose: The TreasuryMintingPolicy allows us to keep a consistent currency symbol for $dUSD across multiple versions of the protocol, Additionally The Treasury Minting Policy mints tokens used in Upgrade and other security-sensitive procedures.
 
 Note: the treasury scripts will not be updated as part of version 2 or any future version of the protocol, Instead, the treasury will integrate with those future versions of the protocol without any code changes.
@@ -1167,12 +1167,12 @@ Purpose: This is a State Token for the Treasury, it is also a Permission token t
 
   carries Datum:
   ```
-  UpgradeContract 
+  UpgradeContract
    { newContract :: Maybe Address }
    ```
   initiated to:
   ```
-  UpgradeContract 
+  UpgradeContract
    { newContract :: Just v1AdminContractAddress }
    ```
 Minting
@@ -1235,18 +1235,18 @@ output:
 
 ### CostCenterState token (1x for each CostCenter)
   Purpose: a State Token for a cost center, To carry the balance of a particular Cost Center (an account) of funds that may be held in the Treasury and spent with permission. This prevents accidental overspending of one set of funds, depleting funds needed for other purposes.
-  
+
   carries datum:
   ```
   CostCenterState
     { costCenter :: ByteString
-    , balance :: Plutus.Value 
+    , balance :: Plutus.Value
     }
   ```
-    
+
 Minting & Burning:
 - Must contain an UpgradeContract token utxo from the Treasury Validator
-  
+
 inputs:
 - fee/collateral UTXO (from USER)
 - UpgradeContract token (from Treasury Validator Script)
@@ -1269,10 +1269,10 @@ Purpose: The Treasury is a structure that allows for a store of funds across mul
 
 Note: the treasury scripts will not be updated as part of version 2 or any future version of the protocol, Instead, the treasury will integrate with those future versions of the protocol without any code changes.
 
-datum: 
+datum:
 `UpgradeContract`
 
-redeemer 
+redeemer
 ```
 = InitiateUpgradeAct { newContract :: ValidatorHash }
 | SpendFromCostCenterAct { value :: Plutus.Value, costCenter :: ByteString, beneficiary :: Address }
