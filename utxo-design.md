@@ -72,8 +72,8 @@ One-shot tokens within the system are:
 
   carries datum:
   ```
-  GovernanceState { stakeTotal: Integer
-                  , rewardsTotal: Value
+  GovernanceState { stakeTotal :: Integer
+                  , rewardsTotal :: Value
                   , lastEpoch :: PosixTime
                   }
   ```
@@ -81,7 +81,7 @@ One-shot tokens within the system are:
   initialized to
   ```
   GovernanceState { stakeTotal = 0
-                  , rewardsTotal = Value.empty
+                  , rewardsTotal = mempty
                   , lastEpoch = currentTime
                   }
   ```
@@ -247,7 +247,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 ## Governance Validator
 parameters:
 ```
-GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol,
+GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol
                           , ownerAddress :: PubKeyHash
                           , danaTokenAssetClass :: AssetClass
                           }
@@ -296,7 +296,7 @@ Purpose: The user adds $DANA to their staked totals, may mint UserStakeDetail.
 the `DepositAct.address` field is purposefully available to be a wallet or script address as a user may want to delegate control over stake and over rewards to an external contract.
 
 Validation rules:
-- user must have provided 1 or more UTXO's containing a total of at least `DepositAct.amount` of $DANA (Deposit UTXOS)
+- user must have provided 1 or more UTXO's containing a total of at least `DepositAct.amount` of $DANA (Deposit UTXO's)
 - user may have included a `UserStakeDetail` from the Governance validator script matching their `DepositAct.address`.
 
   if not, then one should be Minted from `GovernanceMintingPolicy`, with the user's `address` as the `address` parameter, currentTime as `lastReward` parameter, and `Nothing` as the `lockedUntil` and `lockedBy` parameters,
@@ -1086,7 +1086,7 @@ BufferValidatorParams
 Purpose: To orchestrate Ardana-dollar's 3 auctions:
 - Liquidation (Collateral for $dUSD)
 - Debt ($DANA for dUSD)
-- Surplus (dUSD for $DANA)
+- Surplus ($dUSD for $DANA)
 
 Datum:
 `BufferState`
