@@ -296,7 +296,7 @@ Purpose: The user adds $DANA to their staked totals, may mint UserStakeDetail.
 the `DepositAct.address` field is purposefully available to be a wallet or script address as a user may want to delegate control over stake and over rewards to an external contract.
 
 Validation rules:
-- user must have provided 1 or more UTXO's containing a total of at least `DepositAct.amount` of $DANA (Deposit UTXO's)
+- user must have provided 1 or more UTXOs containing a total of at least `DepositAct.amount` of $DANA (Deposit UTXOs)
 - user may have included a `UserStakeDetail` from the Governance validator script matching their `DepositAct.address`.
 
   if not, then one should be Minted from `GovernanceMintingPolicy`, with the user's `address` as the `address` parameter, currentTime as `lastReward` parameter, and `Nothing` as the `lockedUntil` and `lockedBy` parameters,
@@ -385,14 +385,14 @@ inputs:
 - GovernanceState (from Governance Validator Script)
 - LastEpochScriptState (from Governance Validator Script)
 - reward UTXO (for past epoch) (from Governance Validator Script)
-- (optional) - other UTXO's that need to be consolidated
+- (optional) - other UTXOs that need to be consolidated
 - (optional) - reward UTXO (for current epoch)
 
 outputs:
 - fee/collateral UTXO remainder -> user Wallet
 - GovernanceState token -> Governance Validator script (set `GovernanceState.rewardsTotal` to the sum of the rewards and other utxos included for consolidation)
 - LastEpochScriptState -> BURN
-- reward UTXO -> Governance Validator Script (consolidated from reward UTXO's above)
+- reward UTXO -> Governance Validator Script (consolidated from reward UTXOs above)
 
 ### RegisterProposalFactoryAct
 
@@ -519,7 +519,7 @@ Purpose:
 this would mint a new ProposalState token and send it to the precomputed address for the IndividualProposal Validator Script
 
 Validation rules:
-these may vary based on proposal logic,  an example might be that the user's $DANA UTXO's must total more than a constant Minimum Proposal Amount.
+these may vary based on proposal logic,  an example might be that the user's $DANA UTXOs must total more than a constant Minimum Proposal Amount.
 
 inputs:
 - fee/collateral UTXO (from USER)
@@ -1178,7 +1178,7 @@ Purpose: This is a State Token for the Treasury, it is also a Permission token t
 Minting
 - must be signed by the `initialOwner`
 - datum always Initially set to Nothing
-- this will be called directly, and should only be called exactly once in the lifetime of the script, to mint 2 UpgradeContract tokens in 2 seperate UTXO's, once this is completed, any attempt to mint this token should fail
+- this will be called directly, and should only be called exactly once in the lifetime of the script, to mint 2 UpgradeContract tokens in 2 seperate UTXOs, once this is completed, any attempt to mint this token should fail
 
 Burning: this token cannot be burned.
 
@@ -1324,7 +1324,7 @@ outputs:
 Purpose: To allow users or the protocol to deposit funds to a particular cost center, for later use.
 Validation Rules:
 - if a UTXO exists in the Treasury Validator for the given `costCenter`, then it must be included, otherwise one is minted
-- user may include one or more UTXO's as payment
+- user may include one or more UTXOs as payment
 
 inputs:
 - fee/collateral UTXO (from USER)
