@@ -7,19 +7,19 @@ module ArdanaDollar.PriceOracle.OnChain (
   getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
   mkOracleValidator,
-  OracleMintingParams(..),
+  OracleMintingParams (..),
   oracleMintingPolicy,
-  OracleValidatorParams(..),
-  PriceTracking(..)
+  OracleValidatorParams (..),
+  PriceTracking (..),
 ) where
 
 import ArdanaDollar.Utils (getScriptOutputsWithDatum)
-import qualified Data.Aeson as JSON
+import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger qualified
 import Ledger.Oracle qualified as Oracle
-import Ledger.Value qualified as Value
 import Ledger.Typed.Scripts qualified as Scripts
+import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Interval.Extra (width)
 import PlutusTx qualified
 import PlutusTx.Prelude
@@ -46,7 +46,7 @@ data PriceTracking = PriceTracking
 PlutusTx.makeIsDataIndexed ''PriceTracking [('PriceTracking, 0)]
 
 data OracleMintingParams = OracleMintingParams
-  { oracleMintingParams'operator :: !Ledger.PubKey 
+  { oracleMintingParams'operator :: !Ledger.PubKey
   , oracleMintingParams'operatorPkh :: !Ledger.PubKeyHash
   }
   deriving stock (Haskell.Show, Generic)
@@ -59,7 +59,7 @@ checkMessageOutput ::
   Ledger.ValidatorHash ->
   Ledger.POSIXTimeRange ->
   Ledger.Value ->
-  Ledger.TxOut -> 
+  Ledger.TxOut ->
   Oracle.SignedMessage PriceTracking ->
   Bool
 checkMessageOutput
@@ -69,20 +69,25 @@ checkMessageOutput
   outputValue
   output
   (Oracle.SignedMessage sig hash dat) =
-  traceIfFalse "cryptographic signature is incorrect"
-    (isRight $ Oracle.checkSignature hash oracleOperatorPubKey sig)
-  && traceIfFalse "does not go to oracle validator"
-    (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just oracleValidator_)
-  && traceIfFalse "incorrect output value"
-    (Ledger.txOutValue output == outputValue)
-  && traceIfFalse "incorrect PriceTracking datum"
-      (case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum dat) of
-         Nothing ->
-           False
-         Just (PriceTracking fiatFeed cryptoFeed upd) ->
-           UniqueMap.null fiatFeed
-           && UniqueMap.null cryptoFeed
-           && upd `Ledger.member` range)
+    traceIfFalse
+      "cryptographic signature is incorrect"
+      (isRight $ Oracle.checkSignature hash oracleOperatorPubKey sig)
+      && traceIfFalse
+        "does not go to oracle validator"
+        (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just oracleValidator_)
+      && traceIfFalse
+        "incorrect output value"
+        (Ledger.txOutValue output == outputValue)
+      && traceIfFalse
+        "incorrect PriceTracking datum"
+        ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum dat) of
+            Nothing ->
+              False
+            Just (PriceTracking fiatFeed cryptoFeed upd) ->
+              UniqueMap.null fiatFeed
+                && UniqueMap.null cryptoFeed
+                && upd `Ledger.member` range
+        )
 
 {-# INLINEABLE withinInterval #-}
 withinInterval :: Integer -> Ledger.TxInfo -> Bool
@@ -95,33 +100,44 @@ stateTokenValue :: Value.CurrencySymbol -> Ledger.Value
 stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 
 {-# INLINEABLE mkOracleMintingPolicy #-}
-mkOracleMintingPolicy :: Ledger.ValidatorHash
-                      -> OracleMintingParams
-                      -> ()
-                      -> Ledger.ScriptContext
-                      -> Bool
+mkOracleMintingPolicy ::
+  Ledger.ValidatorHash ->
+  OracleMintingParams ->
+  () ->
+  Ledger.ScriptContext ->
+  Bool
 mkOracleMintingPolicy
   oracle
   (OracleMintingParams op opPkh)
   _
-  sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
-  narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
-  where narrowInterval :: Bool
-        narrowInterval = withinInterval 10000 txInfo
-        minted :: Ledger.Value
-        minted = Ledger.txInfoMint txInfo
-        expected :: Ledger.Value
-        expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
-        correctMinting = traceIfFalse "incorrect minted amount"
-                           (minted == expected)
-        txSignedByOperator = traceIfFalse "not signed by oracle operator"
-                               (Ledger.txSignedBy txInfo opPkh)
-        priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-          [(output, dat)] ->
-            checkMessageOutput op oracle (Ledger.txInfoValidRange txInfo)
-                               expected output dat
-          _ ->
-            traceIfFalse "no unique PriceTracking carrying UTXO found" False
+  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
+    narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
+    where
+      narrowInterval :: Bool
+      narrowInterval = withinInterval 10000 txInfo
+      minted :: Ledger.Value
+      minted = Ledger.txInfoMint txInfo
+      expected :: Ledger.Value
+      expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
+      correctMinting =
+        traceIfFalse
+          "incorrect minted amount"
+          (minted == expected)
+      txSignedByOperator =
+        traceIfFalse
+          "not signed by oracle operator"
+          (Ledger.txSignedBy txInfo opPkh)
+      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+        [(output, dat)] ->
+          checkMessageOutput
+            op
+            oracle
+            (Ledger.txInfoValidRange txInfo)
+            expected
+            output
+            dat
+        _ ->
+          traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
@@ -130,8 +146,13 @@ oracleMintingPolicy ::
   Ledger.MintingPolicy
 oracleMintingPolicy oracle params =
   Ledger.mkMintingPolicyScript $
-    $$(PlutusTx.compile [|| \o p -> Scripts.wrapMintingPolicy
-                                      (mkOracleMintingPolicy o p)||])
+    $$( PlutusTx.compile
+          [||
+          \o p ->
+            Scripts.wrapMintingPolicy
+              (mkOracleMintingPolicy o p)
+          ||]
+      )
       `PlutusTx.applyCode` PlutusTx.liftCode oracle
       `PlutusTx.applyCode` PlutusTx.liftCode params
 
@@ -154,24 +175,30 @@ mkOracleValidator
   (OracleValidatorParams curSymbol op opPkh _)
   _
   _
-  sc@Ledger.ScriptContext{scriptContextTxInfo=txInfo} =
-  narrowInterval && txSignedByOperator && priceMessageToOracle
-  where narrowInterval :: Bool
-        narrowInterval = withinInterval 10000 txInfo
-        expectedOutVal :: Ledger.Value
-        expectedOutVal = stateTokenValue curSymbol
-        txSignedByOperator :: Bool
-        txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-        priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-          [(output, dat)] ->
-            checkMessageOutput op (Ledger.ownHash sc)
-              (Ledger.txInfoValidRange txInfo) expectedOutVal output dat
-          _ ->
-            traceIfFalse "no unique PriceTracking carrying UTXO found" False
+  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
+    narrowInterval && txSignedByOperator && priceMessageToOracle
+    where
+      narrowInterval :: Bool
+      narrowInterval = withinInterval 10000 txInfo
+      expectedOutVal :: Ledger.Value
+      expectedOutVal = stateTokenValue curSymbol
+      txSignedByOperator :: Bool
+      txSignedByOperator = Ledger.txSignedBy txInfo opPkh
+      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+        [(output, dat)] ->
+          checkMessageOutput
+            op
+            (Ledger.ownHash sc)
+            (Ledger.txInfoValidRange txInfo)
+            expectedOutVal
+            output
+            dat
+        _ ->
+          traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 data PriceOracling
 instance Scripts.ValidatorTypes PriceOracling where
-  type DatumType PriceOracling = Oracle.SignedMessage PriceTracking 
+  type DatumType PriceOracling = Oracle.SignedMessage PriceTracking
   type RedeemerType PriceOracling = ()
 
 {-# INLINEABLE oracleInst #-}

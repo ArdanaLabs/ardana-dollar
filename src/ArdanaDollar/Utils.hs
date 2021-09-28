@@ -266,11 +266,9 @@ a `safeRemainder` b
 safeDivMod :: Integer -> Integer -> Maybe (Integer, Integer)
 a `safeDivMod` b = (,) <$> (a `safeDivide` b) <*> (a `safeRemainder` b)
 
-
 {-# INLINEABLE parseDatum #-}
 
-{- | Helper function to parse a UTXO's datum and keep the UTXO
--}
+-- | Helper function to parse a UTXO's datum and keep the UTXO
 parseDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
@@ -296,8 +294,8 @@ getAllOutputsWithDatum ::
   Contexts.ScriptContext ->
   [(Contexts.TxOut, datum)]
 getAllOutputsWithDatum
-  Contexts.ScriptContext{scriptContextTxInfo=txInfo} =
-  mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs txInfo)
+  Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
+    mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs txInfo)
 
 {-# INLINEABLE getScriptOutputsWithDatum #-}
 
@@ -312,5 +310,5 @@ getScriptOutputsWithDatum ::
   Contexts.ScriptContext ->
   [(Contexts.TxOut, datum)]
 getScriptOutputsWithDatum
-  sc@Contexts.ScriptContext{scriptContextTxInfo=txInfo} =
-  mapMaybe (parseDatum txInfo) (Contexts.getContinuingOutputs sc)
+  sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
+    mapMaybe (parseDatum txInfo) (Contexts.getContinuingOutputs sc)
