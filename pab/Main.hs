@@ -50,6 +50,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
+import Wallet.Emulator.Wallet (knownWallet)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -98,7 +99,7 @@ pabSimulation = do
 
   logTitleSequence
 
-  cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
+  cVaultId <- Simulator.activateContract (knownWallet 2) VaultContract <* Simulator.waitNSlots 2
   logCurrentBalances_
 
   -- Init a vault
@@ -111,14 +112,14 @@ pabSimulation = do
 
   -- Treasury
   logBlueString "Init treasury"
-  cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
+  cTreasuryId <- Simulator.activateContract (knownWallet 1) TreasuryStart
   Simulator.waitNSlots 10
   treasury <- getBus @Treasury cTreasuryId
   logCurrentBalances_
 
   -- Deposit funds in cost centers
   logBlueString "Deposit funds in cost centers"
-  cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
+  cTreasuryUserId <- Simulator.activateContract (knownWallet 2) (TreasuryContract treasury)
   Simulator.waitNSlots 10
   let callDepositEndpoint cc = do
         let params =
@@ -141,11 +142,11 @@ pabSimulation = do
 
   -- Start buffer
   logBlueString "Start buffer contract"
-  _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
+  _ <- Simulator.activateContract (knownWallet 1) (BufferStart treasury)
   Simulator.waitNSlots 10
   logCurrentBalances_
 
-  cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
+  cBufferUserId <- Simulator.activateContract (knownWallet 2) (BufferContract treasury)
   Simulator.waitNSlots 2
   logCurrentBalances_
 

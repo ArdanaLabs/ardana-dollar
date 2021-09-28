@@ -37,12 +37,12 @@ debtTraceTest =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "debt auction trace"
-    (walletFundsChange (Wallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
+    (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
     (draftTrace debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (knownWallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -53,12 +53,12 @@ debtAndSurplusTraceTest =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "debt and surplus auction trace"
-    (walletFundsChange (Wallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
+    (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
     (draftTrace debtAndSurplusAuction)
   where
     debtAndSurplusAuction :: Treasury -> EmulatorTrace ()
     debtAndSurplusAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (knownWallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -71,12 +71,12 @@ tooSmallSurplusTraceTest =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "too small surplus auction trace"
-    (walletFundsChange (Wallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
+    (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
     (draftTrace surplusAuction)
   where
     surplusAuction :: Treasury -> EmulatorTrace ()
     surplusAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (knownWallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 2
@@ -89,12 +89,12 @@ zeroDebtAuction =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "zero debt auction trace"
-    (walletFundsChange (Wallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
+    (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
     (draftTrace debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (knownWallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId 0
@@ -105,19 +105,19 @@ negativeDebtAuction =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "negative debt auction trace"
-    (walletFundsChange (Wallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
+    (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
     (draftTrace debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
-      cTreasuryUserId <- activateContractWallet (Wallet 2) (bufferAuctionContract @() @ContractError treasury)
+      cTreasuryUserId <- activateContractWallet (knownWallet 2) (bufferAuctionContract @() @ContractError treasury)
       void $ Emulator.waitNSlots 2
 
       callEndpoint @"debtAuction" cTreasuryUserId (-1)
       void $ Emulator.waitNSlots 10
 
 emCfg :: EmulatorConfig
-emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet w, v' w) | w <- [1 .. 3]]) def def
+emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet w, v' w) | w <- [1 .. 3]]) def def
   where
     v :: Value.Value
     v = Ada.lovelaceValueOf 1_000_000_000
@@ -129,11 +129,11 @@ emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet w, v' w) | w <- [1 .. 3]]) 
 
 draftTrace :: (Treasury -> EmulatorTrace ()) -> EmulatorTrace ()
 draftTrace cont = do
-  cTreasuryId <- activateContractWallet (Wallet 1) (treasuryStartContract <* Contract.waitNSlots 5)
+  cTreasuryId <- activateContractWallet (knownWallet 1) (treasuryStartContract <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
   void $ waitNSlots 5
-  _ <- activateContractWallet (Wallet 1) (bufferStartContract @() @ContractError treasury <* Contract.waitNSlots 5)
+  _ <- activateContractWallet (knownWallet 1) (bufferStartContract @() @ContractError treasury <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   cont treasury
 
