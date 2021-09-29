@@ -43,7 +43,7 @@ build: requires_nix_shell ardana-dollar.cabal
 	cabal v2-build $(GHC_FLAGS)
 
 test: requires_nix_shell ardana-dollar.cabal
-	cabal v2-test
+	cabal v2-test --test-options="--contractMaxSuccess 25"
 
 ghci: requires_nix_shell ardana-dollar.cabal
 	cabal v2-repl $(GHC_FLAGS)

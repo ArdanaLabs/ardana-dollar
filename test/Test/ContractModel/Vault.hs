@@ -191,11 +191,11 @@ genAdaAmountInteger :: Gen Integer
 genAdaAmountInteger = scale (* 1_000_000) genPositiveInteger
 
 -- Property tests
-contractTests :: TestTree
-contractTests =
+contractTests :: Int -> TestTree
+contractTests maxSuccess =
   testGroup
     "Vault Model"
-    [testProperty "Vault" $ withMaxSuccess 100 prop_Vault]
+    [testProperty "Vault" $ withMaxSuccess maxSuccess prop_Vault]
 
 prop_Vault :: Actions VaultModel -> Property
 prop_Vault = propRunActionsWithOptions opts handleSpec (const $ pure True)

@@ -95,8 +95,10 @@ common test-deps
     , freer-simple
     , hedgehog
     , lens
+    , optparse-applicative  ^>=0.16
     , QuickCheck
     , streaming
+    , tagged
     , tasty
     , tasty-hedgehog
     , tasty-hunit

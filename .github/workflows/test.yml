@@ -38,5 +38,14 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - name: Build the full CI
-        run: nix-build ./nix/ci.nix -I nixpkgs=channel:nixos-21.05
+      - if: ${{ github.ref == 'refs/heads/master' }}
+        name: Build the full CI on master
+        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 250 -I nixpkgs=channel:nixos-21.05
+
+      - if: ${{ github.ref == 'refs/heads/staging' }}
+        name: Build the full CI on staging
+        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 100 -I nixpkgs=channel:nixos-21.05
+
+      - if: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/staging' }}
+        name: Build the full CI on PR
+        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 50 -I nixpkgs=channel:nixos-21.05

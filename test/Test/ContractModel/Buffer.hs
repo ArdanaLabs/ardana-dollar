@@ -193,9 +193,12 @@ getTreasuryParam = case run of
                 void $ Emulator.waitNSlots 20
 
 -- Property tests
-contractTests :: TestTree
-contractTests =
-  testGroup "Buffer Model" [testProperty "Buffer" $ withMaxSuccess 200 prop_Buffer]
+contractTests :: Int -> TestTree
+contractTests maxSuccess =
+  testGroup
+    "Buffer Model"
+    [ testProperty "Buffer" $ withMaxSuccess maxSuccess prop_Buffer
+    ]
 
 prop_Buffer :: Actions BufferModel -> Property
 prop_Buffer = propRunActionsWithOptions opts handleSpec (const $ pure True)
