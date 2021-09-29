@@ -653,12 +653,12 @@ inputs:
 outputs:
 - fee/collateral UTXO remainder -> user Wallet
 - AdminState token -> Admin Validator
-- VaultState token -> Admin Validator
+- VaultState token -> new Vault Validator
 
 ## Admin Validator
 Parameters:
 ```
-AdminMintingParams
+AdminValidatorParams
   { targetCurrency :: ByteString -- fiat currency identifier
   , oracleAddress :: ValidatorHash
   , oracleOperator :: PubKeyHash
