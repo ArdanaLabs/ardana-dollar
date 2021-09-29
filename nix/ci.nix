@@ -13,6 +13,6 @@ in rec {
 
   # This will run the tests within this build and produce the test logs as output
   check = plutus.pkgs.runCommand "run-tests" { } ''
-    ${ardana-dollar-test}/bin/ardana-dollar-test --contractMaxSuccess ${contractMaxSuccess} | tee $out
+    ${ardana-dollar-test}/bin/ardana-dollar-test --contractMaxSuccess ${builtins.toString contractMaxSuccess} | tee $out
   '';
 }
