@@ -49,9 +49,6 @@ treasuryTraceTests =
     ]
 
 -- Utils -----------------------------------------------------------------------
-type TreasuryContractHandle =
-  ContractHandle (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema ContractError
-
 treasuryStartContract' :: Contract (OutputBus Treasury) EmptySchema ContractError ()
 treasuryStartContract' = treasuryStartContract <* Contract.waitNSlots 5
 
@@ -67,15 +64,19 @@ emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet w, v' w) | w <- [1 .. 
       | w == 3 = mempty
       | otherwise = v <> assetClassValue dUSDAsset 1000 <> assetClassValue danaAssetClass 10
 
-draftTrace :: (Treasury -> TreasuryContractHandle -> EmulatorTrace ()) -> EmulatorTrace ()
-draftTrace cont = do
+draftTrace ::
+  EmulatorTrace
+    ( Treasury
+    , ContractHandle (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema ContractError
+    )
+draftTrace = do
   cTreasuryId <- activateContractWallet (knownWallet 1) treasuryStartContract'
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
   void $ waitNSlots 5
   treasuryUserId <- activateContractWallet (knownWallet 2) (treasuryContract @ContractError treasury <* Contract.waitNSlots 5)
   void $ waitNSlots 5
-  cont treasury treasuryUserId
+  return (treasury, treasuryUserId)
 
 getBus ::
   forall w s e.
@@ -155,7 +156,7 @@ depositTwiceCostCenter =
         .&&. valueAtComputedAddress treasuryStartContract' t1 addressGetter valueChecker
         .&&. dataAtComputedAddress treasuryStartContract' t1 addressGetter dataChecker
     )
-    (draftTrace depositTwice)
+    depositTwice
   where
     costCenterName :: BuiltinByteString
     costCenterName = "TestCenter1"
@@ -176,15 +177,17 @@ depositTwiceCostCenter =
     twice :: EmulatorTrace () -> EmulatorTrace ()
     twice f = f >> f
 
-    depositTwice :: Treasury -> TreasuryContractHandle -> EmulatorTrace ()
-    depositTwice _ treasuryUserId = twice $ do
-      callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
-        TreasuryDepositParams
-          { treasuryDepositAmount = 50
-          , treasuryDepositCurrency = dUSDAsset
-          , treasuryDepositCostCenter = costCenterName
-          }
-      void $ Emulator.waitNSlots 10
+    depositTwice :: EmulatorTrace ()
+    depositTwice = do
+      (_, treasuryUserId) <- draftTrace
+      twice $ do
+        callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
+          TreasuryDepositParams
+            { treasuryDepositAmount = 50
+            , treasuryDepositCurrency = dUSDAsset
+            , treasuryDepositCostCenter = costCenterName
+            }
+        void $ Emulator.waitNSlots 10
 
 depositIntoTwoCostCenters :: TestTree
 depositIntoTwoCostCenters =
@@ -196,7 +199,7 @@ depositIntoTwoCostCenters =
         .&&. valueAtComputedAddress treasuryStartContract' t1 addressGetter (valueChecker 150)
         .&&. dataAtComputedAddress treasuryStartContract' t1 addressGetter dataChecker
     )
-    (draftTrace depositTrace)
+    depositTrace
   where
     costCenter1Name :: BuiltinByteString
     costCenter1Name = "TestCenter1"
@@ -218,8 +221,9 @@ depositIntoTwoCostCenters =
       maybe False (valueChecker 100) (UniqueMap.lookup costCenter1Name cc)
         && maybe False (valueChecker 50) (UniqueMap.lookup costCenter2Name cc)
 
-    depositTrace :: Treasury -> TreasuryContractHandle -> EmulatorTrace ()
-    depositTrace _ treasuryUserId = do
+    depositTrace :: EmulatorTrace ()
+    depositTrace = do
+      (_, treasuryUserId) <- draftTrace
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
           { treasuryDepositAmount = 100
@@ -245,7 +249,7 @@ sumDifferentDeposits =
         .&&. valueAtComputedAddress treasuryStartContract' t1 addressGetter (valueChecker 15)
         .&&. dataAtComputedAddress treasuryStartContract' t1 addressGetter dataChecker
     )
-    (draftTrace depositTrace)
+    depositTrace
   where
     costCenterName :: BuiltinByteString
     costCenterName = "TestCenter1"
@@ -264,8 +268,9 @@ sumDifferentDeposits =
     dataChecker TreasuryDatum {costCenters = cc} =
       maybe False (valueChecker 5) (UniqueMap.lookup costCenterName cc)
 
-    depositTrace :: Treasury -> TreasuryContractHandle -> EmulatorTrace ()
-    depositTrace _ treasuryUserId = do
+    depositTrace :: EmulatorTrace ()
+    depositTrace = do
+      (_, treasuryUserId) <- draftTrace
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
           { treasuryDepositAmount = 100

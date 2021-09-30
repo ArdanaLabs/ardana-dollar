@@ -42,19 +42,20 @@ bufferTraceTests =
     ]
 
 -- Utils -----------------------------------------------------------------------
-activateTreasuryDraftTrace :: (Treasury -> EmulatorTrace ()) -> EmulatorTrace ()
-activateTreasuryDraftTrace cont = do
+activateTreasuryDraftTrace :: EmulatorTrace Treasury
+activateTreasuryDraftTrace = do
   cTreasuryId <- activateContractWallet (knownWallet 1) (treasuryStartContract <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
   void $ waitNSlots 5
-  cont treasury
+  return treasury
 
-draftTrace :: (Treasury -> EmulatorTrace ()) -> EmulatorTrace ()
-draftTrace cont = activateTreasuryDraftTrace $ \treasury -> do
+draftTrace :: EmulatorTrace Treasury
+draftTrace = do
+  treasury <- activateTreasuryDraftTrace
   _ <- activateContractWallet (knownWallet 1) (bufferStartContract @() @ContractError treasury (50, 50) <* Contract.waitNSlots 5)
   void $ waitNSlots 5
-  cont treasury
+  return treasury
 
 emCfg :: EmulatorConfig
 emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet w, v' w) | w <- [1 .. 3]]) def def
@@ -119,7 +120,7 @@ noBufferTest =
     ( walletFundsChange (knownWallet 1) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0)
         .&&. assertInstanceLog t1 (logChecker "no buffer utxo at the script address")
     )
-    (activateTreasuryDraftTrace bufferTrace)
+    (activateTreasuryDraftTrace >>= bufferTrace)
   where
     t1 :: ContractInstanceTag
     t1 = walletInstanceTag (knownWallet 1)
@@ -138,7 +139,7 @@ debtTraceTest =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "debt auction trace"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
-    (draftTrace debtAuction)
+    (draftTrace >>= debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
@@ -154,7 +155,7 @@ debtAndSurplusTraceTest =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "debt and surplus auction trace"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
-    (draftTrace debtAndSurplusAuction)
+    (draftTrace >>= debtAndSurplusAuction)
   where
     debtAndSurplusAuction :: Treasury -> EmulatorTrace ()
     debtAndSurplusAuction treasury = do
@@ -172,7 +173,7 @@ tooSmallSurplusTraceTest =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "too small surplus auction trace"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset (-100) <> assetClassValue danaAssetClass 2))
-    (draftTrace surplusAuction)
+    (draftTrace >>= surplusAuction)
   where
     surplusAuction :: Treasury -> EmulatorTrace ()
     surplusAuction treasury = do
@@ -190,7 +191,7 @@ zeroDebtAuction =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "zero debt auction trace"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
-    (draftTrace debtAuction)
+    (draftTrace >>= debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
@@ -206,7 +207,7 @@ negativeDebtAuction =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "negative debt auction trace"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
-    (draftTrace debtAuction)
+    (draftTrace >>= debtAuction)
   where
     debtAuction :: Treasury -> EmulatorTrace ()
     debtAuction treasury = do
@@ -222,7 +223,7 @@ indivisibleSurplusAuction =
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "indivisible surplus auction"
     (walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0))
-    (activateTreasuryDraftTrace surplusAuction)
+    (activateTreasuryDraftTrace >>= surplusAuction)
   where
     surplusAuction :: Treasury -> EmulatorTrace ()
     surplusAuction treasury = do
