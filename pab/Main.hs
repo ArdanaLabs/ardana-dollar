@@ -166,7 +166,7 @@ pabSimulation = do
   shutdown
   where
     wallets :: [Wallet]
-    wallets = Wallet <$> [1 .. 2]
+    wallets = knownWallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " <> s) >> logNewLine
