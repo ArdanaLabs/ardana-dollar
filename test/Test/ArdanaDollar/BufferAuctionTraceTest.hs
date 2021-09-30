@@ -2,10 +2,8 @@ module Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests) where
 
 import Control.Lens
 import Control.Monad (void)
-import Data.Aeson
 import Data.Default (Default (..))
 import Data.Map qualified as Map
-import Data.Semigroup qualified as Semigroup
 import Ledger.Ada as Ada
 import Ledger.Value as Value
 import Plutus.Contract (ContractError)
@@ -19,7 +17,7 @@ import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.Treasury.Endpoints
 import ArdanaDollar.Treasury.Types (Treasury, danaAssetClass)
 import ArdanaDollar.Vault (dUSDAsset)
-import Plutus.PAB.OutputBus
+import Test.TraceUtils (getBus)
 
 bufferTraceTests :: TestTree
 bufferTraceTests =
@@ -136,18 +134,3 @@ draftTrace cont = do
   _ <- activateContractWallet (knownWallet 1) (bufferStartContract @() @ContractError treasury <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   cont treasury
-
-getBus ::
-  forall w s e.
-  ( ContractConstraints s
-  , FromJSON e
-  , FromJSON w
-  , ToJSON w
-  ) =>
-  ContractHandle (OutputBus w) s e ->
-  EmulatorTrace w
-getBus cId = do
-  ob <- observableState cId
-  case getOutputBus ob of
-    Just (Semigroup.Last s) -> return s
-    Nothing -> throwError $ GenericError "error in getOutputBus"
