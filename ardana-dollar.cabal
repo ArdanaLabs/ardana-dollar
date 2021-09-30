@@ -61,6 +61,8 @@ common lang
     -Wmissing-export-lists -Werror -Wincomplete-record-updates
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
+    -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
+    -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-identities
 
 common deps
   build-depends:
@@ -90,9 +92,18 @@ common deps
 common test-deps
   import:        deps
   build-depends:
+    , freer-simple
+    , hedgehog
     , lens
+    , optparse-applicative  ^>=0.16
+    , QuickCheck
+    , streaming
+    , tagged
     , tasty
+    , tasty-hedgehog
     , tasty-hunit
+    , tasty-plutus
+    , tasty-quickcheck
 
 library
   import:          lang
@@ -109,6 +120,7 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
@@ -128,12 +140,20 @@ test-suite ardana-dollar-test
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
   other-modules:
+    Hedgehog.Gen.ArdanaDollar
+    Hedgehog.Gen.Extra
+    Hedgehog.Gen.Plutus
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.Utils
+    Test.ContractModel.Buffer
+    Test.ContractModel.Vault
+    Test.Roundtrips.BuiltinData
+    Test.Roundtrips.JSON
+    Test.TraceUtils
 
   hs-source-dirs: test
-  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts
+  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
   build-depends:  ardana-dollar
 
 executable ardana-pab

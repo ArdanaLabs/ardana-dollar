@@ -14,6 +14,7 @@ module ArdanaDollar.Treasury.OffChain (
 
 --------------------------------------------------------------------------------
 
+import Control.Lens ((^.))
 import Control.Monad (void)
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -69,20 +70,20 @@ findTreasury ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
   (AsContractError e) =>
   Treasury ->
-  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.TxOutTx, TreasuryDatum))
+  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.ChainIndexTxOut, TreasuryDatum))
 findTreasury treasury = do
-  utxos <- Map.filter f <$> utxoAt (treasuryAddress treasury)
-  return $ case Map.toList utxos of
+  utxos <- Map.filter f <$> utxosAt (treasuryAddress treasury)
+  case Map.toList utxos of
     [(oref, o)] -> do
       datum <- datumForOffchain o
-      return (oref, o, datum)
-    _ -> Nothing
+      return $ (,,) oref o <$> datum
+    _ -> return Nothing
   where
     tokenAC :: Value.AssetClass
     tokenAC = stateTokenSymbol treasury
 
-    f :: Ledger.TxOutTx -> Bool
-    f o = Value.assetClassValueOf (Ledger.txOutValue $ Ledger.txOutTxOut o) tokenAC == 1
+    f :: Ledger.ChainIndexTxOut -> Bool
+    f o = Value.assetClassValueOf (o ^. Ledger.ciTxOutValue) tokenAC == 1
 
 -- Treasury start contract
 startTreasury ::
@@ -90,7 +91,7 @@ startTreasury ::
   Contract w EmptySchema ContractError (Maybe Treasury)
 startTreasury = do
   pka <- Ledger.pubKeyAddress <$> ownPubKey
-  utxos <- Map.toList <$> utxoAt pka
+  utxos <- Map.toList <$> utxosAt pka
   case utxos of
     [] -> logError @String "No UTXO found at public address" >> return Nothing
     (oref, o) : _ -> do
@@ -129,7 +130,7 @@ depositFundsWithCostCenter ::
   Contract w s e ()
 depositFundsWithCostCenter treasury params = do
   pkh <- Crypto.pubKeyHash <$> ownPubKey
-  logInfo ("called depositFundsWithCostCenter with params: " ++ show params)
+  logInfo ("called depositFundsWithCostCenter with params: " <> show params)
   let ac = treasuryDepositCurrency params
       amount = treasuryDepositAmount params
       centerName = treasuryDepositCostCenter params
@@ -138,7 +139,7 @@ depositFundsWithCostCenter treasury params = do
     Nothing -> logError @String "no treasury utxo at the script address"
     Just (oref, o, td) -> do
       let td' = td {costCenters = UniqueMap.alter centerName (Just depositValue <>) (costCenters td)}
-          scriptValue = Ledger.txOutValue (Ledger.txOutTxOut o) <> depositValue
+          scriptValue = (o ^. Ledger.ciTxOutValue) <> depositValue
           lookups =
             Constraints.typedValidatorLookups (treasuryInst treasury)
               <> Constraints.otherScript (treasuryValidator treasury)

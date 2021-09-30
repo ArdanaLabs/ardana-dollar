@@ -24,7 +24,9 @@ import Ledger.Constraints qualified as Constraints
 import Ledger.Value qualified as Value
 import Plutus.Contracts.Currency qualified as Currency
 
+import Control.Lens ((^.))
 import Control.Monad.Except
+import Data.Functor ((<&>))
 import Data.Kind
 import Data.Map qualified as Map
 import Data.Monoid (Last (Last))
@@ -52,46 +54,56 @@ mintNFT = do
       (Currency.mintContract self [(nftTokenName, 1)])
   return $ Value.assetClass (Currency.currencySymbol x) nftTokenName
 
-userDatumUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+userDatumUtxos ::
+  forall (s :: Row Type) (w :: Type).
+  NFTAssetClass ->
+  Contract w s Text [((Ledger.TxOutRef, Ledger.ChainIndexTxOut), UserData)]
 userDatumUtxos nft = do
-  utxos <- utxoAt (spAddress nft)
-  return $ Map.toList utxos >>= own
+  utxos <- utxosAt (spAddress nft)
+  concat <$> forM (Map.toList utxos) own
   where
     own e@(_, o) =
-      case datumForOffchain o of
+      datumForOffchain o <&> \case
         Just (UserDatum datum) -> [(e, datum)]
         _ -> []
 
-userUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Ledger.PubKeyHash -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+userUtxos ::
+  forall (s :: Row Type) (w :: Type).
+  NFTAssetClass ->
+  Ledger.PubKeyHash ->
+  Contract w s Text [((Ledger.TxOutRef, Ledger.ChainIndexTxOut), UserData)]
 userUtxos nft self = do
   filter (belongsTo self) <$> userDatumUtxos nft
   where
     belongsTo pkh (_, dat) = userData'pkh dat == pkh
 
-ownUtxos :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text [((Ledger.TxOutRef, Ledger.TxOutTx), UserData)]
+ownUtxos ::
+  forall (s :: Row Type) (w :: Type).
+  NFTAssetClass ->
+  Contract w s Text [((Ledger.TxOutRef, Ledger.ChainIndexTxOut), UserData)]
 ownUtxos nft = do
   self <- Ledger.pubKeyHash <$> ownPubKey
   userUtxos nft self
 
-globalUtxo :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Contract w s Text ((Ledger.TxOutRef, Ledger.TxOutTx), GlobalData)
+globalUtxo ::
+  forall (s :: Row Type) (w :: Type).
+  NFTAssetClass ->
+  Contract w s Text ((Ledger.TxOutRef, Ledger.ChainIndexTxOut), GlobalData)
 globalUtxo nft = do
-  utxos <- Map.filter hasNft <$> utxoAt (spAddress nft)
-  let found = Map.toList utxos >>= own
+  utxos <- Map.filter hasNft <$> utxosAt (spAddress nft)
+  found <- concat <$> forM (Map.toList utxos) own
   if length found == 1
     then return $ head found
     else throwError "not global utxo"
   where
     own e@(_, o) =
-      case datumForOffchain o of
+      datumForOffchain o <&> \case
         Just (GlobalDatum datum) -> [(e, datum)]
         _ -> []
 
-    hasNft :: Ledger.TxOutTx -> Bool
+    hasNft :: Ledger.ChainIndexTxOut -> Bool
     hasNft txOutTx =
-      1
-        == Value.assetClassValueOf
-          (Ledger.txOutValue (Ledger.txOutTxOut txOutTx))
-          (unNFTAssetClass nft)
+      1 == Value.assetClassValueOf (txOutTx ^. Ledger.ciTxOutValue) (unNFTAssetClass nft)
 
 totalBalance :: [Balance] -> Balance
 totalBalance = fold
@@ -102,7 +114,10 @@ balanceToUserValue nftAC b = balance'stake b <> balance'reward b <> Value.assetC
 addTotalStake :: GlobalData -> Value.Value -> GlobalData
 addTotalStake (GlobalData s c l t) v = GlobalData (s <> v) c l t
 
-spendWithConstRedeemer :: Redeemer -> UtxoMap -> Constraints.TxConstraints Redeemer Datum
+spendWithConstRedeemer ::
+  Redeemer ->
+  Map.Map Ledger.TxOutRef Ledger.ChainIndexTxOut ->
+  Constraints.TxConstraints Redeemer Datum
 spendWithConstRedeemer r utxos =
   mconcat
     [ Constraints.mustSpendScriptOutput
@@ -124,7 +139,7 @@ initializeSystem = do
 
   ledgerTx <- submitTxConstraints (spInst (NFTAssetClass nftAssetClass)) c
   awaitTxConfirmed $ Ledger.txId ledgerTx
-  logInfo @String $ "Initialized global state represented by token: " ++ show nftAssetClass
+  logInfo @String $ "Initialized global state represented by token: " <> show nftAssetClass
   tell $ Last $ Just (NFTAssetClass nftAssetClass)
   return ()
 
@@ -138,7 +153,7 @@ initializeUser nft = do
 
       oldGlobalData = snd global
       newGlobalData = oldGlobalData {globalData'count = globalData'count oldGlobalData + 1}
-      oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       newGlobalValue = oldGlobalValue
       newUserData = UserData self PlutusTx.Prelude.mempty (globalData'count oldGlobalData)
 
@@ -153,7 +168,7 @@ initializeUser nft = do
           <> Constraints.mustPayToTheScript (GlobalDatum newGlobalData) newGlobalValue
           <> spendWithConstRedeemer InitializeUser toSpend
 
-  logInfo @String $ "initializing user with: %s" ++ show newUserData
+  logInfo @String $ "initializing user with: %s" <> show newUserData
 
   ledgerTx <- submitTxConstraintsWith @ValidatorTypes lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -171,7 +186,7 @@ deposit nft amount = do
       newGlobalData = addTotalStake oldGlobalData danaAmount
       oldUserData = snd utxo
       newUserData = oldUserData {userData'balance = newBalance}
-      oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global)
+      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       newGlobalValue = oldGlobalValue
 
       toSpend = Map.fromList [fst global, fst utxo]
@@ -201,7 +216,7 @@ provideRewards nft amount = do
   let dusdAmount = Value.assetClassValue Vault.dUSDAsset amount
       toSpend = Map.fromList [fst global]
 
-      oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut (snd $ fst global)
+      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       newGlobalValue = oldGlobalValue <> dusdAmount
       oldGlobalData = snd global
       newGlobalData = oldGlobalData
@@ -221,7 +236,7 @@ distributeRewardsTrigger :: forall (s :: Row Type). NFTAssetClass -> Contract (L
 distributeRewardsTrigger nft = do
   global <- globalUtxo nft
 
-  let oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+  let oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       newGlobalValue = oldGlobalValue
       totalReward = oldGlobalValue <> Numeric.negate (nftToken nft)
       oldGlobalData = snd global
@@ -240,12 +255,18 @@ distributeRewardsTrigger nft = do
   ledgerTx <- submitTxConstraintsWith lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
-distributeRewardsUser :: forall (s :: Row Type). NFTAssetClass -> Value.Value -> Bool -> ((Ledger.TxOutRef, Ledger.TxOutTx), UserData) -> Contract (Last Datum) s Text ()
+distributeRewardsUser ::
+  forall (s :: Row Type).
+  NFTAssetClass ->
+  Value.Value ->
+  Bool ->
+  ((Ledger.TxOutRef, Ledger.ChainIndexTxOut), UserData) ->
+  Contract (Last Datum) s Text ()
 distributeRewardsUser nft totalReward locked (tuple', oldUserData) = do
   global <- globalUtxo nft
 
   let oldGlobalData = snd global
-      oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
 
       newTraversal =
         if userData'id oldUserData == globalData'count oldGlobalData - 1
@@ -282,7 +303,7 @@ distributeRewards nft _ = do
   let totalStakeUtxo = balance'stake $ totalBalance $ userData'balance . snd <$> utxos
       totalStakeGlobal = globalData'totalStake (snd global)
 
-      oldGlobalValue = Ledger.txOutValue $ Ledger.txOutTxOut $ snd $ fst global
+      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       totalReward = oldGlobalValue <> Numeric.negate (nftToken nft)
       sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
       txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted)
@@ -293,7 +314,7 @@ distributeRewards nft _ = do
       | null utxos -> throwError "no user utxos"
       | otherwise ->
         do
-          logInfo @String $ "found utxos" ++ show (length sorted) ++ show sorted
+          logInfo @String $ "found utxos" <> show (length sorted) <> show sorted
           distributeRewardsTrigger nft
           txs
           distributeRewardsUser nft totalReward False (last sorted)

@@ -7,6 +7,7 @@ module Main (main) where
 import Data.Kind (Type)
 import Data.Semigroup qualified as Semigroup
 import GHC.Generics (Generic)
+import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
 
 --------------------------------------------------------------------------------
@@ -49,6 +50,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
+import Wallet.Emulator.Wallet (knownWallet)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -84,85 +86,90 @@ waitAndCallEndpoint cid endpoint i = do
   Simulator.waitNSlots 10
 
 main :: IO ()
-main = void $
-  Simulator.runSimulationWith handlers $ do
-    Simulator.logString @(Builtin ArdanaContracts)
-      "Starting Ardana demo PAB webserver on port 8080. Press enter to exit."
-    shutdown <- PAB.Server.startServerDebug
+main = do
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
+  void $ Simulator.runSimulationWith handlers pabSimulation
 
-    logTitleSequence
+pabSimulation :: Simulator.Simulation (Builtin ArdanaContracts) ()
+pabSimulation = do
+  Simulator.logString @(Builtin ArdanaContracts)
+    "Starting Ardana demo PAB webserver on port 8080. Press enter to exit."
+  shutdown <- PAB.Server.startServerDebug
 
-    cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
-    logCurrentBalances_
+  logTitleSequence
 
-    -- Init a vault
-    let callVaultEndpoint = waitAndCallEndpoint cVaultId
-    logBlueString "Mint dUSD"
-    Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
-    callVaultEndpoint "depositCollateral" 113_000_000
-    callVaultEndpoint "mintDUSD" 200
-    logCurrentBalances_
+  cVaultId <- Simulator.activateContract (knownWallet 2) VaultContract <* Simulator.waitNSlots 2
+  logCurrentBalances_
 
-    -- Treasury
-    logBlueString "Init treasury"
-    cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
-    Simulator.waitNSlots 10
-    treasury <- getBus @Treasury cTreasuryId
-    logCurrentBalances_
+  -- Init a vault
+  let callVaultEndpoint = waitAndCallEndpoint cVaultId
+  logBlueString "Mint dUSD"
+  Simulator.callEndpointOnInstance cVaultId "initializeVault" () >> Simulator.waitNSlots 10
+  callVaultEndpoint "depositCollateral" 113_000_000
+  callVaultEndpoint "mintDUSD" 200
+  logCurrentBalances_
 
-    -- Deposit funds in cost centers
-    logBlueString "Deposit funds in cost centers"
-    cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
-    Simulator.waitNSlots 10
-    let callDepositEndpoint cc = do
-          let params =
-                TreasuryDepositParams
-                  { treasuryDepositAmount = 10
-                  , treasuryDepositCurrency = dUSDAsset
-                  , treasuryDepositCostCenter = cc
-                  }
-          _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
-          Simulator.waitNSlots 10
-    callDepositEndpoint "TestCostCenter1"
-    callDepositEndpoint "TestCostCenter2"
-    callDepositEndpoint "TestCostCenter1"
-    _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
-    Simulator.waitNSlots 10
-    queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
-    logBlueString $ "Deposited currently: " ++ show queriedCosts
-    logCurrentBalances_
-    Simulator.waitNSlots 20
+  -- Treasury
+  logBlueString "Init treasury"
+  cTreasuryId <- Simulator.activateContract (knownWallet 1) TreasuryStart
+  Simulator.waitNSlots 10
+  treasury <- getBus @Treasury cTreasuryId
+  logCurrentBalances_
 
-    -- Start buffer
-    logBlueString "Start buffer contract"
-    _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
-    Simulator.waitNSlots 10
-    logCurrentBalances_
+  -- Deposit funds in cost centers
+  logBlueString "Deposit funds in cost centers"
+  cTreasuryUserId <- Simulator.activateContract (knownWallet 2) (TreasuryContract treasury)
+  Simulator.waitNSlots 10
+  let callDepositEndpoint cc = do
+        let params =
+              TreasuryDepositParams
+                { treasuryDepositAmount = 10
+                , treasuryDepositCurrency = dUSDAsset
+                , treasuryDepositCostCenter = cc
+                }
+        _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
+        Simulator.waitNSlots 10
+  callDepositEndpoint "TestCostCenter1"
+  callDepositEndpoint "TestCostCenter2"
+  callDepositEndpoint "TestCostCenter1"
+  _ <- Simulator.callEndpointOnInstance cTreasuryUserId "queryCostCenters" ()
+  Simulator.waitNSlots 10
+  queriedCosts <- getBus @(Vector (BuiltinByteString, Value.Value)) cTreasuryUserId
+  logBlueString $ "Deposited currently: " <> show queriedCosts
+  logCurrentBalances_
+  Simulator.waitNSlots 20
 
-    cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
-    Simulator.waitNSlots 2
-    logCurrentBalances_
+  -- Start buffer
+  logBlueString "Start buffer contract"
+  _ <- Simulator.activateContract (knownWallet 1) (BufferStart treasury)
+  Simulator.waitNSlots 10
+  logCurrentBalances_
 
-    let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
+  cBufferUserId <- Simulator.activateContract (knownWallet 2) (BufferContract treasury)
+  Simulator.waitNSlots 2
+  logCurrentBalances_
 
-    logBlueString "Debt auction"
-    callBufferEndpoint "debtAuction" 2
-    logCurrentBalances_
+  let callBufferEndpoint = waitAndCallEndpoint cBufferUserId
 
-    logBlueString "Surplus auction"
-    callBufferEndpoint "surplusAuction" 50
-    logCurrentBalances_
+  logBlueString "Debt auction"
+  callBufferEndpoint "debtAuction" 2
+  logCurrentBalances_
 
-    logBlueString "Balances at the end of the simulation:"
-    logCurrentBalances_
+  logBlueString "Surplus auction"
+  callBufferEndpoint "surplusAuction" 50
+  logCurrentBalances_
 
-    shutdown
+  logBlueString "Balances at the end of the simulation:"
+  logCurrentBalances_
+
+  shutdown
   where
     wallets :: [Wallet]
     wallets = Wallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
-    logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " ++ s) >> logNewLine
+    logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " <> s) >> logNewLine
 
     logCurrentBalances_ :: Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logCurrentBalances_ = do
@@ -207,15 +214,16 @@ handlers =
     interpret (contractHandler Builtin.handleBuiltin)
 
 -- helper functions
+{- HLINT ignore logTitleSequence "Avoid restricted function" -}
 logTitleSequence :: forall (t :: Type). Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
 logTitleSequence = do
   logWithBg ""
-  logWithBg $ spaceStr ++ ardanaName ++ spaceStr
+  logWithBg $ spaceStr <> ardanaName <> spaceStr
   logWithBg ""
   where
     ardanaName = "Ardana"
     titleWidth = 60
-    spaceWidth = (titleWidth - length ardanaName) `div` 2
+    spaceWidth = (titleWidth - length ardanaName) `div` 2 -- partial, but the divisor is not zero
     spaceStr = [' ' | _ <- [0 .. spaceWidth - 1]]
 
     logWithBg = logPrettyBgColor titleWidth (Vibrant Blue) (Standard White) >=> const logNewLine
@@ -233,7 +241,7 @@ logWalletBalance availableWallets w val = case w of
   where
     logWalletBalance' = do
       logNewLine
-      logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " ++ show w ++ "  ")
+      logPrettyBgColor 0 (Standard Blue) (Standard Black) ("  " <> show w <> "  ")
       logNewLine
       logPrettyColor (Standard Blue) (formatValue val)
       logNewLine
@@ -254,8 +262,8 @@ formatValue (Value.Value m) =
     formatTokenValue (name, value)
       | value == 0 = ""
       | otherwise = case name of
-        "" -> padRight ' ' 10 "ADA" ++ " : " ++ show value
-        tn -> padRight ' ' 10 (safeTokenNameToString tn) ++ " : " ++ show value
+        "" -> padRight ' ' 10 "ADA" <> " : " <> show value
+        tn -> padRight ' ' 10 (safeTokenNameToString tn) <> " : " <> show value
 
     safeTokenNameToString :: Value.TokenName -> String
     safeTokenNameToString tn@(Value.TokenName n) = case bsToString n of
@@ -265,5 +273,5 @@ formatValue (Value.Value m) =
     bsToString (BuiltinByteString bs) = Text.unpack <$> decodeUtf8' bs
 
     trimHash :: String -> String
-    trimHash ('0' : 'x' : rest) = "0x" ++ take 7 rest
+    trimHash ('0' : 'x' : rest) = "0x" <> take 7 rest
     trimHash hash = hash

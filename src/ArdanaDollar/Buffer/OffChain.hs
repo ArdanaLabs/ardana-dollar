@@ -9,13 +9,14 @@ module ArdanaDollar.Buffer.OffChain (
 
 --------------------------------------------------------------------------------
 
+import Control.Lens ((^.))
 import Control.Monad (void)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Semigroup (Semigroup (..))
 import Text.Printf (printf)
-import Prelude (String, div, mconcat, rem, show)
+import Prelude (String, mconcat, show)
 
 --------------------------------------------------------------------------------
 
@@ -46,7 +47,7 @@ import ArdanaDollar.Treasury.Types (
   TreasuryDatum,
   danaAssetClass,
  )
-import ArdanaDollar.Utils (datumForOffchain)
+import ArdanaDollar.Utils (datumForOffchain, safeDivMod)
 import ArdanaDollar.Vault (dUSDAsset)
 
 data BufferAuctioning
@@ -88,8 +89,8 @@ startBuffer treasury = do
 data BufferTreasuryAuctionArgs = BufferTreasuryAuctionArgs
   { treasuryDatum :: TreasuryDatum
   , bufferDatum :: BufferDatum
-  , treasuryOutput :: Ledger.TxOutTx
-  , bufferOutput :: Ledger.TxOutTx
+  , treasuryOutput :: Ledger.ChainIndexTxOut
+  , bufferOutput :: Ledger.ChainIndexTxOut
   , txLookups :: Constraints.ScriptLookups BufferAuctioning
   , txConstraintsCtr ::
       TreasuryDatum ->
@@ -116,7 +117,7 @@ debtAuction treasury danaAmount = do
       let dusdPrice = currentDebtAuctionPrice (bufferDatum args) * danaAmount
           danaValue = Value.assetClassValue danaAssetClass danaAmount
           treasuryValue =
-            Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
+            (treasuryOutput args ^. Ledger.ciTxOutValue)
               <> Value.assetClassValue dUSDAsset dusdPrice
               <> negate danaValue
           td = treasuryDatum args
@@ -140,32 +141,30 @@ surplusAuction treasury dusdAmount = do
   pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo @String $ printf "User %s has called surplusAuction " (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
-  case maybeArgs of
-    Nothing -> return ()
-    Just args -> do
-      let danaPrice = dusdAmount `div` currentSurplusAuctionPrice bd -- [DANA], surplus is dUSD or DANA?
-          danaRem = dusdAmount `rem` currentSurplusAuctionPrice bd -- [DANA], should be 0
-          dusdValue = Value.assetClassValue dUSDAsset dusdAmount
-          treasuryValue =
-            Ledger.txOutValue (Ledger.txOutTxOut $ treasuryOutput args)
-              <> Value.assetClassValue danaAssetClass danaPrice
-              <> negate dusdValue
-          td = treasuryDatum args
-          bd = bufferDatum args
+  flip (maybe $ return ()) maybeArgs $ \args -> do
+    let td = treasuryDatum args
+        bd = bufferDatum args
+    case dusdAmount `safeDivMod` currentSurplusAuctionPrice bd of -- [DANA], surplus is dUSD or DANA?
+      Nothing -> return ()
+      Just (danaPrice, danaRem) ->
+        let dusdValue = Value.assetClassValue dUSDAsset dusdAmount
+            treasuryValue =
+              (treasuryOutput args ^. Ledger.ciTxOutValue)
+                <> Value.assetClassValue danaAssetClass danaPrice
+                <> negate dusdValue
 
-          tx =
-            txConstraintsCtr args td treasuryValue bd mempty (MkSurplusBid dusdAmount)
-              <> Constraints.mustPayToPubKey pkh dusdValue
-
-      if danaRem /= 0
-        then
-          logError @String $
-            printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
-        else do
-          ledgerTx <- submitTxConstraintsWith (txLookups args) tx
-          awaitTxConfirmed $ Ledger.txId ledgerTx
-          logInfo @String $
-            printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
+            tx =
+              txConstraintsCtr args td treasuryValue bd mempty (MkSurplusBid dusdAmount)
+                <> Constraints.mustPayToPubKey pkh dusdValue
+         in if danaRem /= 0
+              then
+                logError @String $
+                  printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
+              else do
+                ledgerTx <- submitTxConstraintsWith (txLookups args) tx
+                awaitTxConfirmed $ Ledger.txId ledgerTx
+                logInfo @String $
+                  printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
 
 bufferTreasuryAuction ::
   (AsContractError e) =>
@@ -208,11 +207,11 @@ bufferTreasuryAuction treasury = do
 findBuffer ::
   (AsContractError e) =>
   Treasury ->
-  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.TxOutTx, BufferDatum))
+  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.ChainIndexTxOut, BufferDatum))
 findBuffer treasury = do
-  utxos <- utxoAt (bufferAddress treasury danaAssetClass)
-  return $ case Map.toList utxos of
+  utxos <- utxosAt (bufferAddress treasury danaAssetClass)
+  case Map.toList utxos of
     [(oref, o)] -> do
       datum <- datumForOffchain o
-      return (oref, o, datum)
-    _ -> Nothing
+      return $ (,,) oref o <$> datum
+    _ -> return Nothing

@@ -13,15 +13,22 @@ module ArdanaDollar.Utils (
   datumForOffchain,
   datumForOnchain,
   validateDatumImmutable,
+  safeDivide,
+  safeRemainder,
+  safeDivMod,
+  getAllOutputsWithDatum,
+  getScriptOutputsWithDatum,
 ) where
 
+import Control.Monad ((>=>))
 import Data.Kind (Type)
-import Data.Map qualified as Map
+import Data.Row (Row)
 
 import ArdanaDollar.Types (CollaterizationRatio (Finite, Infinity, Zero))
 import Ledger qualified
 import Ledger.Contexts qualified as Contexts
 import Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
+import Plutus.Contract (AsContractError, Contract, datumFromHash)
 import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.Ratio qualified as R
@@ -205,19 +212,33 @@ pubKeyInputsAt pk txInfo =
 valuePaidBy :: Ledger.TxInfo -> Ledger.PubKeyHash -> Ledger.Value
 valuePaidBy txInfo pk = mconcat (pubKeyInputsAt pk txInfo)
 
-{-# INLINEABLE datumFor #-}
-datumFor :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOut -> (Ledger.DatumHash -> Maybe Ledger.Datum) -> Maybe a
-datumFor txOut f = do
-  dh <- Ledger.txOutDatum txOut
-  Ledger.Datum d <- f dh
-  PlutusTx.fromBuiltinData d
-
-datumForOffchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxOutTx -> Maybe a
-datumForOffchain txOutTx = datumFor (Ledger.txOutTxOut txOutTx) $ \dh -> Map.lookup dh $ Ledger.txData $ Ledger.txOutTxTx txOutTx
+datumForOffchain ::
+  forall (a :: Type) (w :: Type) (s :: Row Type) (e :: Type).
+  (PlutusTx.FromData a, AsContractError e) =>
+  Ledger.ChainIndexTxOut ->
+  Contract w s e (Maybe a)
+datumForOffchain o = case o of
+  Ledger.PublicKeyChainIndexTxOut {} -> return Nothing
+  Ledger.ScriptChainIndexTxOut {_ciTxOutDatum = eitherDatum} ->
+    (fmap Ledger.getDatum >=> PlutusTx.fromBuiltinData) <$> datumFromEither eitherDatum
+  where
+    datumFromEither ::
+      Either Ledger.DatumHash Ledger.Datum ->
+      Contract w s e (Maybe Ledger.Datum)
+    datumFromEither (Left dh) = datumFromHash dh
+    datumFromEither (Right d) = return (Just d)
 
 {-# INLINEABLE datumForOnchain #-}
-datumForOnchain :: forall (a :: Type). PlutusTx.FromData a => Ledger.TxInfo -> Ledger.TxOut -> Maybe a
-datumForOnchain info txOut = datumFor txOut $ \dh -> Ledger.findDatum dh info
+datumForOnchain ::
+  forall (a :: Type).
+  PlutusTx.FromData a =>
+  Ledger.TxInfo ->
+  Ledger.TxOut ->
+  Maybe a
+datumForOnchain info txOut = do
+  dh <- Ledger.txOutDatum txOut
+  Ledger.Datum d <- dh `Ledger.findDatum` info
+  PlutusTx.fromBuiltinData d
 
 -- | On-chain helper function checking immutability of the validator's datum
 {-# INLINEABLE validateDatumImmutable #-}
@@ -240,3 +261,70 @@ validateDatumImmutable td ctx =
     ownOutput = case Contexts.getContinuingOutputs ctx of
       [o] -> o
       _ -> traceError "expected exactly one output"
+
+-- Both `safeDiv` and `safeRem` works on Integers; Haskell's Integral instance
+-- for Integer throws only on 0, hence we are allowed to ignore the HLint by
+-- pattern-matching on the divisor
+{- HLINT ignore safeDivide "Avoid restricted function" -}
+{-# INLINEABLE safeDivide #-}
+safeDivide :: Integer -> Integer -> Maybe Integer
+a `safeDivide` b
+  | b == 0 = Nothing
+  | otherwise = Just $ a `divide` b
+
+{- HLINT ignore safeRemainder "Avoid restricted function" -}
+{-# INLINEABLE safeRemainder #-}
+safeRemainder :: Integer -> Integer -> Maybe Integer
+a `safeRemainder` b
+  | b == 0 = Nothing
+  | otherwise = Just $ a `remainder` b
+
+safeDivMod :: Integer -> Integer -> Maybe (Integer, Integer)
+a `safeDivMod` b = (,) <$> (a `safeDivide` b) <*> (a `safeRemainder` b)
+
+{-# INLINEABLE parseDatum #-}
+
+-- | Helper function to parse a UTXO's datum and keep the UTXO
+parseDatum ::
+  forall (datum :: Type).
+  (PlutusTx.FromData datum) =>
+  Contexts.TxInfo ->
+  Contexts.TxOut ->
+  Maybe (Contexts.TxOut, datum)
+parseDatum txInfo out = do
+  dh <- Contexts.txOutDatumHash out
+  datum <- Ledger.getDatum <$> Contexts.findDatum dh txInfo
+  typedDatum <- PlutusTx.fromBuiltinData datum
+  return (out, typedDatum)
+
+{-# INLINEABLE getAllOutputsWithDatum #-}
+
+{- | Get a list of pairs (utxo, datum) consisting of outputs
+     whose datums succeded to parse as the passed `datum`
+     type and those datums themselves
+     that go to any address
+-}
+getAllOutputsWithDatum ::
+  forall (datum :: Type).
+  (PlutusTx.FromData datum) =>
+  Contexts.ScriptContext ->
+  [(Contexts.TxOut, datum)]
+getAllOutputsWithDatum
+  Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
+    mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs txInfo)
+
+{-# INLINEABLE getScriptOutputsWithDatum #-}
+
+{- | Get a list of pairs (utxo, datum) consisting of outputs
+     whose datums succeded to parse as the passed `datum`
+     type and those datums themselves
+     that go to the script address
+-}
+getScriptOutputsWithDatum ::
+  forall (datum :: Type).
+  (PlutusTx.FromData datum) =>
+  Contexts.ScriptContext ->
+  [(Contexts.TxOut, datum)]
+getScriptOutputsWithDatum
+  sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
+    mapMaybe (parseDatum txInfo) (Contexts.getContinuingOutputs sc)

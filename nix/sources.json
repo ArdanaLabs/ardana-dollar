@@ -17,15 +17,15 @@
         "homepage": "",
         "owner": "input-output-hk",
         "repo": "plutus",
-        "rev": "00e7cc3fce4d3af6e8a59be8ddaa108a7ae1964d",
-        "sha256": "0j0whcws81l7hyg84hz155xgqzi55nslbjjg6gr2jd1n4g78vyjc",
+        "rev": "cc20eb106fc68f81e0e434e125e297c6b083c6ba",
+        "sha256": "1mc9lar24lj6vrzpxvrcgp7irqa7dlncj95zhzclncfk0j11052f",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus/archive/00e7cc3fce4d3af6e8a59be8ddaa108a7ae1964d.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus/archive/cc20eb106fc68f81e0e434e125e297c6b083c6ba.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "plutus-extra": {
-        "rev": "831cacd1f29c2fdec93278eb86d532bd61d6e494",
-        "sha256": "1bgbb5s19bdvc9bin9j4ymf43hxhilr6f4w6f8kq5249aw5p57xy",
+        "rev": "f10aadcedadf85118165d77d6df1a4c23446e112",
+        "sha256": "1n9bxfn1n8imaa9dav3y6cvxdihcnz45k9xh4mry751ka6j1kkfq",
         "type": "file",
         "url": "https://github.com/Liqwid-Labs/plutus-extra.git",
         "url_template": "https://github.com/Liqwid-Labs/plutus-extra.git"
