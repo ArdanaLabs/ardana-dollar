@@ -9,6 +9,7 @@ import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
+import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
 import Test.ContractModel.Vault qualified as VaultModel (contractTests)
@@ -39,6 +40,7 @@ main = do
         [ vaultUnitTests
         , bufferTraceTests
         , danaStakePoolTests
+        , treasuryTraceTests
         , jsonRoundtripTests
         , builtinDataRoundtripTests
         , BufferModel.contractTests cms
