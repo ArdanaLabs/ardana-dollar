@@ -10,9 +10,12 @@ in rec {
   # These will be built by the CI.
   inherit (project.ardana-dollar.components) library;
   inherit (project.ardana-dollar.components.tests) ardana-dollar-test;
+  inherit (project.ardana-dollar.components.exes) ardana-pab;
 
   # This will run the tests within this build and produce the test logs as output
   check = plutus.pkgs.runCommand "run-tests" { } ''
-    ${ardana-dollar-test}/bin/ardana-dollar-test --contractMaxSuccess ${builtins.toString contractMaxSuccess} | tee $out
+    ${ardana-dollar-test}/bin/ardana-dollar-test --contractMaxSuccess ${
+      builtins.toString contractMaxSuccess
+    } | tee $out
   '';
 }
