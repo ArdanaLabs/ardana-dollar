@@ -130,6 +130,82 @@ One-shot tokens within the system are:
   *known issue: we may need to extend this AdminState type to manage the percentage of funds that go to the Savings address*
   *known issue: this essentially addes a keeper to the system, ideally we will eliminate this*
 
+### Admin Minting Policy (VaultRecord and VaultState one-shot tokens)
+Parameters:
+```
+AdminMintingParams { targetCurrency :: ByteString -- fiat currency identifier
+                   , adminStateCurrencySymbol :: CurrencySymbol
+                   , adminValidatorAddress :: ValidatorHash
+                   , oneShotUtxo :: TxOutRef
+                   }
+```
+
+Purpose: The Admin Minting Policy mints various tokens used primarily by the Admin and Vault Validators.
+One `VaultRecord` token and one `VaultState` token would be minted per a vault, both of them
+are minted in the same transaction by this one-shot minting policy.
+("One-shot" refers to the `Plutus.Contracts.Currency` minting policy example
+which our concept of one-shot policies that use a `TxOutRef` to ensure all existing `Value`
+is minted only once is based on.)
+
+#### VaultRecord tokens (1 per vault)
+  Purpose: - A record token to witness the creation of a vault within the Admin Validator such that vaults can easily be queried off-chain, or otherwise managed and confirmed to be valid.
+
+  carries datum:
+  ```
+  VaultRecord
+    { userAddress :: Address
+    , collateralCurrency :: AssetClass
+    , utxoMint :: TxOutRef
+    , scriptAddress :: Address
+    }
+  ```
+  initialized to:
+  ```
+  VaultRecord
+    { userAddress = InitVaultAct.address
+    , collateralCurrency = assetClass
+    , utxoMint = AdminMintingParams.oneShotUtxo
+    , scriptAddress = scriptAddress
+    -- values determined by Validator
+    }
+  ```
+
+#### VaultState token (1 per vault)
+  Purpose: A state token for Vault scripts,  a local copy of the relevant data from AdminState, stored in the Vault to avoid bottlenecks on the AdminState token.
+
+  carries datum:
+  ```
+  VaultState
+  { collateralCurrency :: AssetClass
+  , collateral :: Integer,
+  , borrowPrincipal :: Integer
+  , interestAccrued :: Integer
+  , lastStabilityFeeTime :: PosixTime
+  }
+  ```
+  Initialized to
+  ```
+  VaultState
+  { collateralCurrency = InitVaultAct.collateralCurrency
+  , collateral = 0
+  , borrowPrincipal = 0
+  , interestAccrued = 0
+  , lastStabilityFeeTime = currentTime
+  }
+  ```
+
+  mint & burn: requires an AdminState token, which can be identified with the `AdminMintingParams.adminStateCurrencySymbol`
+
+inputs:
+- fee/collateral UTXO (from USER)
+- AdminState token (from Admin Validator)
+
+outputs:
+- fee/collateral UTXO remainder -> user Wallet
+- AdminState token -> Admin Validator
+- VaultRecord token -> Admin Validator
+- VaultState token -> new Vault Validator
+
 ## Governance Minting Policy
 parameters:
 ```
@@ -578,83 +654,6 @@ outputs:
 
 
 
-## Admin Minting Policy
-Parameters:
-```
-AdminMintingParams { targetCurrency :: ByteString -- fiat currency identifier
-                   , adminStateCurrencySymbol :: CurrencySymbol
-                   , adminValidatorAddress :: ValidatorHash
-                   }
-```
-
-Purpose: The Admin Minting Policy mints various tokens used primarily by the Admin and Vault Validators.
-
-### VaultRecord tokens (1 per vault)
-  Purpose: - A record token to witness the creation of a vault within the Admin Validator such that vaults can easily be queried off-chain, or otherwise managed and confirmed to be valid.
-
-  carries datum:
-  ```
-  VaultRecord
-    { userAddress :: Address
-    , scriptAddress :: Address
-    , collateralCurrency :: AssetClass
-    }
-  ```
-  initialized to:
-  ```
-  VaultRecord
-    { userAddress = InitVaultAct.address
-    , scriptAddress = scriptAddress
-    , collateralCurrency = assetClass
-    -- values determined by Validator
-    }
-  ```
-
-  mint & burn: requires an AdminState token, which can be identified with the `AdminMintingParams.adminStateCurrencySymbol`
-
-inputs:
-- fee/collateral UTXO (from USER)
-- AdminState token (from Admin Validator)
-
-outputs:
-- fee/collateral UTXO remainder -> user Wallet
-- AdminState token -> Admin Validator
-- VaultRecord token -> Admin Validator
-
-### VaultState token (1 per vault)
-  Purpose: A state token for Vault scripts,  a local copy of the relevant data from AdminState, stored in the Vault to avoid bottlenecks on the AdminState token.
-
-  carries datum:
-  ```
-  VaultState
-  { collateralCurrency :: AssetClass
-  , collateral :: Integer,
-  , borrowPrincipal :: Integer
-  , interestAccrued :: Integer
-  , lastStabilityFeeTime :: PosixTime
-  }
-  ```
-  Initialized to
-  ```
-  VaultState
-  { collateralCurrency = InitVaultAct.collateralCurrency
-  , collateral = 0
-  , borrowPrincipal = 0
-  , interestAccrued = 0
-  , lastStabilityFeeTime = currentTime
-  }
-  ```
-  mint & burn: must contain the AdminState token.
-
-inputs:
-- fee/collateral UTXO (from USER)
-- AdminState token (from Admin Validator)
-
-outputs:
-- fee/collateral UTXO remainder -> user Wallet
-- AdminState token -> Admin Validator
-- VaultState token -> new Vault Validator
-
 ## Admin Validator
 Parameters:
 ```
@@ -765,6 +764,7 @@ VaultValidatorParams
   , collateralCurrency :: AssetClass
   , adminStateCurrencySymbol :: CurrencySymbol
   , adminMintingCurrencySymbol :: CurrencySymbol
+  -- ^ The currency symbol of (one-shot) Admin Minting Policy or VaultRecord token
   , adminValidatorAddress :: ValidatorHash
   , oracleOperator :: PubKeyHash
   }
