@@ -24,8 +24,8 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "plutus-extra": {
-        "rev": "f10aadcedadf85118165d77d6df1a4c23446e112",
-        "sha256": "1n9bxfn1n8imaa9dav3y6cvxdihcnz45k9xh4mry751ka6j1kkfq",
+        "rev": "955458b557052d1888c93b0803b90859a4561c85",
+        "sha256": "0wqq2hhgfyz53r6fhs513rkhfw8y0zi1lknpb7nkvpxffda9wh4v",
         "type": "file",
         "url": "https://github.com/Liqwid-Labs/plutus-extra.git",
         "url_template": "https://github.com/Liqwid-Labs/plutus-extra.git"
