@@ -56,6 +56,7 @@ import Wallet.Emulator.Wallet qualified as Wallet
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Buffer.Endpoints
+import ArdanaDollar.MockAdmin (startAdmin)
 import ArdanaDollar.Treasury.Endpoints
 import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams (..))
 import ArdanaDollar.Vault
@@ -179,6 +180,7 @@ pabSimulation = do
 
 data ArdanaContracts
   = VaultContract
+  | MockAdmin Integer
   | TreasuryContract Treasury
   | TreasuryStart
   | BufferStart Treasury (Integer, Integer)
@@ -196,6 +198,7 @@ instance HasDefinitions ArdanaContracts where
   getSchema = \case
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
     TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
+    MockAdmin _ -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
     BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
@@ -204,6 +207,7 @@ instance HasDefinitions ArdanaContracts where
   getContract = \case
     VaultContract -> SomeBuiltin vaultContract
     TreasuryStart -> SomeBuiltin treasuryStartContract
+    MockAdmin i -> SomeBuiltin (startAdmin @() @ContractError i)
     TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
     BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
