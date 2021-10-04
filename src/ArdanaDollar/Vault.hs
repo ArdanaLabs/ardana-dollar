@@ -171,6 +171,121 @@ dUSDCurrency = Ledger.scriptCurrencySymbol dUSDMintingPolicy
 dUSDAsset :: Value.AssetClass
 dUSDAsset = Value.AssetClass (dUSDCurrency, dUSDTokenName)
 
+{-# INLINEABLE getOutputDatum #-}
+getOutputDatum :: Ledger.ScriptContext -> Either BuiltinString VaultDatum
+getOutputDatum ctx =
+  case (ownOutput ctx, nextDatum' ctx) of
+    (Nothing, _) -> Left "script does not produce an output datum"
+    (Just _, Nothing) -> Left "script produces an output datum that is not valid"
+    (Just _, Just outputDatum) -> Right outputDatum
+
+{-# INLINEABLE checkSignedByVaultOwner #-}
+checkSignedByVaultOwner :: Ledger.TxInfo -> Ledger.PubKeyHash -> Either BuiltinString ()
+checkSignedByVaultOwner txInfo user =
+   if Ledger.txSignedBy txInfo user
+     then Right ()
+     else Left "script not signed by vault owner"
+
+{-# INLINEABLE checkDoesNotModifyDebt #-}
+checkDoesNotModifyDebt :: VaultDatum -> VaultDatum -> Either BuiltinString ()
+checkDoesNotModifyDebt inputDatum outputDatum =
+  if vaultDebt inputDatum == vaultDebt outputDatum
+     then Right ()
+     else Left "CollateralRedeemer cannot modify Vault debt"
+
+{-# INLINEABLE checkCollateralizationAllowsWithdrawal #-}
+checkCollateralizationAllowsWithdrawal :: VaultDatum -> Either BuiltinString ()
+checkCollateralizationAllowsWithdrawal outputDatum = do
+  let cRatioOk = isCollaterizationRatioOk (vaultCollateral outputDatum) (vaultDebt outputDatum)
+  if cRatioOk
+     then Right ()
+     else Left "Withdrawal of collateral violates collateralization requirements"
+
+{-# INLINEABLE checkCollateralizationAllowsBorrow #-}
+checkCollateralizationAllowsBorrow :: VaultDatum -> Either BuiltinString ()
+checkCollateralizationAllowsBorrow outputDatum = do
+  let cRatioOk = isCollaterizationRatioOk (vaultCollateral outputDatum) (vaultDebt outputDatum)
+  if cRatioOk
+     then Right ()
+     else Left "Borrow of dUSD violates collateralization requirements"
+
+{-# INLINEABLE checkCollateralWithdrawalPaysCorrectAmountToOwner #-}
+checkCollateralWithdrawalPaysCorrectAmountToOwner :: Ledger.TxInfo
+                                                  -> Ledger.PubKeyHash
+                                                  -> Integer
+                                                  -> Either BuiltinString ()
+checkCollateralWithdrawalPaysCorrectAmountToOwner txInfo user collDiff = do
+  let withdrawn = Ledger.valuePaidTo txInfo user - valuePaidBy txInfo user + Ledger.txInfoFee txInfo
+  if Value.assetClassValueOf withdrawn collAsset == negate collDiff
+     then Right ()
+     else Left "Collateral withdrawal amount incorrect"
+
+{-# INLINEABLE checkCollateralDepositLocksCorrectAmountInVault #-}
+checkCollateralDepositLocksCorrectAmountInVault :: Ledger.TxInfo
+                                                -> Ledger.ValidatorHash
+                                                -> Integer
+                                                -> Either BuiltinString ()
+checkCollateralDepositLocksCorrectAmountInVault txInfo ownHash collDiff = do
+  let deposited = Ledger.valueLockedBy txInfo ownHash - valueUnlockedBy txInfo ownHash
+  if Value.assetClassValueOf deposited collAsset == collDiff
+     then Right ()
+     else Left "Collateral deposit amount incorrect"
+
+{-# INLINEABLE collateralRedeemer #-}
+collateralRedeemer :: Ledger.TxInfo
+                   -> Ledger.ValidatorHash
+                   -> Ledger.PubKeyHash
+                   -> VaultDatum
+                   -> VaultDatum
+                   -> Either BuiltinString ()
+collateralRedeemer txInfo ownHash user inputDatum outputDatum = do
+  checkDoesNotModifyDebt inputDatum outputDatum
+  let collDiff = vaultCollateral outputDatum - vaultCollateral inputDatum
+  case compare collDiff 0 of
+    LT -> do
+      checkCollateralizationAllowsWithdrawal outputDatum
+      checkCollateralWithdrawalPaysCorrectAmountToOwner txInfo user collDiff
+    EQ -> Left "CollateralRedeemer transaction does not modify collateral"
+    GT -> checkCollateralDepositLocksCorrectAmountInVault txInfo ownHash collDiff
+
+{-# INLINABLE debtRedeemer #-}
+debtRedeemer :: Value.AssetClass
+             -> Ledger.TxInfo
+             -> VaultDatum
+             -> VaultDatum
+             -> Either BuiltinString ()
+debtRedeemer assetClass txInfo inputDatum outputDatum = do
+  checkCollateralizationAllowsBorrow outputDatum
+  let debtDiff = vaultDebt outputDatum - vaultDebt inputDatum
+  if Ledger.txInfoMint txInfo == Value.assetClassValue assetClass debtDiff
+     then Right ()
+     else Left "DebtRedeemer dUSD mint amount incorrect"
+
+{-# INLINEABLE vaultLogic #-}
+vaultLogic :: Value.AssetClass
+           -> Ledger.PubKeyHash
+           -> VaultDatum
+           -> VaultRedeemer
+           -> Ledger.ScriptContext
+           -> Either BuiltinString ()
+vaultLogic assetClass user inputDatum vaultRedeemer ctx = do
+  let ownHash = Ledger.ownHash ctx
+      txInfo = Ledger.scriptContextTxInfo ctx
+  checkSignedByVaultOwner txInfo user
+  outputDatum <- getOutputDatum ctx
+  case vaultRedeemer of
+    CollateralRedeemer -> collateralRedeemer txInfo ownHash user inputDatum outputDatum
+    DebtRedeemer -> debtRedeemer assetClass txInfo inputDatum outputDatum
+
+{-# INLINEABLE throwOnLeft #-}
+throwOnLeft :: Either BuiltinString a -> a
+throwOnLeft (Left err) = traceError err
+throwOnLeft (Right a) = a
+
+{-# INLINEABLE unitTrue #-}
+unitTrue :: () -> Bool
+unitTrue () = True
+
 {-# INLINEABLE mkVaultValidator #-}
 mkVaultValidator ::
   Value.AssetClass ->
@@ -179,45 +294,8 @@ mkVaultValidator ::
   VaultRedeemer ->
   Ledger.ScriptContext ->
   Bool
-mkVaultValidator dusd user vd vr sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-  let outm = ownOutput sc
-      ndm = nextDatum' sc
-   in case (outm, ndm) of
-        (Nothing, _) -> traceIfFalse "output with script's datum missing" False
-        (Just _, Nothing) -> traceIfFalse "failed to parse datum" False
-        (Just _, Just nd) ->
-          let cRatioOk = isCollaterizationRatioOk (vaultCollateral nd) (vaultDebt nd)
-           in case vr of
-                CollateralRedeemer ->
-                  let collDiff = vaultCollateral nd - vaultCollateral vd
-                   in traceIfFalse "user signature missing" (Ledger.txSignedBy txInfo user)
-                        && traceIfFalse "CollateralRedeemer transaction modifies debt" (vaultDebt vd == vaultDebt nd)
-                        && case compare collDiff 0 of
-                          -- withdrawCollateral, pay to the user
-                          LT ->
-                            traceIfFalse
-                              "wrong withdrawal amount"
-                              ( let value =
-                                      Ledger.valuePaidTo txInfo user
-                                        - valuePaidBy txInfo user
-                                        + Ledger.txInfoFee txInfo
-                                 in Value.assetClassValueOf value collAsset == negate collDiff
-                              )
-                              && traceIfFalse "cannot withdraw this much" cRatioOk
-                          EQ -> traceIfFalse "CollateralRedeemer transaction does not modify collateral" False
-                          -- depositCollateral, pay to the script
-                          GT ->
-                            traceIfFalse "wrong deposit amount" $
-                              let value =
-                                    Ledger.valueLockedBy txInfo (Ledger.ownHash sc)
-                                      - valueUnlockedBy txInfo (Ledger.ownHash sc)
-                               in Value.assetClassValueOf value collAsset == collDiff
-                DebtRedeemer ->
-                  let debtDiff = vaultDebt nd - vaultDebt vd
-                   in traceIfFalse
-                        "wrong dUSD mint amount"
-                        (Ledger.txInfoMint txInfo == Value.assetClassValue dusd debtDiff)
-                        && traceIfFalse "cannot borrow this much" cRatioOk
+mkVaultValidator assetClass user vaultDatum vaultRedeemer ctx =
+  unitTrue $ throwOnLeft $ vaultLogic assetClass user vaultDatum vaultRedeemer ctx
 
 data Vaulting
 instance Scripts.ValidatorTypes Vaulting where
