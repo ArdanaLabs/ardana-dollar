@@ -182,62 +182,65 @@ getOutputDatum ctx =
 {-# INLINEABLE checkSignedByVaultOwner #-}
 checkSignedByVaultOwner :: Ledger.TxInfo -> Ledger.PubKeyHash -> Either BuiltinString ()
 checkSignedByVaultOwner txInfo user =
-   if Ledger.txSignedBy txInfo user
-     then Right ()
-     else Left "script not signed by vault owner"
+  if Ledger.txSignedBy txInfo user
+    then Right ()
+    else Left "script not signed by vault owner"
 
 {-# INLINEABLE checkDoesNotModifyDebt #-}
 checkDoesNotModifyDebt :: VaultDatum -> VaultDatum -> Either BuiltinString ()
 checkDoesNotModifyDebt inputDatum outputDatum =
   if vaultDebt inputDatum == vaultDebt outputDatum
-     then Right ()
-     else Left "CollateralRedeemer cannot modify Vault debt"
+    then Right ()
+    else Left "CollateralRedeemer cannot modify Vault debt"
 
 {-# INLINEABLE checkCollateralizationAllowsWithdrawal #-}
 checkCollateralizationAllowsWithdrawal :: VaultDatum -> Either BuiltinString ()
 checkCollateralizationAllowsWithdrawal outputDatum = do
   let cRatioOk = isCollaterizationRatioOk (vaultCollateral outputDatum) (vaultDebt outputDatum)
   if cRatioOk
-     then Right ()
-     else Left "Withdrawal of collateral violates collateralization requirements"
+    then Right ()
+    else Left "Withdrawal of collateral violates collateralization requirements"
 
 {-# INLINEABLE checkCollateralizationAllowsBorrow #-}
 checkCollateralizationAllowsBorrow :: VaultDatum -> Either BuiltinString ()
 checkCollateralizationAllowsBorrow outputDatum = do
   let cRatioOk = isCollaterizationRatioOk (vaultCollateral outputDatum) (vaultDebt outputDatum)
   if cRatioOk
-     then Right ()
-     else Left "Borrow of dUSD violates collateralization requirements"
+    then Right ()
+    else Left "Borrow of dUSD violates collateralization requirements"
 
 {-# INLINEABLE checkCollateralWithdrawalPaysCorrectAmountToOwner #-}
-checkCollateralWithdrawalPaysCorrectAmountToOwner :: Ledger.TxInfo
-                                                  -> Ledger.PubKeyHash
-                                                  -> Integer
-                                                  -> Either BuiltinString ()
+checkCollateralWithdrawalPaysCorrectAmountToOwner ::
+  Ledger.TxInfo ->
+  Ledger.PubKeyHash ->
+  Integer ->
+  Either BuiltinString ()
 checkCollateralWithdrawalPaysCorrectAmountToOwner txInfo user collDiff = do
   let withdrawn = Ledger.valuePaidTo txInfo user - valuePaidBy txInfo user + Ledger.txInfoFee txInfo
   if Value.assetClassValueOf withdrawn collAsset == negate collDiff
-     then Right ()
-     else Left "Collateral withdrawal amount incorrect"
+    then Right ()
+    else Left "Collateral withdrawal amount incorrect"
 
 {-# INLINEABLE checkCollateralDepositLocksCorrectAmountInVault #-}
-checkCollateralDepositLocksCorrectAmountInVault :: Ledger.TxInfo
-                                                -> Ledger.ValidatorHash
-                                                -> Integer
-                                                -> Either BuiltinString ()
+checkCollateralDepositLocksCorrectAmountInVault ::
+  Ledger.TxInfo ->
+  Ledger.ValidatorHash ->
+  Integer ->
+  Either BuiltinString ()
 checkCollateralDepositLocksCorrectAmountInVault txInfo ownHash collDiff = do
   let deposited = Ledger.valueLockedBy txInfo ownHash - valueUnlockedBy txInfo ownHash
   if Value.assetClassValueOf deposited collAsset == collDiff
-     then Right ()
-     else Left "Collateral deposit amount incorrect"
+    then Right ()
+    else Left "Collateral deposit amount incorrect"
 
 {-# INLINEABLE collateralRedeemer #-}
-collateralRedeemer :: Ledger.TxInfo
-                   -> Ledger.ValidatorHash
-                   -> Ledger.PubKeyHash
-                   -> VaultDatum
-                   -> VaultDatum
-                   -> Either BuiltinString ()
+collateralRedeemer ::
+  Ledger.TxInfo ->
+  Ledger.ValidatorHash ->
+  Ledger.PubKeyHash ->
+  VaultDatum ->
+  VaultDatum ->
+  Either BuiltinString ()
 collateralRedeemer txInfo ownHash user inputDatum outputDatum = do
   checkDoesNotModifyDebt inputDatum outputDatum
   let collDiff = vaultCollateral outputDatum - vaultCollateral inputDatum
@@ -248,26 +251,28 @@ collateralRedeemer txInfo ownHash user inputDatum outputDatum = do
     EQ -> Left "CollateralRedeemer transaction does not modify collateral"
     GT -> checkCollateralDepositLocksCorrectAmountInVault txInfo ownHash collDiff
 
-{-# INLINABLE debtRedeemer #-}
-debtRedeemer :: Value.AssetClass
-             -> Ledger.TxInfo
-             -> VaultDatum
-             -> VaultDatum
-             -> Either BuiltinString ()
+{-# INLINEABLE debtRedeemer #-}
+debtRedeemer ::
+  Value.AssetClass ->
+  Ledger.TxInfo ->
+  VaultDatum ->
+  VaultDatum ->
+  Either BuiltinString ()
 debtRedeemer assetClass txInfo inputDatum outputDatum = do
   checkCollateralizationAllowsBorrow outputDatum
   let debtDiff = vaultDebt outputDatum - vaultDebt inputDatum
   if Ledger.txInfoMint txInfo == Value.assetClassValue assetClass debtDiff
-     then Right ()
-     else Left "DebtRedeemer dUSD mint amount incorrect"
+    then Right ()
+    else Left "DebtRedeemer dUSD mint amount incorrect"
 
 {-# INLINEABLE vaultLogic #-}
-vaultLogic :: Value.AssetClass
-           -> Ledger.PubKeyHash
-           -> VaultDatum
-           -> VaultRedeemer
-           -> Ledger.ScriptContext
-           -> Either BuiltinString ()
+vaultLogic ::
+  Value.AssetClass ->
+  Ledger.PubKeyHash ->
+  VaultDatum ->
+  VaultRedeemer ->
+  Ledger.ScriptContext ->
+  Either BuiltinString ()
 vaultLogic assetClass user inputDatum vaultRedeemer ctx = do
   let ownHash = Ledger.ownHash ctx
       txInfo = Ledger.scriptContextTxInfo ctx
