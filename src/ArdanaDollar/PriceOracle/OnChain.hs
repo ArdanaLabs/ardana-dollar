@@ -136,14 +136,15 @@ mkOracleMintingPolicy
             expected
             output
             dat
-          && traceIfFalse "no PriceTracking datum"
-               ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
-                   Nothing ->
-                     False
-                   Just (PriceTracking fiatFeed cryptoFeed _) ->
-                     UniqueMap.null fiatFeed
-                       && UniqueMap.null cryptoFeed
-               )
+            && traceIfFalse
+              "no PriceTracking datum"
+              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
+                  Nothing ->
+                    False
+                  Just (PriceTracking fiatFeed cryptoFeed _) ->
+                    UniqueMap.null fiatFeed
+                      && UniqueMap.null cryptoFeed
+              )
         _ ->
           traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
