@@ -1,4 +1,4 @@
-digraph "repayDUSD" {
+digraph "RepayBorrowAct" {
   rankdir = LR;
 
   wallet_in [shape=record,label="{{User Wallet | {Lovelace: 900_000_000 | dUSD: 5000}}}"];

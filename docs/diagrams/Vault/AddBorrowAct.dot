@@ -1,4 +1,4 @@
-digraph "mintDUSD" {
+digraph "AddBorrowAct" {
   rankdir = LR;
 
   wallet_in [shape=record,label="{{User Wallet | {Lovelace: 900_000_000}}}"];
