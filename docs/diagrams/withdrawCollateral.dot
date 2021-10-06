@@ -1,21 +1,10 @@
-digraph "AddCollateralAct" {
+digraph "withdrawCollateral" {
   rankdir = LR;
 
-  wallet_in [shape=record,label="{{User Wallet | {Lovelace: 1_000_000_000}}}"];
-  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 900_000_000}}}"];
+  wallet_in [shape=record,label="{{User Wallet | {Lovelace: 900_000_000}}}"];
+  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 1_000_000_000}}}"];
 
   vault_script_in
-    [ shape=record
-    , label=
-        "{{ Vault Script
-         | {VaultStateToken: 1}
-         | VaultDatum
-         | { vaultCollateral: 0
-           | vaultDebt: 0
-           }
-         }}"
-    ];
-  vault_script_out
     [ shape=record
     , label=
         "{{ Vault Script
@@ -26,14 +15,21 @@ digraph "AddCollateralAct" {
            }
          }}"
     ];
+  vault_script_out
+    [ shape=record
+    , label=
+        "{{ Vault Script
+         | {VaultStateToken: 1}
+         | VaultDatum
+         | { vaultCollateral: 0
+           | vaultDebt: 0
+           }
+         }}"
+    ];
 
   redeemer 
     [ shape=record
-    , label="{{Redeemer
-             | AddCollateralAct
-             | amount: Integer
-             | adminState: SignedMessage AdminState
-             }}"
+    , label="{{Redeemer | CollateralRedeemer}}"
     ];
 
   tx [label="Tx"];

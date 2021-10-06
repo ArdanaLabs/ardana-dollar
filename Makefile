@@ -27,9 +27,8 @@ usage:
 	@echo "  nixfmt              -- Apply nix formatting with nixfmt"
 	@echo "  nixfmt_check        -- Check nix files for format errors"
 	@echo "  lint                -- Check the sources with hlint"
-	@echo "  refactor            -- Automatically apply hlint refactors, with prompt"
+	@echo "  refactor            -- Automatically apply hlint refactors, with prompt
 	@echo "  readme_contents     -- Add table of contents to README"
-	@echo "  dot2png             -- create pngs for dot graphs defined in ./docs/diagrams"
 
 hoogle: requires_nix_shell
 	hoogle server --local
@@ -98,6 +97,3 @@ readme_contents:
 requires_nix_shell:
 	@ [ -v IN_NIX_SHELL ] || echo "The $(MAKECMDGOALS) target must be run from inside nix-shell"
 	@ [ -v IN_NIX_SHELL ] || (echo "    run 'nix-shell --pure' first" && false)
-
-dot2png:
-	find ./docs/diagrams -name "*.dot" | xargs -I '{}' dot -Tpng '{}' -o '{}.png'
