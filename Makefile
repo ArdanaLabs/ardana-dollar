@@ -99,4 +99,4 @@ requires_nix_shell:
 	@ [ -v IN_NIX_SHELL ] || (echo "    run 'nix-shell --pure' first" && false)
 
 costing: costing/*
-	cabal run ardana-costing | tee costing-output/costing-log.txt
+	cabal run ardana-costing | grep "^Writing script:" | cut -d/ -f6 | tee costing-log.txt

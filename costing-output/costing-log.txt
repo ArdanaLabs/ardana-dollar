@@ -1,4 +1,0 @@
-Up to date
-Writing script: ./costing-output/vault-1-unapplied.flat (Size: 3.6kB, Cost: ExCPU 346721351, ExMemory 973304)
-Writing script: ./costing-output/vault-2-unapplied.flat (Size: 6.6kB, Cost: ExCPU 719411019, ExMemory 2084762)
-Writing script: ./costing-output/vault-3-unapplied.flat (Size: 6.6kB, Cost: ExCPU 1007954479, ExMemory 2965592)

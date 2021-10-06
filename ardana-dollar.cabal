@@ -181,4 +181,5 @@ executable ardana-costing
   ghc-options:    -threaded
   build-depends:
     , ardana-dollar
+    , temporary
 

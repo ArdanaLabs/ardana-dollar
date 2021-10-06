@@ -8,6 +8,7 @@ import Plutus.Trace (Command (..), ScriptsConfig (..), writeScriptsTo)
 import Plutus.Trace.Emulator
 import Wallet.Emulator.Wallet
 import Prelude (IO, ($))
+import System.IO.Temp
 
 main :: IO ()
 main = do
@@ -15,9 +16,9 @@ main = do
 
 vaultBenchmark :: IO ()
 vaultBenchmark =
-  void $
+  void $ withSystemTempDirectory "ardana-costing" $ \tempdir ->
     writeScriptsTo
-      (ScriptsConfig "./costing-output" (Scripts UnappliedValidators))
+      (ScriptsConfig tempdir (Scripts UnappliedValidators))
       "vault"
       vaultTrace
       def
@@ -31,9 +32,10 @@ vaultTrace = do
   void $ waitNSlots 10
   callEndpoint @"depositCollateral" w1 i
   void $ waitNSlots 10
-  callEndpoint @"withdrawCollateral" w1 i
-  void $ waitNSlots 10
   callEndpoint @"mintDUSD" w1 j
   void $ waitNSlots 10
   callEndpoint @"repayDUSD" w1 j
   void $ waitNSlots 10
+  callEndpoint @"withdrawCollateral" w1 i
+  void $ waitNSlots 10
+
