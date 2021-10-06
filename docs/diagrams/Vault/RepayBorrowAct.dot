@@ -1,7 +1,7 @@
-digraph "depositCollateral" {
+digraph "repayDUSD" {
   rankdir = LR;
 
-  wallet_in [shape=record,label="{{User Wallet | {Lovelace: 1_000_000_000}}}"];
+  wallet_in [shape=record,label="{{User Wallet | {Lovelace: 900_000_000 | dUSD: 5000}}}"];
   wallet_out [shape=record,label="{{User Wallet | {Lovelace: 900_000_000}}}"];
 
   vault_script_in
@@ -10,8 +10,8 @@ digraph "depositCollateral" {
         "{{ Vault Script
          | {VaultStateToken: 1}
          | VaultDatum
-         | { vaultCollateral: 0
-           | vaultDebt: 0
+         | { vaultCollateral: 100_000_000
+           | vaultDebt: 5000
            }
          }}"
     ];
@@ -29,7 +29,11 @@ digraph "depositCollateral" {
 
   redeemer 
     [ shape=record
-    , label="{{Redeemer | CollateralRedeemer}}"
+    , label="{{Redeemer
+             | RepayBorrowAct
+             | amount: Integer
+             | adminState: SignedMessage AdminState
+             }}"
     ];
 
   tx [label="Tx"];
