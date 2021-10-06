@@ -14,6 +14,7 @@ import Prelude
 
 import Control.Monad (void, when, (>=>))
 import Control.Monad.Freer (Eff, interpret)
+import Control.Monad.Freer.Error qualified as Error
 import Data.Aeson (
   FromJSON,
   Result (Success),
@@ -45,6 +46,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
 import Plutus.PAB.Effects.Contract.Builtin qualified as Builtin
 import Plutus.PAB.Simulator (SimulatorEffectHandlers)
 import Plutus.PAB.Simulator qualified as Simulator
+import Plutus.PAB.Types (PABError (OtherError))
 import Plutus.PAB.Webserver.Server qualified as PAB.Server
 import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
@@ -111,9 +113,19 @@ pabSimulation = do
   callVaultEndpoint "mintDUSD" 200
   logCurrentBalances_
 
+  -- TODO: change when Admin becomes a thing
+  balancesMap1 <- Simulator.currentBalances
+  _ <- Simulator.activateContract (knownWallet 1) (MockAdmin 2)
+  Simulator.waitNSlots 5
+  balancesMap2 <- Simulator.currentBalances
+  let simulatorBalance = balancesMap2 Map.\\ balancesMap1
+  adminValidatorHash <- case head (Map.toList simulatorBalance) of
+    (Wallet.ScriptEntity scr, _) -> return scr
+    _ -> Error.throwError $ OtherError "Could not find admin script hash"
+
   -- Treasury
   logBlueString "Init treasury"
-  cTreasuryId <- Simulator.activateContract (knownWallet 1) TreasuryStart
+  cTreasuryId <- Simulator.activateContract (knownWallet 1) (TreasuryStart adminValidatorHash)
   Simulator.waitNSlots 10
   treasury <- getBus @Treasury cTreasuryId
   logCurrentBalances_
@@ -125,9 +137,8 @@ pabSimulation = do
   let callDepositEndpoint cc = do
         let params =
               TreasuryDepositParams
-                { treasuryDepositAmount = 10
-                , treasuryDepositCurrency = dUSDAsset
-                , treasuryDepositCostCenter = cc
+                { treasuryDeposit'value = Value.assetClassValue dUSDAsset 10
+                , treasuryDeposit'costCenter = cc
                 }
         _ <- Simulator.callEndpointOnInstance cTreasuryUserId "depositFundsWithCostCenter" params
         Simulator.waitNSlots 10
@@ -182,7 +193,7 @@ data ArdanaContracts
   = VaultContract
   | MockAdmin Integer
   | TreasuryContract Treasury
-  | TreasuryStart
+  | TreasuryStart Ledger.ValidatorHash
   | BufferStart Treasury (Integer, Integer)
   | BufferContract Treasury
   deriving stock (Show, Generic)
@@ -192,13 +203,13 @@ instance Pretty ArdanaContracts where
   pretty = viaShow
 
 instance HasDefinitions ArdanaContracts where
-  getDefinitions = [VaultContract, TreasuryStart]
+  getDefinitions = [VaultContract]
 
   getSchema :: ArdanaContracts -> [FunctionSchema FormSchema]
   getSchema = \case
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
-    TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
     MockAdmin _ -> Builtin.endpointsToSchemas @EmptySchema
+    TreasuryStart _ -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
     BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
@@ -206,8 +217,8 @@ instance HasDefinitions ArdanaContracts where
   getContract :: ArdanaContracts -> SomeBuiltin
   getContract = \case
     VaultContract -> SomeBuiltin vaultContract
-    TreasuryStart -> SomeBuiltin treasuryStartContract
     MockAdmin i -> SomeBuiltin (startAdmin @() @ContractError i)
+    TreasuryStart vh -> SomeBuiltin (treasuryStartContract (vh, "USD"))
     TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
     BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)

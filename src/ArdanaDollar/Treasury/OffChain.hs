@@ -40,6 +40,7 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 
 --------------------------------------------------------------------------------
 
+import ArdanaDollar.MockAdmin (adminValidator, findAdmin)
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
 import ArdanaDollar.Treasury.StateToken (
   treasuryStateTokenAssetClass,
@@ -47,6 +48,10 @@ import ArdanaDollar.Treasury.StateToken (
   treasuryStateTokenParams,
  )
 import ArdanaDollar.Treasury.Types
+import ArdanaDollar.Treasury.UpgradeContractToken (
+  upgradeContractTokenAssetClass,
+  upgradeContractTokenMintingConstraints,
+ )
 import ArdanaDollar.Utils (datumForOffchain)
 import Plutus.PAB.OutputBus
 
@@ -80,7 +85,7 @@ findTreasury treasury = do
     _ -> return Nothing
   where
     tokenAC :: Value.AssetClass
-    tokenAC = stateTokenSymbol treasury
+    tokenAC = treasury'stateTokenSymbol treasury
 
     f :: Ledger.ChainIndexTxOut -> Bool
     f o = Value.assetClassValueOf (o ^. Ledger.ciTxOutValue) tokenAC == 1
@@ -88,31 +93,55 @@ findTreasury treasury = do
 -- Treasury start contract
 startTreasury ::
   forall (w :: Type).
+  Ledger.ValidatorHash ->
+  BuiltinByteString ->
   Contract w EmptySchema ContractError (Maybe Treasury)
-startTreasury = do
-  pka <- Ledger.pubKeyAddress <$> ownPubKey
+startTreasury vh peggedCurrency = do
+  pk <- ownPubKey
+  let pka = Ledger.pubKeyAddress pk
+      pkh = Ledger.pubKeyHash pk
   utxos <- Map.toList <$> utxosAt pka
   case utxos of
     [] -> logError @String "No UTXO found at public address" >> return Nothing
     (oref, o) : _ -> do
-      let stParams = treasuryStateTokenParams oref
+      let utParams =
+            TreasuryUpgradeContractTokenParams
+              { upgradeToken'initialOwner = pkh
+              , upgradeToken'peggedCurrency = "d" <> peggedCurrency
+              , upgradeToken'initialOutput = oref
+              }
+          (upgradeTokenLookup, upgradeTokenTx, upgradeTokenValue) = upgradeContractTokenMintingConstraints utParams
+
+          stParams = treasuryStateTokenParams oref
           treasury =
             Treasury
-              { stateTokenParams = stParams
-              , stateTokenSymbol = treasuryStateTokenAssetClass stParams
+              { treasury'peggedCurrency = peggedCurrency
+              , treasury'stateTokenParams = stParams
+              , treasury'stateTokenSymbol = treasuryStateTokenAssetClass stParams
+              , treasury'upgradeTokenParams = utParams
+              , treasury'upgradeTokenSymbol = upgradeContractTokenAssetClass utParams
               }
           (tokenLookup, tokenTx, tokenValue) = treasuryStateTokenMintingConstraints stParams
-          td = TreasuryDatum {auctionDanaAmount = 10, costCenters = UniqueMap.empty}
-          treasuryValue = tokenValue <> Value.assetClassValue danaAssetClass 10
+
+          td =
+            TreasuryDatum
+              { auctionDanaAmount = 10
+              , currentContract = vh
+              , costCenters = UniqueMap.empty
+              }
+
+          treasuryValue = tokenValue <> upgradeTokenValue <> Value.assetClassValue danaAssetClass 10
+          adminValue = upgradeTokenValue
       let lookups =
-            tokenLookup
+            tokenLookup <> upgradeTokenLookup
               <> Constraints.mintingPolicy danaMintingPolicy
               <> Constraints.typedValidatorLookups (treasuryInst treasury)
               <> Constraints.otherScript (treasuryValidator treasury)
               <> Constraints.unspentOutputs (Map.singleton oref o)
           tx =
-            tokenTx
+            tokenTx <> upgradeTokenTx
               <> Constraints.mustPayToTheScript td treasuryValue
+              <> Constraints.mustPayToOtherScript vh (Ledger.Datum $ PlutusTx.toBuiltinData ()) adminValue
               <> Constraints.mustMintValue (Value.assetClassValue danaAssetClass 10)
               <> Constraints.mustSpendPubKeyOutput oref
 
@@ -131,10 +160,8 @@ depositFundsWithCostCenter ::
 depositFundsWithCostCenter treasury params = do
   pkh <- Crypto.pubKeyHash <$> ownPubKey
   logInfo ("called depositFundsWithCostCenter with params: " <> show params)
-  let ac = treasuryDepositCurrency params
-      amount = treasuryDepositAmount params
-      centerName = treasuryDepositCostCenter params
-      depositValue = Value.assetClassValue ac amount
+  let centerName = treasuryDeposit'costCenter params
+      depositValue = treasuryDeposit'value params
   findTreasury treasury >>= \case
     Nothing -> logError @String "no treasury utxo at the script address"
     Just (oref, o, td) -> do
@@ -151,7 +178,7 @@ depositFundsWithCostCenter treasury params = do
                 (toRedeemer @Treasuring $ DepositFundsWithCostCenter params)
       ledgerTx <- submitTxConstraintsWith lookups tx
       awaitTxConfirmed $ Ledger.txId ledgerTx
-      logInfo @String $ printf "User %s has deposited %s %s" (show pkh) (show amount) (show ac)
+      logInfo @String $ printf "User %s has deposited:\n%s" (show pkh) (show depositValue)
 
 spendFromCostCenter ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
@@ -175,5 +202,42 @@ queryCostCenters treasury = do
 
 initiateUpgrade ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
+  (AsContractError e) =>
+  Treasury ->
+  NewContract ->
   Contract w s e ()
-initiateUpgrade = logInfo @String "called initiateUpgrade"
+initiateUpgrade treasury nc@(NewContract newContract) = do
+  logInfo @String "called initiateUpgrade"
+  findTreasury treasury >>= \case
+    Nothing -> logError @String "no treasury utxo at the script address"
+    Just (oref, o, td@TreasuryDatum {currentContract = oldContract}) -> do
+      logInfo @String ("found treasury datum: " <> show td)
+      findAdmin treasury (Ledger.scriptHashAddress oldContract) >>= \case
+        Nothing -> logError @String "no treasury utxo at the script address"
+        Just (oldRef, oldO) -> do
+          logInfo @String ("found oldContract at: " <> show oldContract)
+          let td' = td {currentContract = newContract}
+              singleUpgradeToken = Value.assetClassValue (treasury'upgradeTokenSymbol treasury) 1
+
+              scriptValue = o ^. Ledger.ciTxOutValue
+              oldContractValue = oldO ^. Ledger.ciTxOutValue <> inv singleUpgradeToken
+              newContractValue = singleUpgradeToken
+
+              lookups =
+                Constraints.typedValidatorLookups (treasuryInst treasury)
+                  <> Constraints.otherScript (treasuryValidator treasury)
+                  <> Constraints.otherScript (adminValidator 2) -- TODO: NO MAGIC NUMBERS!
+                  <> Constraints.unspentOutputs (Map.fromList [(oref, o), (oldRef, oldO)])
+              tx =
+                Constraints.mustPayToTheScript td' scriptValue
+                  <> Constraints.mustPayToOtherScript oldContract (Ledger.Datum $ PlutusTx.toBuiltinData ()) oldContractValue
+                  <> Constraints.mustPayToOtherScript newContract (Ledger.Datum $ PlutusTx.toBuiltinData ()) newContractValue
+                  <> Constraints.mustSpendScriptOutput oref (toRedeemer @Treasuring $ InitiateUpgrade nc)
+                  <> Constraints.mustSpendScriptOutput oldRef (Ledger.Redeemer $ PlutusTx.toBuiltinData ())
+          ledgerTx <- submitTxConstraintsWith lookups tx
+          awaitTxConfirmed $ Ledger.txId ledgerTx
+          logInfo @String $
+            printf
+              "Treasury updated, contract changed from %s to %s"
+              (show $ currentContract td)
+              (show $ currentContract td')

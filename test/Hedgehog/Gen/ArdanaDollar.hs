@@ -33,6 +33,7 @@ import Hedgehog.Gen.Plutus (
   pubKeyHash,
   tokenName,
   txOutRef,
+  validatorHash,
   value,
  )
 import PlutusTx.Prelude qualified as P
@@ -52,12 +53,14 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   UserData (..),
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
+  NewContract (..),
   Treasury (..),
   TreasuryAction (..),
   TreasuryDatum (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
   TreasuryStateTokenParams (..),
+  TreasuryUpgradeContractTokenParams (..),
  )
 import ArdanaDollar.Vault (
   VaultDatum (..),
@@ -120,8 +123,23 @@ danaRedeemer =
     , DanaStakePool.InitializeUser
     ]
 
+peggedCurrency :: forall (m :: Type -> Type). MonadGen m => m P.BuiltinByteString
+peggedCurrency =
+  Gen.frequency
+    [ (16, pure "USD")
+    , (2, pure "EUR")
+    , (2, pure "GBP")
+    , (1, pure "PLN")
+    , (1, builtinByteString (Range.singleton 3))
+    ]
+
 treasury :: forall (m :: Type -> Type). MonadGen m => m Treasury.Treasury
-treasury = Treasury.Treasury <$> assetClass <*> treasuryStateTokenParams
+treasury =
+  Treasury.Treasury <$> peggedCurrency
+    <*> assetClass
+    <*> treasuryStateTokenParams
+    <*> assetClass
+    <*> treasuryUpgradeContractTokenParams
 
 treasuryAction :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryAction
 treasuryAction =
@@ -131,26 +149,32 @@ treasuryAction =
     , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
     , pure Treasury.AllowMint
     , pure Treasury.AllowBurn
-    , pure Treasury.InitiateUpgrade
+    , Treasury.InitiateUpgrade <$> (Treasury.NewContract <$> validatorHash)
     ]
 
 treasuryStateTokenParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryStateTokenParams
 treasuryStateTokenParams = Treasury.TreasuryStateTokenParams <$> tokenName <*> txOutRef
 
+treasuryUpgradeContractTokenParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryUpgradeContractTokenParams
+treasuryUpgradeContractTokenParams =
+  Treasury.TreasuryUpgradeContractTokenParams
+    <$> pubKeyHash
+    <*> builtinByteString (Range.constant 0 128)
+    <*> txOutRef
+
 treasuryDatum :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDatum
 treasuryDatum =
   Treasury.TreasuryDatum <$> integer
+    <*> validatorHash
     <*> uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
 
 treasuryDepositParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDepositParams
 treasuryDepositParams =
-  Treasury.TreasuryDepositParams <$> integer <*> assetClass
-    <*> builtinByteString (Range.constant 0 128)
+  Treasury.TreasuryDepositParams <$> value <*> builtinByteString (Range.constant 0 128)
 
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
-  Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128)
-    <*> pubKeyHash
+  Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
 
 uniqueMap ::
   forall (m :: Type -> Type) (k :: Type) (v :: Type).

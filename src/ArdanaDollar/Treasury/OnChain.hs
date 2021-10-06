@@ -9,8 +9,6 @@ module ArdanaDollar.Treasury.OnChain (
 import Ledger qualified
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Contexts qualified as Contexts
-import PlutusTx.AssocMap qualified as Assoc
-import PlutusTx.AssocMap.Extra qualified as Assoc
 import PlutusTx.Prelude
 import PlutusTx.UniqueMap qualified as UniqueMap
 
@@ -27,14 +25,21 @@ mkTreasuryValidator ::
   Contexts.ScriptContext ->
   Bool
 mkTreasuryValidator treasury td redeemer ctx =
-  traceIfFalse "treasury token missing from input" (hasToken ownInput)
-    && traceIfFalse "treasury token missing from output" (hasToken ownOutput)
+  traceIfFalse "treasury token missing from input" (hasTreasuryToken ownInput)
+    && traceIfFalse "treasury token missing from output" (hasTreasuryToken ownOutput)
+    && traceIfFalse "upgrade token missing from input" (hasUpgradeToken ownInput)
+    && traceIfFalse "upgrade token missing from output" (hasUpgradeToken ownOutput)
     && case redeemer of
       BorrowForAuction -> validateDatumImmutable td ctx
       DepositFundsWithCostCenter params ->
         validateAuctionDanaAmountUnchanged td ctx
+          && validateCurrentContractUnchanged td ctx
           && validateDepositFunds params td ownInput ownOutput ctx
-      _ -> True -- TODO: rest of the validators
+      InitiateUpgrade nc ->
+        validateAuctionDanaAmountUnchanged td ctx
+          && validateCostCentersUnchanged td ctx
+          && validateUpgrade nc treasury td ownOutput ctx
+      _ -> False -- TODO: rest of the validators
   where
     ownInput :: Ledger.TxOut
     ownInput = case Contexts.findOwnInput ctx of
@@ -46,13 +51,29 @@ mkTreasuryValidator treasury td redeemer ctx =
       [o] -> o
       _ -> traceError "expected exactly one treasury output"
 
-    hasToken :: Ledger.TxOut -> Bool
-    hasToken o = Value.assetClassValueOf (Ledger.txOutValue o) (stateTokenSymbol treasury) == 1
+    hasTreasuryToken :: Ledger.TxOut -> Bool
+    hasTreasuryToken = hasToken (treasury'stateTokenSymbol treasury)
+
+    hasUpgradeToken :: Ledger.TxOut -> Bool
+    hasUpgradeToken = hasToken (treasury'upgradeTokenSymbol treasury)
+
+    hasToken :: Value.AssetClass -> Ledger.TxOut -> Bool
+    hasToken ac o = Value.assetClassValueOf (Ledger.txOutValue o) ac == 1
 
 {-# INLINEABLE validateAuctionDanaAmountUnchanged #-}
 validateAuctionDanaAmountUnchanged :: TreasuryDatum -> Contexts.ScriptContext -> Bool
 validateAuctionDanaAmountUnchanged =
   validateDatumFieldUnchanged "attempt to change amount of auction DANA" auctionDanaAmount
+
+{-# INLINEABLE validateCurrentContractUnchanged #-}
+validateCurrentContractUnchanged :: TreasuryDatum -> Contexts.ScriptContext -> Bool
+validateCurrentContractUnchanged =
+  validateDatumFieldUnchanged "attempt to change current contract" currentContract
+
+{-# INLINEABLE validateCostCentersUnchanged #-}
+validateCostCentersUnchanged :: TreasuryDatum -> Contexts.ScriptContext -> Bool
+validateCostCentersUnchanged =
+  validateDatumFieldUnchanged "attempt to change current contract" costCenters
 
 {-# INLINEABLE validateDatumFieldUnchanged #-}
 validateDatumFieldUnchanged ::
@@ -87,20 +108,17 @@ validateDepositFunds ::
   Contexts.ScriptContext ->
   Bool
 validateDepositFunds params td ownInput ownOutput ctx =
-  traceIfFalse "deposit is not positive" (depositAmount > 0)
+  traceIfFalse "deposit is not positive" isDepositPositive
     && traceIfFalse "deposit tries withdrawing funds" isDeposited
     && case outputDatum of
       Nothing -> traceError "cannot find output datum"
       Just td' -> isDepositListed td'
   where
-    ac :: Value.AssetClass
-    ac = treasuryDepositCurrency params
+    deposit :: Value.Value
+    deposit = treasuryDeposit'value params
 
     costCenterName :: BuiltinByteString
-    costCenterName = treasuryDepositCostCenter params
-
-    depositAmount :: Integer
-    depositAmount = treasuryDepositAmount params
+    costCenterName = treasuryDeposit'costCenter params
 
     info :: Contexts.TxInfo
     info = Contexts.scriptContextTxInfo ctx
@@ -122,15 +140,11 @@ validateDepositFunds params td ownInput ownOutput ctx =
     costCenterValue :: UniqueMap.Map BuiltinByteString Value.Value -> Value.Value
     costCenterValue = fromMaybe mempty . UniqueMap.lookup costCenterName
 
-    {- Check if deposit is correctly added to the output and
-    that the operation does not change other assets in any way -}
+    isDepositPositive :: Bool
+    isDepositPositive = all (\(_, _, i) -> i > 0) (Value.flattenValue deposit)
+
     isDeposited :: Bool
-    isDeposited =
-      let inAsset = Value.assetClassValueOf inputValue ac
-          outAsset = Value.assetClassValueOf outputValue ac
-       in otherValues ac inputValue == otherValues ac outputValue
-            && inAsset + depositAmount == outAsset
-            && (outAsset - inAsset) > 0
+    isDeposited = inputValue <> deposit == outputValue
 
     {- Check if deposit is correctly listed in the cost centers map and
     that the operation does not change other cost centers in any way -}
@@ -139,22 +153,49 @@ validateDepositFunds params td ownInput ownOutput ctx =
       let oldCostCenters = costCenters td
           newCostCenters = costCenters newDatum
 
-          oldDatumAsset = Value.assetClassValueOf (costCenterValue oldCostCenters) ac
-          newDatumAsset = Value.assetClassValueOf (costCenterValue newCostCenters) ac
+          oldDatumAsset = costCenterValue oldCostCenters
+          newDatumAsset = costCenterValue newCostCenters
 
           otherCostCentersImmutable =
             otherCostCenters oldCostCenters == otherCostCenters newCostCenters
-          otherValuesSameCostCenterImmutable =
-            otherValues ac (costCenterValue oldCostCenters)
-              == otherValues ac (costCenterValue newCostCenters)
-          assetValueSameCostCenterChanged = oldDatumAsset + depositAmount == newDatumAsset
-
-          depositListed = otherValuesSameCostCenterImmutable && assetValueSameCostCenterChanged
+          assetValueSameCostCenterChanged = oldDatumAsset <> deposit == newDatumAsset
        in traceIfFalse "deposit modifies other cost centers" otherCostCentersImmutable
-            && traceIfFalse "deposit is not listed" depositListed
+            && traceIfFalse "deposit is not listed" assetValueSameCostCenterChanged
 
--- | Return `Value.Value` without asset of given asset class
-{-# INLINEABLE otherValues #-}
-otherValues :: Value.AssetClass -> Value.Value -> Value.Value
-otherValues (Value.AssetClass (cs, tn)) (Value.Value valueMap) =
-  Value.Value $ Assoc.alter cs (fmap (Assoc.delete tn)) valueMap
+{-# INLINEABLE validateUpgrade #-}
+validateUpgrade ::
+  NewContract ->
+  Treasury ->
+  TreasuryDatum ->
+  Ledger.TxOut ->
+  Contexts.ScriptContext ->
+  Bool
+validateUpgrade (NewContract nc) treasury td ownOutput ctx = case outputDatum of
+  Nothing -> False
+  Just TreasuryDatum {currentContract = cc'} ->
+    let cc = currentContract td
+     in traceIfFalse "new contract not saved" (nc == cc')
+          && traceIfFalse "missing upgrade token in old contract input" (any hasUpgradeToken (validatorInputs cc))
+          && traceIfFalse "unexpected upgrade token in new contract input" (not $ any hasUpgradeToken (validatorInputs cc'))
+          && traceIfFalse "unexpected upgrade token in old contract output" (not $ any hasUpgradeToken (validatorOutputs cc))
+          && traceIfFalse "missing upgrade token in new contract output" (any hasUpgradeToken (validatorOutputs cc'))
+  where
+    info :: Contexts.TxInfo
+    info = Contexts.scriptContextTxInfo ctx
+
+    outputDatum :: Maybe TreasuryDatum
+    outputDatum = datumForOnchain info ownOutput
+
+    validatorInputs :: Ledger.ValidatorHash -> [Ledger.TxOut]
+    validatorInputs vh =
+      [ o | i <- Ledger.txInfoInputs info, let o = Ledger.txInInfoResolved i, Ledger.txOutAddress o == Ledger.scriptHashAddress vh
+      ]
+
+    validatorOutputs :: Ledger.ValidatorHash -> [Ledger.TxOut]
+    validatorOutputs vh =
+      [ o | o <- Ledger.txInfoOutputs info, Ledger.txOutAddress o == Ledger.scriptHashAddress vh
+      ]
+
+    hasUpgradeToken :: Ledger.TxOut -> Bool
+    hasUpgradeToken o =
+      Value.assetClassValueOf (Ledger.txOutValue o) (treasury'upgradeTokenSymbol treasury) == 1

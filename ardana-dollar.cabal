@@ -128,6 +128,7 @@ library
     ArdanaDollar.Treasury.OnChain
     ArdanaDollar.Treasury.StateToken
     ArdanaDollar.Treasury.Types
+    ArdanaDollar.Treasury.UpgradeContractToken
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
@@ -146,6 +147,7 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.Plutus
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
     Test.AssertUtils
@@ -154,6 +156,7 @@ test-suite ardana-dollar-test
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
     Test.TraceUtils
+    Wallet.Emulator.Stream.Extra
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0

@@ -2,7 +2,6 @@ module Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests) where
 
 import Control.Lens
 import Control.Monad (void)
-import Data.Default (Default (..))
 import Data.Map qualified as Map
 import Ledger qualified
 import Ledger.Ada as Ada
@@ -17,13 +16,18 @@ import Test.Tasty
 import Prelude (String)
 
 import ArdanaDollar.Buffer.Endpoints
-import ArdanaDollar.Treasury.Endpoints
 import ArdanaDollar.Treasury.Types (
   Treasury (..),
   TreasuryStateTokenParams (..),
+  TreasuryUpgradeContractTokenParams (..),
   danaAssetClass,
  )
 import ArdanaDollar.Vault (dUSDAsset)
+import Test.ArdanaDollar.TreasuryPrerun (
+  emCfg,
+  startAdminTrace,
+  treasuryStartContract',
+ )
 import Test.AssertUtils (logChecker, logErrorAndThrow)
 import Test.TraceUtils (getBus)
 
@@ -44,7 +48,8 @@ bufferTraceTests =
 -- Utils -----------------------------------------------------------------------
 activateTreasuryDraftTrace :: EmulatorTrace Treasury
 activateTreasuryDraftTrace = do
-  cTreasuryId <- activateContractWallet (knownWallet 1) (treasuryStartContract <* Contract.waitNSlots 5)
+  _ <- startAdminTrace
+  cTreasuryId <- activateContractWallet (knownWallet 1) treasuryStartContract'
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
   void $ waitNSlots 5
@@ -56,17 +61,6 @@ draftTrace = do
   _ <- activateContractWallet (knownWallet 1) (bufferStartContract @() @ContractError treasury (50, 50) <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   return treasury
-
-emCfg :: EmulatorConfig
-emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet w, v' w) | w <- [1 .. 3]]) def def
-  where
-    v :: Value.Value
-    v = Ada.lovelaceValueOf 1_000_000_000
-
-    v' :: Integer -> Value.Value
-    v' w
-      | w == 1 = v
-      | otherwise = v <> assetClassValue dUSDAsset 1000 <> assetClassValue danaAssetClass 10
 
 -- Tests -----------------------------------------------------------------------
 noTreasuryTest :: TestTree
@@ -85,25 +79,35 @@ noTreasuryTest =
     bufferTrace :: EmulatorTrace ()
     bufferTrace = do
       walletPubKeyId <- activateContractWallet (knownWallet 2) $ do
-        pka <- Ledger.pubKeyAddress <$> Contract.ownPubKey @[TxOutRef] @EmptySchema @ContractError
+        pk <- Contract.ownPubKey @[(TxOutRef, Ledger.PubKeyHash)] @EmptySchema @ContractError
+        let pka = Ledger.pubKeyAddress pk
+            pkh = Ledger.pubKeyHash pk
         utxos <- Map.toList <$> Contract.utxosAt pka
         case utxos of
           [] -> Contract.logError @String "No UTXO found at public address"
-          (oref, _) : _ -> Contract.tell [oref]
+          (oref, _) : _ -> Contract.tell [(oref, pkh)]
         void $ Contract.waitNSlots 1_000_000
       void $ waitNSlots 5
       orefs <- observableState walletPubKeyId
 
       case orefs of
         [] -> logErrorAndThrow "Could not find UTXO"
-        (oref : _) -> do
+        ((oref, pkh) : _) -> do
           let mockTreasury =
                 Treasury
-                  { stateTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token1")
-                  , stateTokenParams =
+                  { treasury'peggedCurrency = "USD"
+                  , treasury'stateTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token1")
+                  , treasury'stateTokenParams =
                       TreasuryStateTokenParams
                         { stateToken = TokenName "Token2"
                         , initialOutput = oref
+                        }
+                  , treasury'upgradeTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token3")
+                  , treasury'upgradeTokenParams =
+                      TreasuryUpgradeContractTokenParams
+                        { upgradeToken'initialOwner = pkh
+                        , upgradeToken'peggedCurrency = "USD"
+                        , upgradeToken'initialOutput = oref
                         }
                   }
           cTreasuryUserId <- activateContractWallet (knownWallet 1) (bufferAuctionContract @() @ContractError mockTreasury)

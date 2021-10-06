@@ -8,8 +8,6 @@ import Control.Lens hiding (elements)
 import Control.Monad (void)
 import Control.Monad.Freer qualified as Freer
 import Control.Monad.Freer.Error qualified as FrError
-import Data.Default (Default (def))
-import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.OpenUnion.Internal (FindElem)
 import Data.Semigroup qualified as Semigroup
@@ -28,9 +26,8 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (testProperty)
 import Prelude
 
-import Ledger.Ada qualified as Ada
 import Ledger.Value qualified as Value
-import Plutus.Contract (Contract, ContractError, EmptySchema)
+import Plutus.Contract (ContractError)
 import Plutus.Contract qualified as Contract
 import Plutus.Contract.Test hiding (not)
 import Plutus.Contract.Test.ContractModel (
@@ -50,16 +47,20 @@ import Plutus.Contract.Test.ContractModel (
   ($~),
  )
 import Plutus.PAB.OutputBus (OutputBus (getOutputBus))
-import Plutus.Trace.Emulator (EmulatorConfig (..), EmulatorTrace, callEndpoint)
+import Plutus.Trace.Emulator (EmulatorTrace, callEndpoint)
 import Plutus.Trace.Emulator qualified as Emulator
 import Wallet.Emulator.Folds qualified as Folds
 import Wallet.Emulator.Stream qualified as Stream
 
 import ArdanaDollar.Buffer.Endpoints
-import ArdanaDollar.Treasury.Endpoints (treasuryStartContract)
 import ArdanaDollar.Treasury.Types (Treasury, danaAssetClass)
 import ArdanaDollar.Utils (safeDivide)
 import ArdanaDollar.Vault (dUSDAsset)
+import Test.ArdanaDollar.TreasuryPrerun (
+  emCfg,
+  startAdminTrace,
+  treasuryStartContract',
+ )
 import Test.TraceUtils (getBus)
 
 -- MODEL
@@ -90,7 +91,8 @@ instance ContractModel BufferModel where
   perform :: HandleFun BufferModel -> ModelState BufferModel -> Action BufferModel -> EmulatorTrace ()
   perform handle _s cmd = case cmd of
     Wait -> do
-      cTreasuryId <- Emulator.activateContractWallet w1 (treasuryStartContract <* Contract.waitNSlots 5)
+      _ <- startAdminTrace
+      cTreasuryId <- Emulator.activateContractWallet w1 treasuryStartContract'
       void $ Emulator.waitNSlots 5
       treasury <- getBus cTreasuryId
       void $ Emulator.waitNSlots 5
@@ -174,13 +176,10 @@ getTreasuryParam = case run of
       Just (Semigroup.Last s) -> Right s
       Nothing -> Left "error in getOutputBus"
 
-    con :: Contract (OutputBus Treasury) EmptySchema ContractError ()
-    con = treasuryStartContract <* Contract.waitNSlots 10
-
     fld ::
       (FindElem (FrError.Error Folds.EmulatorFoldErr) effs) =>
       Folds.EmulatorEventFoldM effs (OutputBus Treasury)
-    fld = Folds.instanceAccumState con (Emulator.walletInstanceTag w1)
+    fld = Folds.instanceAccumState treasuryStartContract' (Emulator.walletInstanceTag w1)
 
     run :: Either Folds.EmulatorFoldErr (S.Of (OutputBus Treasury) ())
     run = Freer.run $
@@ -189,7 +188,7 @@ getTreasuryParam = case run of
           Stream.takeUntilSlot 10 $
             Emulator.runEmulatorStream emCfg $
               do
-                void $ Emulator.activateContractWallet w1 con
+                void $ Emulator.activateContractWallet w1 treasuryStartContract'
                 void $ Emulator.waitNSlots 20
 
 -- Property tests
@@ -204,16 +203,3 @@ prop_Buffer :: Actions BufferModel -> Property
 prop_Buffer = propRunActionsWithOptions opts handleSpec (const $ pure True)
   where
     opts = defaultCheckOptions & emulatorConfig .~ emCfg
-
-emCfg :: EmulatorConfig
-emCfg =
-  EmulatorConfig
-    (Left $ Map.fromList [(w, v) | w <- knownWallets])
-    def
-    def
-  where
-    -- we need A LOT of Ada for QuickCheck tests
-    v :: Value.Value
-    v =
-      Ada.lovelaceValueOf 1_000_000_000_000_000
-        <> Value.assetClassValue dUSDAsset 1000

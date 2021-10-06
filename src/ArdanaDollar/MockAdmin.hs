@@ -4,13 +4,17 @@
 module ArdanaDollar.MockAdmin (
   adminAddress,
   adminValidator,
+  findAdmin,
   startAdmin,
 ) where
 
 --------------------------------------------------------------------------------
 
+import Control.Lens ((^.))
 import Control.Monad (void)
 import Data.Kind (Type)
+import Data.Map qualified as Map
+import Data.Row (Row)
 
 --------------------------------------------------------------------------------
 
@@ -18,11 +22,14 @@ import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Contexts qualified as Contexts
 import Ledger.Typed.Scripts qualified as Scripts
+import Ledger.Value qualified as Value
 import Plutus.Contract
 import PlutusTx qualified
 import PlutusTx.Prelude
 
 --------------------------------------------------------------------------------
+
+import ArdanaDollar.Treasury.Types (Treasury (treasury'upgradeTokenSymbol))
 
 data MockAdmining
 instance Scripts.ValidatorTypes MockAdmining where
@@ -54,3 +61,21 @@ startAdmin i = do
   let tx = Constraints.mustPayToTheScript () mempty
   ledgerTx <- submitTxConstraints (adminInst i) tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+
+findAdmin ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
+  (AsContractError e) =>
+  Treasury ->
+  Ledger.Address ->
+  Contract w s e (Maybe (Contexts.TxOutRef, Ledger.ChainIndexTxOut))
+findAdmin treasury address = do
+  utxos <- Map.filter f <$> utxosAt address
+  return $ case Map.toList utxos of
+    [os] -> Just os
+    _ -> Nothing
+  where
+    tokenAC :: Value.AssetClass
+    tokenAC = treasury'upgradeTokenSymbol treasury
+
+    f :: Ledger.ChainIndexTxOut -> Bool
+    f o = Value.assetClassValueOf (o ^. Ledger.ciTxOutValue) tokenAC == 1
