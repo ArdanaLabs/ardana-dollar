@@ -17,7 +17,7 @@ vaultBenchmark :: IO ()
 vaultBenchmark =
   void $
     writeScriptsTo
-      (ScriptsConfig "./benchmarks" (Scripts UnappliedValidators))
+      (ScriptsConfig "./costing-output" (Scripts UnappliedValidators))
       "vault"
       vaultTrace
       def

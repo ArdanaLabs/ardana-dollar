@@ -173,11 +173,11 @@ executable ardana-pab
     , plutus-pab
     , prettyprinter
 
-executable ardana-benchmarking
+executable ardana-costing
   import:         lang
   import:         deps
   main-is:        Main.hs
-  hs-source-dirs: benchmarking
+  hs-source-dirs: costing
   ghc-options:    -threaded
   build-depends:
     , ardana-dollar
