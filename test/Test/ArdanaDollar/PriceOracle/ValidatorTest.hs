@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -fno-specialise #-}
+
+--{-# OPTIONS_GHC -fno-specialise #-}
 
 module Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorTests) where
 
@@ -8,14 +9,17 @@ import Data.Semigroup ((<>))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (pubKeyHash)
-import Ledger.Scripts (mkValidatorScript)
 import Ledger.Oracle qualified as Oracle
+import Ledger.Scripts (mkValidatorScript)
+import Plutus.V1.Ledger.Api (singleton)
 import PlutusTx qualified
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
-import qualified PlutusTx.UniqueMap as UniqueMap
-import Test.Tasty (TestTree, testGroup)
+import PlutusTx.UniqueMap qualified as UniqueMap
+import Test.Tasty (testGroup)
+import Test.Tasty.Options (OptionSet, setOption)
 import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
+import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
 
 import ArdanaDollar.PriceOracle.OnChain
@@ -23,32 +27,54 @@ import ArdanaDollar.PriceOracle.OnChain
 priceOracleValidatorTests :: TestTree
 priceOracleValidatorTests = testGroup "PriceOracle Validator" [simpleValidatorTest]
 
+setTimeRangeOpt :: OptionSet -> OptionSet
+setTimeRangeOpt =
+  setOption
+    ( TimeRange
+        ( Ledger.Interval
+            (Ledger.LowerBound (Ledger.Finite (Ledger.POSIXTime 500)) True)
+            (Ledger.UpperBound (Ledger.Finite (Ledger.POSIXTime 600)) True)
+        )
+    )
+
 simpleValidatorTest :: TestTree
-simpleValidatorTest = withValidator "Simple" validator $ do
-  shouldValidate "Example" testData $
-    spendsFromPubKeySigned userHash (Ada.lovelaceValueOf 0)
-      <> output (Output (OwnType . PlutusTx.toBuiltinData $ PriceTracking UniqueMap.empty UniqueMap.empty 0) (Ada.lovelaceValueOf 0))
-  shouldn'tValidate "Missing input" testData $
-    output (Output (OwnType . PlutusTx.toBuiltinData $ PriceTracking UniqueMap.empty UniqueMap.empty 0) mempty)
+simpleValidatorTest = PlusTestOptions setTimeRangeOpt $
+  withValidator "Simple" validator $ do
+    shouldValidate "Example" testData $
+      spendsFromPubKeySigned userHash (Ada.lovelaceValueOf 0)
+        <> input (Input (OwnType . PlutusTx.toBuiltinData $ ownerSignedEmptyPriceTracking) oracleCS)
+        <> output (Output (OwnType . PlutusTx.toBuiltinData $ ownerSignedEmptyPriceTracking) oracleCS)
   where
+    oracleCS = singleton currSym "PriceTracking" 1
+    userPK :: Ledger.PubKey
+    userPK = walletPubKey (knownWallet 1)
+
+    userPrivK :: Ledger.PrivateKey
+    userPrivK = Ledger.privateKey1
+
     userHash :: Ledger.PubKeyHash
-    userHash = pubKeyHash $ walletPubKey (knownWallet 1)
+    userHash = pubKeyHash userPK
+
+    -- mock currency symbol. can't construct with minter due to cycle
+    currSym = "123456789012345678901234567890ef"
 
     params :: OracleValidatorParams
-    params = OracleValidatorParams "" "" "" "USD"
+    params = OracleValidatorParams currSym userPK userHash "PriceTracking"
 
     validator :: Ledger.Validator
     validator =
       mkValidatorScript $
         $$(PlutusTx.compile [||go||])
-          `PlutusTx.applyCode` ( $$(PlutusTx.compile [||mkOracleValidator||])
-                                  `PlutusTx.applyCode` PlutusTx.liftCode params
-                               )
+          `PlutusTx.applyCode` oracleCompiledTypedValidator params
       where
+        {-# INLINEABLE go #-}
         go ::
           (Oracle.SignedMessage PriceTracking -> () -> Ledger.ScriptContext -> Bool) ->
           (BuiltinData -> BuiltinData -> BuiltinData -> ())
         go = toTestValidator
 
-    testData {- Oracle.SignedMessage PriceTracking -> VaultRedeemer -> Value -> -} :: TestData 'ForSpending
-    testData = SpendingTest (PriceTracking UniqueMap.empty UniqueMap.empty 0) () mempty
+    testData {- Oracle.SignedMessage PriceTracking -> () -> Value -> -} :: TestData 'ForSpending
+    testData = SpendingTest ownerSignedEmptyPriceTracking () mempty
+
+    ownerSignedEmptyPriceTracking :: Oracle.SignedMessage PriceTracking
+    ownerSignedEmptyPriceTracking = Oracle.signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (Ledger.POSIXTime 550)) userPrivK

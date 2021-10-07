@@ -9,10 +9,10 @@ import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
+import Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorTests)
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.ArdanaDollar.VaultValidatorTest (vaultValidatorTests)
-import Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorTests)
 import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
 import Test.ContractModel.Vault qualified as VaultModel (contractTests)
 import Test.Roundtrips.BuiltinData (builtinDataRoundtripTests)
