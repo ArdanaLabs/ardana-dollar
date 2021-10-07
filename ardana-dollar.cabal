@@ -97,6 +97,7 @@ common test-deps
     , lens
     , optparse-applicative  ^>=0.16
     , QuickCheck
+    , silently
     , streaming
     , tagged
     , tasty
@@ -145,10 +146,12 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    TastyDefaultMain
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest
+    Test.ArdanaDollar.TreasuryValidatorTest
     Test.ArdanaDollar.Utils
     Test.AssertUtils
     Test.ContractModel.Buffer

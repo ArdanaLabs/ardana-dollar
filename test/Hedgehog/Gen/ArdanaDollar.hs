@@ -13,6 +13,7 @@ module Hedgehog.Gen.ArdanaDollar (
   treasury,
   treasuryAction,
   treasuryStateTokenParams,
+  treasuryCostCenters,
   treasuryDatum,
   treasuryDepositParams,
   treasurySpendParams,
@@ -36,6 +37,7 @@ import Hedgehog.Gen.Plutus (
   validatorHash,
   value,
  )
+import Ledger.Value qualified as Value
 import PlutusTx.Prelude qualified as P
 import PlutusTx.UniqueMap qualified as UniqueMap
 
@@ -162,11 +164,11 @@ treasuryUpgradeContractTokenParams =
     <*> builtinByteString (Range.constant 0 128)
     <*> txOutRef
 
+treasuryCostCenters :: forall (m :: Type -> Type). MonadGen m => m (UniqueMap.Map P.BuiltinByteString Value.Value)
+treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
+
 treasuryDatum :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDatum
-treasuryDatum =
-  Treasury.TreasuryDatum <$> integer
-    <*> validatorHash
-    <*> uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
+treasuryDatum = Treasury.TreasuryDatum <$> integer <*> validatorHash <*> treasuryCostCenters
 
 treasuryDepositParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDepositParams
 treasuryDepositParams =
