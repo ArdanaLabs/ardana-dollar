@@ -100,7 +100,7 @@ requires_nix_shell:
 	@ [ -v IN_NIX_SHELL ] || (echo "    run 'nix-shell --pure' first" && false)
 
 costing:
-	cabal run ardana-costing | grep "^Writing script:" | rev | cut -d/ -f1 | rev | tee costing-log.txt
+	cabal run ardana-costing | grep "^Writing script:" | rev | cut -d/ -f1 | rev | tee docs/costing.txt
 
 dot2png:
 	find ./docs/diagrams -name "*.dot" | xargs -I '{}' dot -Tpng '{}' -o '{}.png'

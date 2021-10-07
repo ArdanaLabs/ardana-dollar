@@ -55,14 +55,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
 
-      - if: ${{ github.ref == 'refs/heads/master' }}
-        name: Check costing up to date on master
-        run: nix-build ./nix/costing.nix --argstr contractMaxSuccess 250 -I nixpkgs=channel:nixos-21.05
+      - run: nix-build ./nix/costing.nix --argstr contractMaxSuccess 250 -I nixpkgs=channel:nixos-21.05
+        name: Check costing up to date (if this fails run `make costing` to update the costing file)
 
-      - if: ${{ github.ref == 'refs/heads/staging' }}
-        name: Check costing up to date on staging
-        run: nix-build ./nix/costing.nix --argstr contractMaxSuccess 100 -I nixpkgs=channel:nixos-21.05
-
-      - if: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/staging' }}
-        name: Check costing up to date on PR
-        run: nix-build ./nix/costing.nix --argstr contractMaxSuccess 50 -I nixpkgs=channel:nixos-21.05

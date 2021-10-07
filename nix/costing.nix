@@ -17,7 +17,7 @@ in rec {
     doCosting() {
       ${ardana-costing}/bin/ardana-costing | grep "^Writing script:" | ${rev} | cut -d/ -f1 | ${rev}
     }
-    cmp ${project.ardana-dollar.src}/costing-log.txt <(doCosting)
+    cmp ${project.ardana-dollar.src}/docs/costing.txt <(doCosting)
     touch $out
   '';
 }
