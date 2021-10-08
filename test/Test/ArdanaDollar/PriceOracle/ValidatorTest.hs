@@ -21,7 +21,7 @@ import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
 import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
-import Prelude (String,show,error,IO)
+import Prelude (String,show,error,IO,Enum,Bounded,Show,minBound,maxBound)
 import qualified PlutusTx.AssocMap as AssocMap
 import ArdanaDollar.PriceOracle.OnChain
 
@@ -118,53 +118,65 @@ data TestDatumParameters = TestDatumParameters
 ---- Constraints on the model domain
 --
 -- our model of why things should or should not validate
---
--- TODO if a test fails we should be able to use the constraints to justify a reason for why it failed
--- this will be useful for doing exploratory generative testing
--- we want to know the reason and the parameters such that we can create a regression test and fix the problem
--- (which may be with the model or the validator itself)
 
-type ModelConstraint = TestParameters -> Bool
+data Constraint =
+    OutputDatumTimestampInRange
+  | RangeWithinSizeLimit
+  | InputDatumSignedByOwner
+  | OutputDatumSignedByOwner
+  | TransactionSignedByOwner
+  | StateTokenReturned
+  deriving stock (Prelude.Enum, Prelude.Bounded, Prelude.Show)
 
---TODO hasInputDatum as separate check
-inputDatumInRange :: ModelConstraint
-inputDatumInRange TestParameters { .. } =
-  case datumInput inputParams of
-    Nothing -> False
-    Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
-outputDatumInRange :: ModelConstraint
+
+type ModelCheck = TestParameters -> Bool
+
+checkConstraint :: Constraint -> ModelCheck
+checkConstraint OutputDatumTimestampInRange = outputDatumInRange
+checkConstraint RangeWithinSizeLimit = rangeWithinSizeLimit
+checkConstraint InputDatumSignedByOwner = inputSignedByOwner
+checkConstraint OutputDatumSignedByOwner = outputDatumSignedByOwner
+checkConstraint TransactionSignedByOwner = txSignedByOwner
+checkConstraint StateTokenReturned = stateTokenReturned
+
+-- TODO if a test fails we can use this to explain the expected behaviour
+-- e.g. expected validation failure since InputDatumSignedByOwner not satisfied
+constraintViolations :: TestParameters -> [Constraint]
+constraintViolations p = filter (not . flip checkConstraint p) [minBound .. maxBound]
+
+outputDatumInRange :: ModelCheck
 outputDatumInRange TestParameters { .. } =
   case datumOutput outputParams of
     Nothing -> False
     Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
 -- TODO clarify expected behaviour of this constraint
-rangeWithinSizeLimit :: ModelConstraint
+rangeWithinSizeLimit :: ModelCheck
 rangeWithinSizeLimit TestParameters { .. } =
    let rangeLen = timeRangeUpperBound - timeRangeLowerBound
     in rangeLen > 0 && rangeLen <= 1000
 
-inputSignedByOwner :: ModelConstraint
+inputSignedByOwner :: ModelCheck
 inputSignedByOwner TestParameters { .. } =
   case datumInput inputParams of
     Nothing -> False
     Just so -> signedByWallet so == ownerWallet
 
 --TODO hasOutputDatum as separate check
-outputDatumSignedByOwner :: ModelConstraint
+outputDatumSignedByOwner :: ModelCheck
 outputDatumSignedByOwner TestParameters { .. } =
   case datumOutput outputParams of
     Nothing -> False
     Just d -> signedByWallet d == ownerWallet
 
-txSignedByOwner :: ModelConstraint
+txSignedByOwner :: ModelCheck
 txSignedByOwner TestParameters { .. } = case transactorParams of
                                           NoSigner -> False
                                           JustSignedBy signer -> signer == ownerWallet
                                           SignedByWithValue signer _ -> signer == ownerWallet
 
-stateTokenReturned :: ModelConstraint
+stateTokenReturned :: ModelCheck
 stateTokenReturned TestParameters { .. } =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ tokenOutput outputParams of
     Nothing -> False
@@ -180,15 +192,7 @@ stateTokenReturned TestParameters { .. } =
 data ExpectedResult = Validates | DoesNotValidate
 
 testResultModel :: TestParameters -> ExpectedResult
-testResultModel p | all ($ p) [ --the constraints required for validation
-                                inputDatumInRange
-                              , outputDatumInRange
-                              , rangeWithinSizeLimit
-                              , stateTokenReturned
-                              , inputSignedByOwner
-                              , outputDatumSignedByOwner
-                              , txSignedByOwner
-                              ] = Validates
+testResultModel p | length (constraintViolations p) == 0 = Validates
 testResultModel _ = DoesNotValidate
 
 withExpectedResult :: ExpectedResult -> String -> TestData 'ForSpending -> ContextBuilder 'ForSpending -> WithScript 'ForSpending ()
