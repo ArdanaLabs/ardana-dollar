@@ -48,7 +48,7 @@ stabilityFeeBaseRate
 vaultStateExpiryTime
 
 ## Common Types
-```
+```haskell
 VaultConfig
   { assetClass :: AssetClass
   , active :: Bool
@@ -71,7 +71,7 @@ One-shot tokens within the system are:
   purpose: allows us to manage stateful data relating to totals of important funds held by the Governance Validator
 
   carries datum:
-  ```
+  ```haskell
   GovernanceState { stakeTotal :: Integer
                   , rewardsTotal :: Value
                   , lastEpoch :: PosixTime
@@ -79,7 +79,7 @@ One-shot tokens within the system are:
   ```
 
   initialized to
-  ```
+  ```haskell
   GovernanceState { stakeTotal = 0
                   , rewardsTotal = mempty
                   , lastEpoch = currentTime
@@ -104,7 +104,7 @@ One-shot tokens within the system are:
   purpose: allows us to manage stateful data relating to Admin-level configuration, for the purpose of propigating state from Admin ownerAddress to all vaults.
 
   carries datum `SignedMessage AdminState` where:
-  ```
+  ```haskell
   AdminState
     { configs :: [VaultConfig],
     , liquidationBenefitCap :: Rational
@@ -115,7 +115,7 @@ One-shot tokens within the system are:
     }
   ```
   initialized to
-  ```
+  ```haskell
   AdminState
     { configs = [],
     , liquidationBenefitCap = 1 % 5 -- 20%
@@ -132,7 +132,7 @@ One-shot tokens within the system are:
 
 ## Governance Minting Policy
 parameters:
-```
+```haskell
 GovStateMintingParams { governanceScriptAddress :: ValidatorHash
                       , governanceStateCurrencySymbol :: CurrencySymbol
                       , ownerAddress :: PubKeyHash
@@ -150,7 +150,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
   purpose: allows us to manage stateful data relevant to a User's interaction with the Governance Validator, which is a stake pool structure (users deposit $DANA Tokens (minted externally) into the pool so that their votes can be counted and rewards can be accurately distributed).
 
   carries datum:
-  ```
+  ```haskell
   UserStakeDetail { userAddress :: Address
                   , amountStaked :: Integer
                   , lastReward :: PosixTime
@@ -160,7 +160,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
   ```
 
   initialized to
-  ```
+  ```haskell
   UserStakeDetail { userAddress = DepositAct.address -- determined by validator
                   , amountStaked = DepositAct.amount -- determined by validator
                   , lastReward = currentTime
@@ -192,14 +192,14 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
   purpose: This datum is needed as part of the reward distribution procedure, to record the exact state of the rewards and stakepool sizes so that they might be used to calculate reward dividends for each staker of $DANA at the end of a given reward period/epoch.
 
   carries datum:
-  ```
+  ```haskell
   LastEpochScriptState { stakeTotal :: Integer
                        , rewardsTotal :: Value
                        }
   ```
 
   initialized to
-  ```
+  ```haskell
   LastEpochScriptState { stakeTotal = GovernanceState.stakeTotal
                        , rewardsTotal = GovernanceState.rewardsTotal
                        -- values determined by Validator.
@@ -246,7 +246,7 @@ the `governanceScriptAddress` and `governanceStateCurrencySymbol` parameters are
 
 ## Governance Validator
 parameters:
-```
+```haskell
 GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol
                           , ownerAddress :: PubKeyHash
                           , danaTokenAssetClass :: AssetClass
@@ -254,13 +254,13 @@ GovernanceValidatorParams { governanceStateCurrencySymbol :: CurrencySymbol
 ```
 
 Datum:
-```
+```haskell
 GovernanceState
 ```
 defined as a State token datum under _One Shot Tokens_
 
 Redeemer:
-```
+```haskell
 = DepositAct { amount :: Integer
              , address :: Address
              }
@@ -448,7 +448,7 @@ LastEpochScriptState state token (MINTED)-> Governance Validator Script (set `La
 
 ## Proposal Minting Policy (example)
 parameters:
-```
+```haskell
 ProposalMintingParams { proposalFactoryAddress :: Address
                       , governanceMintingCurrencySymbol :: CurrencySymbol
                       }
@@ -462,14 +462,14 @@ note: this will not actually be implemented, it's intended as a guide for those 
   Token Type: State token for IndividualProposal Validator script.
 
   Carries Datum:
-  ```
+  ```haskell
   ProposalState
     { totalVote :: Integer
     , voterList :: [Address]
     }
   ```
   initialized to:
-```
+```haskell
   ProposalState
     { totalVote = 0
     , voterList = []
@@ -492,7 +492,7 @@ outputs:
 
 ## ProposalFactory (Example)
 Parameters:
-```
+```haskell
 ProposalFactoryParams { govAddress :: Address
                       . governanceMintingCurrencySymbol :: CurrencySymbol
                       }
@@ -510,7 +510,7 @@ Datum:
 `()`
 
 Redeemer:
-```
+```haskell
 CreateProposalAct
 ```
 
@@ -532,7 +532,7 @@ outputs:
 
 ## IndividualProposal (Example)
 Parameters:
-```
+```haskell
 data IndividualProposalParams a = IndividualProposalParams
   { proposalFactoryAddress :: Address
   , governanceMintingCurrencySymbol :: CurrencySymbol
@@ -545,13 +545,13 @@ Purpose:
 This script manages the act of voting on a particular proposal, the precise data being voted on, and determines if the Proposal is successful.
 
 Datum:
-```
+```haskell
 ProposalState
 ```
 defined at _Proposal Minting Policy_
 
 Redeemer:
-```
+```haskell
 = VoteAct
 ```
 
@@ -580,7 +580,7 @@ outputs:
 
 ## Admin Minting Policy
 Parameters:
-```
+```haskell
 AdminMintingParams { targetCurrency :: ByteString -- fiat currency identifier
                    , adminStateCurrencySymbol :: CurrencySymbol
                    , adminValidatorAddress :: ValidatorHash
@@ -593,7 +593,7 @@ Purpose: The Admin Minting Policy mints various tokens used primarily by the Adm
   Purpose: - A record token to witness the creation of a vault within the Admin Validator such that vaults can easily be queried off-chain, or otherwise managed and confirmed to be valid.
 
   carries datum:
-  ```
+  ```haskell
   VaultRecord
     { userAddress :: Address
     , scriptAddress :: Address
@@ -601,7 +601,7 @@ Purpose: The Admin Minting Policy mints various tokens used primarily by the Adm
     }
   ```
   initialized to:
-  ```
+  ```haskell
   VaultRecord
     { userAddress = InitVaultAct.address
     , scriptAddress = scriptAddress
@@ -625,7 +625,7 @@ outputs:
   Purpose: A state token for Vault scripts,  a local copy of the relevant data from AdminState, stored in the Vault to avoid bottlenecks on the AdminState token.
 
   carries datum:
-  ```
+  ```haskell
   VaultState
   { collateralCurrency :: AssetClass
   , collateral :: Integer,
@@ -635,7 +635,7 @@ outputs:
   }
   ```
   Initialized to
-  ```
+  ```haskell
   VaultState
   { collateralCurrency = InitVaultAct.collateralCurrency
   , collateral = 0
@@ -657,7 +657,7 @@ outputs:
 
 ## Admin Validator
 Parameters:
-```
+```haskell
 AdminValidatorParams
   { targetCurrency :: ByteString -- fiat currency identifier
   , oracleAddress :: ValidatorHash
@@ -678,7 +678,7 @@ Datum:
 `AdminState`
 
 Redeemer Type:
-```
+```haskell
 = InitVaultAct { collateralCurrency :: AssetClass
                , address :: Address
                }
@@ -756,7 +756,7 @@ outputs:
 
 ## Vault Validator
 parameters:
-```
+```haskell
 VaultValidatorParams
   { targetCurrency :: ByteString
   , user :: Address
@@ -776,13 +776,13 @@ the Vault has access to a constant, `vaultStateExpiryTime`, which should initial
 this is also used to check for the expiration of oracle info as well.
 
 datum:
-```
+```haskell
 VaultState
 ```
 defined in _Admin Minting Policy_
 
 Redeemer:
-```
+```haskell
 = AddCollateralAct
    { amount :: Integer
    , adminState :: SignedMessage AdminState
@@ -814,7 +814,7 @@ Redeemer:
 ```
 
 `PriceTracking` is defined as follows:
-```
+```haskell
 data PriceTracking = PriceTracking
   { -- | fiat currency id to price in lovelace
     fiatPriceFeed :: AssocMap ByteString Integer,
@@ -976,7 +976,7 @@ Purpose: Mints state & record tokens relating to the buffer, used to determine a
 ### BufferState token (1x per supported collateral currency)
   Token Type: State token for Buffer Validator
   carried datum:
-  ```
+  ```haskell
   BufferState
     { currentDiscount :: Ratio -- discount for Liquidation
     , debtPrice :: Maybe Integer -- current price for debt auction, if any
@@ -984,7 +984,7 @@ Purpose: Mints state & record tokens relating to the buffer, used to determine a
     }
   ```
   initiated to:
-  ```
+  ```haskell
   BufferState
     { currentDiscount = 1 % 5
     , debtPrice = oracleMessageDebtPrice
@@ -997,7 +997,7 @@ Purpose: Mints state & record tokens relating to the buffer, used to determine a
 
 ## Buffer Validator
 Parameters:
-```
+```haskell
 BufferValidatorParams
   { oracleAddress :: ValidatorHash
   , oracleOperator :: PubKeyHash
@@ -1014,7 +1014,7 @@ Datum:
 `BufferState`
 
 Redeemer
-```
+```haskell
 = LiquidationPurchaseAct
     { amount :: Integer
     , priceTracking :: SignedMessage PriceTracking
@@ -1069,7 +1069,7 @@ outputs:
 
 ## Treasury Minting Policy
 Parameters:
-```
+```haskell
 TreasuryMintingParams
   { initialOwner :: PubKeyHash
   , peggedCurrency :: ByteString
@@ -1088,12 +1088,12 @@ Purpose: This is a State Token for the Treasury, it is also a Permission token t
 -- TODO - these concerns should probably be divided into 2 seperate tokens, do these constutute one-shot tokens?
 
   carries Datum:
-  ```
+  ```haskell
   UpgradeContract
    { newContract :: Maybe Address }
    ```
   initiated to:
-  ```
+  ```haskell
   UpgradeContract
    { newContract :: Just v1AdminContractAddress }
    ```
@@ -1159,7 +1159,7 @@ output:
   Purpose: a State Token for a cost center, To carry the balance of a particular Cost Center (an account) of funds that may be held in the Treasury and spent with permission. This prevents accidental overspending of one set of funds, depleting funds needed for other purposes.
 
   carries datum:
-  ```
+  ```haskell
   CostCenterState
     { costCenter :: ByteString
     , balance :: Plutus.Value
@@ -1181,7 +1181,7 @@ output:
 
 ## Treasury Validator
 Parameters:
-```
+```haskell
 TreasuryValidatorParams
   { TreasuryMintingCurrencySymbol :: CurrencySymbol
   , danaTokenAssetClass :: AssetClass
@@ -1195,7 +1195,7 @@ datum:
 `UpgradeContract`
 
 redeemer
-```
+```haskell
 = InitiateUpgradeAct { newContract :: ValidatorHash }
 | SpendFromCostCenterAct { value :: Plutus.Value, costCenter :: ByteString, beneficiary :: Address }
 | DepositFundsWithCostCenterAct { value :: Plutus.Value, costCenter :: ByteString }
