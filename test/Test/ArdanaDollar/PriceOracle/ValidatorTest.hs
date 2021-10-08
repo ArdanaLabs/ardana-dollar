@@ -36,7 +36,7 @@ priceOracleValidatorTests = do
 -- using the constrants to filter/drive the generator would be a good idea
 priceOracleExploratoryGeneratedTests :: IO TestTree
 priceOracleExploratoryGeneratedTests = return $ testGroup "Exploratory generated tests"
-    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
 
     ]
 
@@ -52,17 +52,17 @@ priceOracleValidatorRegressionTests =
   --TODO check that these fail for specific and known reasons so that they can be named appropriately
   testGroup
     "Regression Tests"
-    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
 
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 2 460)))
+    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 2 460)))
 
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
+    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency True 400 465 1 (JustSignedBy 2) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency 400 465 1 (JustSignedBy 2) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency True 400 465 1 NoSigner (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency 400 465 1 NoSigner (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
 
     ]
 
@@ -88,13 +88,11 @@ data TestParameters = TestParameters
   { subTreeName :: String
   , testName :: String
   , stateNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
-  , scriptOwnsStateToken :: Bool -- scriptStartingValue? we could parameterise by the value itself - would that be useful?
---  , scriptKeepsStateToken :: Bool -- spend to self, spend to somewhere else, don't spend
   , timeRangeLowerBound :: Integer
   , timeRangeUpperBound :: Integer
   , ownerWallet :: Integer
   , transactorParams :: SpenderParams
-  , inputDatum :: TestDatumParameters
+  , inputParams :: InputParams
   , outputParams :: OutputParams
   }
 
@@ -106,6 +104,12 @@ data OutputParams =
   , datumOutput :: Maybe TestDatumParameters
   }
 
+data InputParams =
+  InputParams {
+    tokenInput :: Ledger.Value
+  , datumInput :: Maybe TestDatumParameters
+  }
+
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
   , timeStamp :: Integer
@@ -114,11 +118,20 @@ data TestDatumParameters = TestDatumParameters
 ---- Constraints on the model domain
 --
 -- our model of why things should or should not validate
+--
+-- TODO if a test fails we should be able to use the constraints to justify a reason for why it failed
+-- this will be useful for doing exploratory generative testing
+-- we want to know the reason and the parameters such that we can create a regression test and fix the problem
+-- (which may be with the model or the validator itself)
 
 type ModelConstraint = TestParameters -> Bool
 
+--TODO hasInputDatum as separate check
 inputDatumInRange :: ModelConstraint
-inputDatumInRange TestParameters { .. } = timeStamp inputDatum >= timeRangeLowerBound && timeStamp inputDatum <= timeRangeUpperBound
+inputDatumInRange TestParameters { .. } =
+  case datumInput inputParams of
+    Nothing -> False
+    Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
 outputDatumInRange :: ModelConstraint
 outputDatumInRange TestParameters { .. } =
@@ -133,8 +146,12 @@ rangeWithinSizeLimit TestParameters { .. } =
     in rangeLen > 0 && rangeLen <= 1000
 
 inputSignedByOwner :: ModelConstraint
-inputSignedByOwner TestParameters { .. } = signedByWallet inputDatum == ownerWallet
+inputSignedByOwner TestParameters { .. } =
+  case datumInput inputParams of
+    Nothing -> False
+    Just so -> signedByWallet so == ownerWallet
 
+--TODO hasOutputDatum as separate check
 outputDatumSignedByOwner :: ModelConstraint
 outputDatumSignedByOwner TestParameters { .. } =
   case datumOutput outputParams of
@@ -151,7 +168,7 @@ stateTokenReturned :: ModelConstraint
 stateTokenReturned TestParameters { .. } =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ tokenOutput outputParams of
     Nothing -> False
-    Just so -> case AssocMap.lookup "PriceTracking" so of
+    Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
                  Just 1  -> True
                  _ -> False
     
@@ -170,7 +187,6 @@ testResultModel p | all ($ p) [ --the constraints required for validation
                               , stateTokenReturned
                               , inputSignedByOwner
                               , outputDatumSignedByOwner
-                              , scriptOwnsStateToken
                               , txSignedByOwner
                               ] = Validates
 testResultModel _ = DoesNotValidate
@@ -200,12 +216,10 @@ modelDatum TestDatumParameters { .. } =
     signedByPrivK = lookupPrivateKey signedByWallet
 
 modelTestData :: TestParameters -> TestData 'ForSpending
-modelTestData TestParameters { .. } = SpendingTest (modelDatum inputDatum) () hasValue
-  where
-    hasValue :: Ledger.Value
-    hasValue = if scriptOwnsStateToken
-                  then singleton mockCurrencySymbol "PriceTracking" 1
-                  else mempty
+modelTestData TestParameters { .. } =
+  case datumInput inputParams of
+    Nothing -> SpendingTest () () $ tokenInput inputParams
+    Just so -> SpendingTest (modelDatum so) () $ tokenInput inputParams
 
 
 
