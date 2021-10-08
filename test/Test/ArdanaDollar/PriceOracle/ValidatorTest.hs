@@ -3,7 +3,7 @@
 
 --{-# OPTIONS_GHC -fno-specialise #-}
 
-module Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorTests) where
+module Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorRegressionTests, priceOracleValidatorGeneratedTests) where
 
 import Data.Semigroup ((<>))
 
@@ -15,30 +15,26 @@ import Plutus.V1.Ledger.Api (singleton, getValue)
 import PlutusTx qualified
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
 import PlutusTx.UniqueMap qualified as UniqueMap
-import Test.Tasty (testGroup)
+import Test.Tasty (testGroup,defaultMain)
 import Test.Tasty.Options (OptionSet, setOption)
 import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
 import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
-import Prelude (String,show,error,IO,Enum,Bounded,Show,minBound,maxBound)
+import Prelude (String,show,error,IO,Enum,Bounded,Show,minBound,maxBound,putStrLn)
 import qualified PlutusTx.AssocMap as AssocMap
+import Control.Exception (catch,throwIO)
+import System.Exit (ExitCode (..))
 import ArdanaDollar.PriceOracle.OnChain
-
-priceOracleValidatorTests :: IO TestTree
-priceOracleValidatorTests = do
-  exploratory <- priceOracleExploratoryGeneratedTests
-  return $ testGroup "Price Oracle Validator" [priceOracleValidatorRegressionTests, exploratory]
-
 
 -- TODO compute maximally efficient exploration of the test parameter space
 -- we want a good distribution here so we are likely to pick up on edge cases
 -- using the constrants to filter/drive the generator would be a good idea
-priceOracleExploratoryGeneratedTests :: IO TestTree
-priceOracleExploratoryGeneratedTests = return $ testGroup "Exploratory generated tests"
-    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+priceOracleValidatorGeneratedTests :: IO ()
+priceOracleValidatorGeneratedTests = do
+    wrapParametricTest $ TestParameters "Price Oracle Generated test" "totally random I swear" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
 
-    ]
+    
 
 
   -- TODO if one of these fails we want to know the parameters so we can inspect, correct,
@@ -67,6 +63,21 @@ priceOracleValidatorRegressionTests =
     ]
 
 
+wrapParametricTest :: TestParameters -> IO ()
+wrapParametricTest p =
+  let tt = parametricValidatorTest p
+   in defaultMain tt
+       `catch` (\e ->
+         case e of
+           ExitSuccess -> return ()
+           _ -> explainExpectedTestResult p >> throwIO e
+               )
+
+explainExpectedTestResult :: TestParameters -> IO ()
+explainExpectedTestResult p =
+  case constraintViolations p of
+    [] -> putStrLn "\nExpected the validate but got failure\n"
+    e -> putStrLn $ "\nExpected validation failure due to the following model constraint violations " <> show e <> "\n"
 
 ---- The test model domain
 --

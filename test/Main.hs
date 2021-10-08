@@ -9,7 +9,7 @@ import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
-import Test.ArdanaDollar.PriceOracle.ValidatorTest (priceOracleValidatorTests)
+import Test.ArdanaDollar.PriceOracle.ValidatorTest
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.ArdanaDollar.VaultValidatorTest (vaultValidatorTests)
@@ -30,7 +30,7 @@ main :: IO ()
 main = do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
-  priceOracleValidatorTests' <- priceOracleValidatorTests
+  priceOracleValidatorGeneratedTests
 
   let ings =
         includingOptions [Option (Proxy :: Proxy ContractMaxSuccess)] :
@@ -45,7 +45,7 @@ main = do
         , danaStakePoolTests
         , treasuryTraceTests
         , vaultValidatorTests
-        , priceOracleValidatorTests'
+        , priceOracleValidatorRegressionTests
         , jsonRoundtripTests
         , builtinDataRoundtripTests
         , BufferModel.contractTests cms
