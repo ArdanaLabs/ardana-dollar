@@ -11,7 +11,7 @@ import Ledger qualified
 import Ledger.Crypto (pubKeyHash)
 import Ledger.Oracle qualified as Oracle
 import Ledger.Scripts (mkValidatorScript)
-import Plutus.V1.Ledger.Api (singleton)
+import Plutus.V1.Ledger.Api (singleton, getValue)
 import PlutusTx qualified
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
 import PlutusTx.UniqueMap qualified as UniqueMap
@@ -22,7 +22,7 @@ import Test.Tasty.Plutus.Script.Unit
 import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
 import Prelude (String,show,error,IO)
-
+import qualified PlutusTx.AssocMap as AssocMap
 import ArdanaDollar.PriceOracle.OnChain
 
 priceOracleValidatorTests :: IO TestTree
@@ -36,7 +36,8 @@ priceOracleValidatorTests = do
 -- using the constrants to filter/drive the generator would be a good idea
 priceOracleExploratoryGeneratedTests :: IO TestTree
 priceOracleExploratoryGeneratedTests = return $ testGroup "Exploratory generated tests"
-    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency True False 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+
     ]
 
 
@@ -51,14 +52,17 @@ priceOracleValidatorRegressionTests =
   --TODO check that these fail for specific and known reasons so that they can be named appropriately
   testGroup
     "Regression Tests"
-    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency True False 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams mempty (Just (TestDatumParameters 1 460)))
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency True True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 2 460)
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency True True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency True True 400 465 1 (JustSignedBy 2) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency True True 400 465 1 NoSigner (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 2 460)))
 
+
+    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
+
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency True 400 465 1 (JustSignedBy 2) (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
+
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency True 400 465 1 NoSigner (TestDatumParameters 1 450) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
 
     ]
 
@@ -76,22 +80,31 @@ mockCurrencySymbol = "123456789012345678901234567890ef"
 correctNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
 correctNFTCurrency = ("123456789012345678901234567890ef", "PriceTracking")
 
+correctStateTokenValue :: Ledger.Value
+correctStateTokenValue = singleton (fst correctNFTCurrency) (snd correctNFTCurrency) 1
+
 
 data TestParameters = TestParameters
   { subTreeName :: String
   , testName :: String
   , stateNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
   , scriptOwnsStateToken :: Bool -- scriptStartingValue? we could parameterise by the value itself - would that be useful?
-  , stateTokenReturned :: Bool -- scriptEndingValue? what about who the script pays to - how do we test paying to some random address?
+--  , scriptKeepsStateToken :: Bool -- spend to self, spend to somewhere else, don't spend
   , timeRangeLowerBound :: Integer
   , timeRangeUpperBound :: Integer
   , ownerWallet :: Integer
-  , spenderParams :: SpenderParams
+  , transactorParams :: SpenderParams
   , inputDatum :: TestDatumParameters
-  , outputDatum :: TestDatumParameters
+  , outputParams :: OutputParams
   }
 
 data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Ledger.Value
+
+data OutputParams =
+  OutputParams {
+    tokenOutput :: Ledger.Value
+  , datumOutput :: Maybe TestDatumParameters
+  }
 
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
@@ -108,7 +121,10 @@ inputDatumInRange :: ModelConstraint
 inputDatumInRange TestParameters { .. } = timeStamp inputDatum >= timeRangeLowerBound && timeStamp inputDatum <= timeRangeUpperBound
 
 outputDatumInRange :: ModelConstraint
-outputDatumInRange TestParameters { .. } = timeStamp outputDatum >= timeRangeLowerBound && timeStamp outputDatum <= timeRangeUpperBound
+outputDatumInRange TestParameters { .. } =
+  case datumOutput outputParams of
+    Nothing -> False
+    Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
 -- TODO clarify expected behaviour of this constraint
 rangeWithinSizeLimit :: ModelConstraint
@@ -119,14 +135,26 @@ rangeWithinSizeLimit TestParameters { .. } =
 inputSignedByOwner :: ModelConstraint
 inputSignedByOwner TestParameters { .. } = signedByWallet inputDatum == ownerWallet
 
-outputSignedByOwner :: ModelConstraint
-outputSignedByOwner TestParameters { .. } = signedByWallet outputDatum == ownerWallet
+outputDatumSignedByOwner :: ModelConstraint
+outputDatumSignedByOwner TestParameters { .. } =
+  case datumOutput outputParams of
+    Nothing -> False
+    Just d -> signedByWallet d == ownerWallet
 
 txSignedByOwner :: ModelConstraint
-txSignedByOwner TestParameters { .. } = case spenderParams of
+txSignedByOwner TestParameters { .. } = case transactorParams of
                                           NoSigner -> False
                                           JustSignedBy signer -> signer == ownerWallet
                                           SignedByWithValue signer _ -> signer == ownerWallet
+
+stateTokenReturned :: ModelConstraint
+stateTokenReturned TestParameters { .. } =
+  case AssocMap.lookup mockCurrencySymbol $ getValue $ tokenOutput outputParams of
+    Nothing -> False
+    Just so -> case AssocMap.lookup "PriceTracking" so of
+                 Just 1  -> True
+                 _ -> False
+    
 
 ---- Constraint composition forms the validation model
 --
@@ -141,7 +169,7 @@ testResultModel p | all ($ p) [ --the constraints required for validation
                               , rangeWithinSizeLimit
                               , stateTokenReturned
                               , inputSignedByOwner
-                              , outputSignedByOwner
+                              , outputDatumSignedByOwner
                               , scriptOwnsStateToken
                               , txSignedByOwner
                               ] = Validates
@@ -154,7 +182,7 @@ withExpectedResult DoesNotValidate = shouldn'tValidate
 ---- helpers
 --
 
--- somewhat janky. would be nice if Ledger provided this feature for arbitrary integers
+-- somewhat janky. would be nice if Ledger provided this feature for arbitrary integers (maybe it does and I'm just being janky for no reason)
 lookupPrivateKey :: Integer -> Ledger.PrivateKey
 lookupPrivateKey 1 = Ledger.privateKey1
 lookupPrivateKey 2 = Ledger.privateKey2
@@ -194,10 +222,19 @@ setTimeRangeOpt from to =
 setTimeRangeOption :: TestParameters -> OptionSet -> OptionSet
 setTimeRangeOption TestParameters {..} = setTimeRangeOpt timeRangeLowerBound timeRangeUpperBound
 
-spendingAction :: SpenderParams -> ContextBuilder p -> ContextBuilder p
-spendingAction NoSigner = id
-spendingAction (JustSignedBy signer) = (<>) (signedWith $ pubKeyHash $ walletPubKey $ knownWallet signer)
-spendingAction (SignedByWithValue signer value) = (<>) (spendsFromPubKeySigned (pubKeyHash $ walletPubKey $ knownWallet signer) value)
+transactorSpendingAction :: SpenderParams -> ContextBuilder p -> ContextBuilder p
+transactorSpendingAction NoSigner = id
+transactorSpendingAction (JustSignedBy signer) =
+  (<>) (signedWith $ pubKeyHash $ walletPubKey $ knownWallet signer)
+transactorSpendingAction (SignedByWithValue signer value) =
+  (<>) (spendsFromPubKeySigned (pubKeyHash $ walletPubKey $ knownWallet signer) value)
+
+scriptOutputAction :: OutputParams -> ContextBuilder p
+scriptOutputAction OutputParams { .. } =
+  case datumOutput of
+    Nothing -> output (Output (OwnType . PlutusTx.toBuiltinData $ ()) tokenOutput)
+    Just d ->
+      output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum d) tokenOutput)
 
 ---- reification of the test using plutus-extra. mmmmm Tasty!
 --
@@ -207,14 +244,9 @@ parametricValidatorTest tp@TestParameters {..} =
   PlusTestOptions (setTimeRangeOption tp) $
     withValidator subTreeName validator $ do
       withExpectedResult (testResultModel tp) testName (modelTestData tp) $
-        spendingAction spenderParams $
-           output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum outputDatum) returnedValue)
+        transactorSpendingAction transactorParams $
+           scriptOutputAction outputParams
   where
-
-    returnedValue :: Ledger.Value
-    returnedValue = if stateTokenReturned
-                       then singleton mockCurrencySymbol "PriceTracking" 1
-                       else mempty
 
     ownerPubKey :: Ledger.PubKey
     ownerPubKey = walletPubKey (knownWallet ownerWallet)
