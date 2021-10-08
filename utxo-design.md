@@ -764,7 +764,8 @@ VaultValidatorParams
   , adminStateCurrencySymbol :: CurrencySymbol
   , adminMintingCurrencySymbol :: CurrencySymbol
   , adminValidatorAddress :: ValidatorHash
-  , oracleOperator :: PubKeyHash
+  , oracleOperator :: PubKey
+  , adminOperator :: PubKey
   }
   ```
 
