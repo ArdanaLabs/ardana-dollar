@@ -36,7 +36,7 @@ priceOracleValidatorTests = do
 -- using the constrants to filter/drive the generator would be a good idea
 priceOracleExploratoryGeneratedTests :: IO TestTree
 priceOracleExploratoryGeneratedTests = return $ testGroup "Exploratory generated tests"
-    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency True False 400 465 1 (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    [ parametricValidatorTest $ TestParameters "Generated test" "totally random I swear" correctNFTCurrency True False 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
     ]
 
 
@@ -51,11 +51,15 @@ priceOracleValidatorRegressionTests =
   --TODO check that these fail for specific and known reasons so that they can be named appropriately
   testGroup
     "Regression Tests"
-    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency True False 400 465 1 (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency True False 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency True True 400 465 1 (TestDatumParameters 1 450) (TestDatumParameters 2 460)
+    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency True True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 2 460)
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency True True 400 465 1 (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency True True 400 465 1 (JustSignedBy 1) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency True True 400 465 1 (JustSignedBy 2) (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency True True 400 465 1 NoSigner (TestDatumParameters 1 450) (TestDatumParameters 1 460)
+
+
     ]
 
 
@@ -82,9 +86,12 @@ data TestParameters = TestParameters
   , timeRangeLowerBound :: Integer
   , timeRangeUpperBound :: Integer
   , ownerWallet :: Integer
+  , spenderParams :: SpenderParams
   , inputDatum :: TestDatumParameters
   , outputDatum :: TestDatumParameters
   }
+
+data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Ledger.Value
 
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
@@ -115,6 +122,12 @@ inputSignedByOwner TestParameters { .. } = signedByWallet inputDatum == ownerWal
 outputSignedByOwner :: ModelConstraint
 outputSignedByOwner TestParameters { .. } = signedByWallet outputDatum == ownerWallet
 
+txSignedByOwner :: ModelConstraint
+txSignedByOwner TestParameters { .. } = case spenderParams of
+                                          NoSigner -> False
+                                          JustSignedBy signer -> signer == ownerWallet
+                                          SignedByWithValue signer _ -> signer == ownerWallet
+
 ---- Constraint composition forms the validation model
 --
 -- how we expect the validator to behave given our set of constraints
@@ -130,6 +143,7 @@ testResultModel p | all ($ p) [ --the constraints required for validation
                               , inputSignedByOwner
                               , outputSignedByOwner
                               , scriptOwnsStateToken
+                              , txSignedByOwner
                               ] = Validates
 testResultModel _ = DoesNotValidate
 
@@ -180,6 +194,11 @@ setTimeRangeOpt from to =
 setTimeRangeOption :: TestParameters -> OptionSet -> OptionSet
 setTimeRangeOption TestParameters {..} = setTimeRangeOpt timeRangeLowerBound timeRangeUpperBound
 
+spendingAction :: SpenderParams -> ContextBuilder p -> ContextBuilder p
+spendingAction NoSigner = id
+spendingAction (JustSignedBy signer) = (<>) (signedWith $ pubKeyHash $ walletPubKey $ knownWallet signer)
+spendingAction (SignedByWithValue signer value) = (<>) (spendsFromPubKeySigned (pubKeyHash $ walletPubKey $ knownWallet signer) value)
+
 ---- reification of the test using plutus-extra. mmmmm Tasty!
 --
 
@@ -188,8 +207,8 @@ parametricValidatorTest tp@TestParameters {..} =
   PlusTestOptions (setTimeRangeOption tp) $
     withValidator subTreeName validator $ do
       withExpectedResult (testResultModel tp) testName (modelTestData tp) $
-        spendsFromPubKeySigned ownerPubKeyHash mempty
-          <> output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum outputDatum) returnedValue)
+        spendingAction spenderParams $
+           output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum outputDatum) returnedValue)
   where
 
     returnedValue :: Ledger.Value
