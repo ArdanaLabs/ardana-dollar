@@ -720,12 +720,10 @@ Validation rules:
 inputs:
 - fee/collateral UTXO (from USER)
 - AdminState token (from Admin Validator Script)
-- PriceTracking token (from Oracle Validator script)
 
 outputs:
 - fee/collateral UTXO remainder -> user Wallet
 - AdminState token -> Admin Validator Script (updated by UpdateAdminStateAct fields and lastUpdated = currentTime, the `config` field only needs the `VaultConfig` relevant to the `InitVaultAct.collateralCurrency`)
-- PriceTracking token -> Oracle Validator Script
 
 ### RefreshAdminStateAct
 Purpose: allows a trusted automated bot to refresh the admin state without updating it so it does not go stale without the `ownerAddress`
@@ -815,7 +813,15 @@ Redeemer:
    }
 ```
 
-`PriceTracking` defined in _Oracle Minting Policy_
+`PriceTracking` is defined as follows:
+```
+data PriceTracking = PriceTracking
+  { -- | fiat currency id to price in lovelace
+    fiatPriceFeed :: AssocMap ByteString Integer,
+    cryptoPriceFeed :: AssocMap AssetClass Integer,
+    lastUpdate :: PosixTime
+  }
+```
 
 Scope Notes: Vaults have access to a constant `stabilityFeeBaseRate :: Rational`
 
@@ -962,90 +968,6 @@ outputs:
 - $dUSD against accruedStabilityFees -> owner address (portion) (from Liquidation payment above)
 - Optional Liquidation payment remainder UTXO -> User Wallet (if `LiquidationCallAct.amount` less than the total $dUSD liquidation payment provided by the user
 - Collateral UTXO -> User wallet
-
-## Oracle Minting Policy
-Parameters:
-```
-OracleMintingParams
-  { operator :: Address
-  }
-```
-
-Purpose: Mints tokens used by the Oracle to determine legitimate prices.
-
-### PriceTracking Token
-  Purpose: used to signify legitmate pricing for both fiat currencies, and for non-Ada supported collateral types to get a price in Ada.
-
-  Token Type: The PriceTracking token is both a State token for the Oracle contract, and a Signed Token used for authentic pricing information from a centralized source, this token must carry the signed data to prevent bottlenecks on decentralized datum duplication.
-
-  carries datum:
-  ```
-  SignedMessage PriceTracking
-  ```
-  where
-  ```
-  PriceTracking:
-    { fiatPriceFeed :: AssocMap ByteString Integer -- fiat currency id to price in lovelace
-    , cryptoPriceFeed :: AssocMap AssetClass Integer
-    , lastUpdate :: PosixTime
-    }
-  ```
-  Initiated to:
-  ```
-  PriceTracking:
-    { fiatPriceFeed = AssocMap.empty
-    , cryptoPriceFeed = AssocMap.empty
-    , lastUpdate = currentTime
-    }
-  ```
-
-*known issue: `AssocMap` can grow infinitely and may cause transactions to hit size limits, we may need to parameterize the Oracle Minting Policy further in order to accomodate the requirements*
-
-  mint & burn: must be performed by the `operator`
-
-inputs:
-- fee/collateral UTXO (from USER)
-
-outputs:
-- fee/collateral UTXO remainder -> user Wallet
-- PriceTracking token -> Oracle Validator
-
-## Oracle Validator
-parameters:
-```
-OracleValidatorParams
-  { oracleMintingCurrencySymbol :: CurrencySymbol
-  , operator :: PubKeyHash
-  , peggedCurrency :: ByteString -- Fiat currency identifier
-  }
-```
-
-Purpose: An address that stores up to date Pricing Data with a signature, making it available to all vaults.
-
-note: as part of initialization, the operator must mint a `PriceTracking` token and send it to the Oracle Validator address.
-
-Datum:
-`SignedMessage PriceTracking`
-
-Redeemer:
-```
-UpdateOracleAct (SignedMessage PriceTracking)
-```
-
-### UpdateOracleAct
-Purpose: allow the `operator` to post new pricing information
-
-Validation rules:
-- tx must be signed by `operator`
-
-
-inputs:
-- fee/collateral UTXO (from USER)
-- PriceTracking Oracle Token (from oracle Validator Script)
-
-outputs:
-- fee/collateral UTXO remainder -> user Wallet
-- PriceTracking Oracle Token -> Oracle Script (updated based on UpdateOracleAct parameters)
 
 ## Buffer Monetary Policy
 Purpose: Mints state & record tokens relating to the buffer, used to determine auction prices.
