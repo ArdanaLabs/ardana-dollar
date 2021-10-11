@@ -86,7 +86,7 @@ explainExpectedTestResult p =
 nameGeneratedParams :: TestParameters -> NamedTestParameters
 nameGeneratedParams tp =
   NamedTestParameters
-    { subTreeName = "Generated Price Oracle Validator Test"
+    { subTreeName = "Generated"
     , testName = "violations: " <> show (constraintViolations tp)
     , parameters = tp
     }
@@ -134,7 +134,7 @@ data TestDatumParameters = TestDatumParameters
 -- I don't recommending upping the sample count...
 genSpaceTreeIO :: IO TestTree
 genSpaceTreeIO = do
-  s <- runSpaceExplorationIO 1
+  s <- runSpaceExplorationIO 4
   let nps = nameGeneratedParams <$> flattenSpaceExploration s
   return $ testGroup "Price Oracle Validator Generated Test Space Exploration" $ parametricValidatorTest <$> nps
 
