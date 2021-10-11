@@ -370,7 +370,7 @@ withExpectedResult _ = shouldn'tValidate
 --
 
 lookupPrivateKey :: Integer -> Ledger.PrivateKey
-lookupPrivateKey i = Ledger.knownPrivateKeys!!(i - 1)
+lookupPrivateKey i = Ledger.knownPrivateKeys !! (i - 1)
 
 -- TODO parameterise/randomise the payload data - shouldn't matter what's in there
 modelDatum :: TestDatumParameters -> Oracle.SignedMessage PriceTracking
