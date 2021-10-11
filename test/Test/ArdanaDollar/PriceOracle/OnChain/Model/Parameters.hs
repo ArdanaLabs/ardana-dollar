@@ -14,7 +14,8 @@ import PlutusTx.Prelude
 import Prelude (Show)
 
 ---------------------------------------------------------------------------------
--- mock currency symbol. can't construct with minter due to cycle
+-- TODO this feels like it shouldn't be here.
+-- currently we can't construct with minter due to cycle - Oleg is looking at this
 mockCurrencySymbol :: Ledger.CurrencySymbol
 mockCurrencySymbol = "123456789012345678901234567890ef"
 
@@ -48,7 +49,9 @@ data StateUTXOParams = StateUTXOParams
   deriving (Show)
 
 -- NOTE: we are not modelling missing/invalid datum
--- I haven't figured out a nice way to do that with Tasty.Plutus yet
+-- I'm not sure this makes sense to do with Tasty.Plutus anyway
+--   -- since Tasty.Plutus wraps the script with the FromData decoder
+-- We should figure out if that's something we need to do. Perhaps it isn't.
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
   , timeStamp :: Integer
