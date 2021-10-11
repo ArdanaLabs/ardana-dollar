@@ -247,13 +247,13 @@ genKnownWalletIdx :: forall (m :: Type -> Type). MonadGen m => m Integer
 genKnownWalletIdx = Gen.integral (Range.linear 1 5)
 
 genTimeStamp :: forall (m :: Type -> Type). MonadGen m => m Integer
-genTimeStamp = Gen.integral (Range.linear 0 10_000)
+genTimeStamp = Gen.integral (Range.linear 0 100_000)
 
 
 genTimeRange :: forall (m :: Type -> Type). MonadGen m => m (Integer,Integer)
 genTimeRange = do
-  t1 <- Gen.integral (Range.linear 0 9_000)
-  t2 <- Gen.integral (Range.linear t1 10_000)
+  t1 <- Gen.integral (Range.linear 0 99_000)
+  t2 <- Gen.integral (Range.linear t1 100_000)
   return (t1,t2)
 
 genTestDatumParameters :: forall (m :: Type -> Type). MonadGen m => m TestDatumParameters
@@ -294,9 +294,10 @@ genStateToken = do
 -- our model of why things should or should not validate
 
 data Constraint =
-    OutputDatumTimestampInRange
+   OutputDatumTimestampInRange 
+--  | InputDatumTimestampInRange
   | RangeWithinSizeLimit
-  | InputDatumSignedByOwner
+--  | InputDatumSignedByOwner
   | OutputDatumSignedByOwner
   | TransactionSignedByOwner
   | StateTokenReturned
@@ -305,15 +306,21 @@ data Constraint =
 type ModelCheck = TestParameters -> Bool
 
 checkConstraint :: Constraint -> ModelCheck
+--checkConstraint InputDatumTimestampInRange = inputDatumInRange
 checkConstraint OutputDatumTimestampInRange = outputDatumInRange
 checkConstraint RangeWithinSizeLimit = rangeWithinSizeLimit
-checkConstraint InputDatumSignedByOwner = inputSignedByOwner
+--checkConstraint InputDatumSignedByOwner = inputSignedByOwner
 checkConstraint OutputDatumSignedByOwner = outputDatumSignedByOwner
 checkConstraint TransactionSignedByOwner = txSignedByOwner
 checkConstraint StateTokenReturned = stateTokenReturned
 
 constraintViolations :: TestParameters -> [Constraint]
 constraintViolations p = filter (not . flip checkConstraint p) [minBound .. maxBound]
+
+inputDatumInRange :: ModelCheck
+inputDatumInRange TestParameters { .. } =
+  let so = stateDatumValue inputParams
+  in timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
 outputDatumInRange :: ModelCheck
 outputDatumInRange TestParameters { .. } =
@@ -324,7 +331,7 @@ outputDatumInRange TestParameters { .. } =
 rangeWithinSizeLimit :: ModelCheck
 rangeWithinSizeLimit TestParameters { .. } =
    let rangeLen = timeRangeUpperBound - timeRangeLowerBound
-    in rangeLen > 0 && rangeLen <= 1000
+    in rangeLen > 0 && rangeLen <= 10000
 
 inputSignedByOwner :: ModelCheck
 inputSignedByOwner TestParameters { .. } =
