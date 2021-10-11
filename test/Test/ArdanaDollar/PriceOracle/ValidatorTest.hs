@@ -31,7 +31,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import qualified Hedgehog.Gen.Plutus as HP
 import Ledger.Value qualified as Value
-
+import Control.Monad (replicateM_)
 import ArdanaDollar.PriceOracle.OnChain
 
 -- TODO compute maximally efficient exploration of the test parameter space
@@ -39,8 +39,11 @@ import ArdanaDollar.PriceOracle.OnChain
 -- using the constrants to filter/drive the generator would be a good idea
 priceOracleValidatorGeneratedTests :: IO ()
 priceOracleValidatorGeneratedTests = do
-  params <- Gen.sample genTestParameters
-  wrapParametricTest $ nameGeneratedParams params
+  replicateM_ 10 runATest
+  where
+    runATest = do
+      params <- Gen.sample genTestParameters
+      wrapParametricTest $ nameGeneratedParams params
 
     
 
