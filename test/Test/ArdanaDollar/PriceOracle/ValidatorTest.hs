@@ -33,7 +33,7 @@ import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
 import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
-import Prelude (Bounded, Enum, Eq, IO, Ord, Show, String, error, maxBound, minBound, putStrLn, show)
+import Prelude (Bounded, Enum, Eq, IO, Ord, Show, String, maxBound, minBound, putStrLn, show)
 import Prelude qualified (Eq (..))
 
 ---------------------------------------------------------------------------------
@@ -369,14 +369,8 @@ withExpectedResult _ = shouldn'tValidate
 ---- helpers
 --
 
--- somewhat janky. would be nice if Ledger provided this feature for arbitrary integers (maybe it does and I'm just being janky for no reason)
 lookupPrivateKey :: Integer -> Ledger.PrivateKey
-lookupPrivateKey 1 = Ledger.privateKey1
-lookupPrivateKey 2 = Ledger.privateKey2
-lookupPrivateKey 3 = Ledger.privateKey3
-lookupPrivateKey 4 = Ledger.privateKey4
-lookupPrivateKey 5 = Ledger.privateKey5
-lookupPrivateKey i = Prelude.error ("test parameterisation error: PrivateKey" <> Prelude.show i <> " not found.")
+lookupPrivateKey i = Ledger.knownPrivateKeys!!(i - 1)
 
 -- TODO parameterise/randomise the payload data - shouldn't matter what's in there
 modelDatum :: TestDatumParameters -> Oracle.SignedMessage PriceTracking
