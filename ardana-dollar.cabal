@@ -159,6 +159,7 @@ test-suite ardana-dollar-test
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O1
   build-depends:  ardana-dollar
+                , transformers
 
 executable ardana-pab
   import:         lang

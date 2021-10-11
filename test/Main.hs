@@ -30,7 +30,7 @@ main :: IO ()
 main = do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
-  priceOracleValidatorGeneratedTests
+  priceOracleValidatorGenTests <- priceOracleValidatorGeneratedTests
 
   let ings =
         includingOptions [Option (Proxy :: Proxy ContractMaxSuccess)] :
@@ -46,6 +46,7 @@ main = do
         , treasuryTraceTests
         , vaultValidatorTests
         , priceOracleValidatorRegressionTests
+        , priceOracleValidatorGenTests
         , jsonRoundtripTests
         , builtinDataRoundtripTests
         , BufferModel.contractTests cms
