@@ -18,9 +18,7 @@ import Ledger qualified
 import Ledger.Crypto (pubKeyHash)
 import Ledger.Oracle qualified as Oracle
 import Ledger.Scripts (mkValidatorScript)
-import Plutus.V1.Ledger.Api (getValue)
 import PlutusTx qualified
-import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
 import PlutusTx.UniqueMap qualified as UniqueMap
 import System.Exit (ExitCode (..))
@@ -30,11 +28,12 @@ import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
 import Test.Tasty.Runners (TestTree (..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
-import Prelude (Bounded, Enum, Eq, IO, Ord, Show, String, maxBound, minBound, putStrLn, show)
-import Prelude qualified (Eq (..))
+import Prelude (IO, Show, String, maxBound, minBound, putStrLn, show)
 
-import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Gen
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
+
 
 priceOracleValidatorGeneratedTests :: IO TestTree
 priceOracleValidatorGeneratedTests = genSpaceTreeIO
@@ -155,84 +154,6 @@ spaceExploration coverage = do
       p <- genTestParameters
       put $ insertPointInSpace (snd coverage) p s
       spaceExploration coverage
-
-genFailingSingleConstraint :: forall (m :: Type -> Type). MonadGen m => Constraint -> m TestParameters
-genFailingSingleConstraint constraint = do
-  tp <- genTestParameters
-  case constraintViolations tp of
-    [c] | c Prelude.== constraint -> return tp
-    _ -> genFailingSingleConstraint constraint
----- Constraints on the model domain
---
--- our model of why things should or should not validate
-
-data Constraint
-  = OutputDatumTimestampInRange
---  | InputDatumTimestampInRange
-  | RangeWithinSizeLimit
-  | --  | InputDatumSignedByOwner
-    OutputDatumSignedByOwner
-  | TransactionSignedByOwner
-  | StateTokenReturned
-  deriving stock (Prelude.Enum, Prelude.Eq, Prelude.Ord, Prelude.Bounded, Prelude.Show)
-
-type ModelCheck = TestParameters -> Bool
-
-checkConstraint :: Constraint -> ModelCheck
---checkConstraint InputDatumTimestampInRange = inputDatumInRange
-checkConstraint OutputDatumTimestampInRange = outputDatumInRange
-checkConstraint RangeWithinSizeLimit = rangeWithinSizeLimit
---checkConstraint InputDatumSignedByOwner = inputSignedByOwner
-checkConstraint OutputDatumSignedByOwner = outputDatumSignedByOwner
-checkConstraint TransactionSignedByOwner = txSignedByOwner
-checkConstraint StateTokenReturned = stateTokenReturned
-
-constraintViolations :: TestParameters -> [Constraint]
-constraintViolations p = filter (not . flip checkConstraint p) [minBound .. maxBound]
-
-inputDatumInRange :: ModelCheck
-inputDatumInRange TestParameters {..} =
-  let so = stateDatumValue inputParams
-   in timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
-
-outputDatumInRange :: ModelCheck
-outputDatumInRange TestParameters {..} =
-  let so = stateDatumValue outputParams
-   in timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
-
--- TODO clarify expected behaviour of this constraint
-rangeWithinSizeLimit :: ModelCheck
-rangeWithinSizeLimit TestParameters {..} =
-  let rangeLen = timeRangeUpperBound - timeRangeLowerBound
-   in rangeLen > 0 && rangeLen <= 10000
-
-inputSignedByOwner :: ModelCheck
-inputSignedByOwner TestParameters {..} =
-  let so = stateDatumValue inputParams
-   in signedByWallet so == ownerWallet
-
-outputDatumSignedByOwner :: ModelCheck
-outputDatumSignedByOwner TestParameters {..} =
-  let d = stateDatumValue outputParams
-   in signedByWallet d == ownerWallet
-
-txSignedByOwner :: ModelCheck
-txSignedByOwner TestParameters {..} = case transactorParams of
-  NoSigner -> False
-  JustSignedBy signer -> signer == ownerWallet
-  SignedByWithValue signer _ -> signer == ownerWallet
-
-stateTokenReturned :: ModelCheck
-stateTokenReturned TestParameters {..} =
-  case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
-    Nothing -> False
-    Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
-      Just 1 -> True
-      _ -> False
-
----- Constraint composition forms the validation model
---
--- if all model constraints are satisfied we expect the test to pass
 
 withExpectedResult :: TestParameters -> String -> TestData 'ForSpending -> ContextBuilder 'ForSpending -> WithScript 'ForSpending ()
 withExpectedResult p | null (constraintViolations p) = shouldValidate
