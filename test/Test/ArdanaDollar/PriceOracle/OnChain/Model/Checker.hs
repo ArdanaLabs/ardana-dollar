@@ -1,18 +1,19 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Test.ArdanaDollar.PriceOracle.OnChain.Model.Checker
-  ( parametricValidatorTest
-  , nameGeneratedParams
-  ) where
+
+module Test.ArdanaDollar.PriceOracle.OnChain.Model.Checker (
+  parametricValidatorTest,
+  nameGeneratedParams,
+) where
 
 import ArdanaDollar.PriceOracle.OnChain
 
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
 
+import Test.Tasty.Options (OptionSet, setOption)
 import Test.Tasty.Plutus.Context
 import Test.Tasty.Plutus.Script.Unit
-import Test.Tasty.Options (OptionSet, setOption)
 import Test.Tasty.Runners (TestTree (..))
 
 import Ledger qualified
@@ -22,9 +23,8 @@ import Plutus.V1.Ledger.Api (mkValidatorScript)
 import PlutusTx qualified
 import PlutusTx.Prelude hiding (Semigroup (..))
 import PlutusTx.UniqueMap qualified as UniqueMap
-import Prelude (String,Show (..),Semigroup(..))
 import Wallet.Emulator.Types (knownWallet, walletPubKey)
-
+import Prelude (Semigroup (..), Show (..), String)
 
 nameGeneratedParams :: TestParameters -> NamedTestParameters
 nameGeneratedParams tp =
@@ -40,7 +40,6 @@ data NamedTestParameters = NamedTestParameters
   , parameters :: TestParameters
   }
   deriving (Show)
-
 
 lookupPrivateKey :: Integer -> Ledger.PrivateKey
 lookupPrivateKey i = Ledger.knownPrivateKeys !! (i - 1)
@@ -113,4 +112,3 @@ parametricValidatorTest ntp@NamedTestParameters {parameters = tp@TestParameters 
           (Oracle.SignedMessage PriceTracking -> () -> Ledger.ScriptContext -> Bool) ->
           (BuiltinData -> BuiltinData -> BuiltinData -> ())
         go = toTestValidator
-

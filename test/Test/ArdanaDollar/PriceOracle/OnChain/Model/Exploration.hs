@@ -1,7 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
-module Test.ArdanaDollar.PriceOracle.OnChain.Model.Exploration
-  ( genSpaceTreeIO
-  ) where
+
+module Test.ArdanaDollar.PriceOracle.OnChain.Model.Exploration (
+  genSpaceTreeIO,
+) where
 
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Checker
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
@@ -14,14 +15,13 @@ import Data.Map qualified as M
 import Hedgehog (MonadGen)
 import Hedgehog.Gen qualified as Gen
 import PlutusTx.Prelude
-import Prelude (IO,Bounded(..))
 import Test.Tasty (testGroup)
 import Test.Tasty.Runners (TestTree (..))
-
+import Prelude (Bounded (..), IO)
 
 -- TODO rejection sampling is super inefficient. Some effort could be put into more efficient sampling.
 -- I don't recommending upping the sample count...
-genSpaceTreeIO :: (Integer,Integer) -> IO TestTree
+genSpaceTreeIO :: (Integer, Integer) -> IO TestTree
 genSpaceTreeIO bounds = do
   s <- runSpaceExplorationIO bounds
   let nps = nameGeneratedParams <$> flattenSpaceExploration s
@@ -33,7 +33,7 @@ flattenSpaceExploration SpaceExploration {..} = shouldPass <> (snd =<< M.toList 
 emptySpaceExploration :: SpaceExploration
 emptySpaceExploration = SpaceExploration [] M.empty []
 
-runSpaceExplorationIO :: (Integer,Integer) -> IO SpaceExploration
+runSpaceExplorationIO :: (Integer, Integer) -> IO SpaceExploration
 runSpaceExplorationIO coverage =
   Gen.sample $ execStateT (spaceExploration coverage) emptySpaceExploration
 
@@ -76,7 +76,7 @@ insertPointInSpace coverage_ub p s@SpaceExploration {..} =
 spaceExploration ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  (Integer,Integer) ->
+  (Integer, Integer) ->
   StateT SpaceExploration m ()
 spaceExploration coverage = do
   s <- get
@@ -86,4 +86,3 @@ spaceExploration coverage = do
       p <- genTestParameters
       put $ insertPointInSpace (snd coverage) p s
       spaceExploration coverage
-

@@ -1,17 +1,17 @@
-module Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
-  ( TestParameters (..)
-  , SpenderParams (..)
-  , StateUTXOParams (..)
-  , TestDatumParameters (..)
-  , mockCurrencySymbol
-  , correctNFTCurrency
-  , correctStateTokenValue
-  ) where
-import Prelude (Show)
-import Ledger qualified
-import PlutusTx.Prelude
-import Plutus.V1.Ledger.Api (singleton)
+module Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters (
+  TestParameters (..),
+  SpenderParams (..),
+  StateUTXOParams (..),
+  TestDatumParameters (..),
+  mockCurrencySymbol,
+  correctNFTCurrency,
+  correctStateTokenValue,
+) where
 
+import Ledger qualified
+import Plutus.V1.Ledger.Api (singleton)
+import PlutusTx.Prelude
+import Prelude (Show)
 
 ---------------------------------------------------------------------------------
 -- mock currency symbol. can't construct with minter due to cycle
@@ -54,5 +54,3 @@ data TestDatumParameters = TestDatumParameters
   , timeStamp :: Integer
   }
   deriving (Show)
-
-

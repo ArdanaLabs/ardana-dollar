@@ -1,16 +1,17 @@
 {-# LANGUAGE RecordWildCards #-}
-module Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
-  ( Constraint (..)
-  , ModelCheck
-  , constraintViolations
-  ) where
+
+module Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints (
+  Constraint (..),
+  ModelCheck,
+  constraintViolations,
+) where
+
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
 
-import Prelude (Enum,Eq,Ord,Bounded(..),Show)
 import Plutus.V1.Ledger.Api (getValue)
-import PlutusTx.Prelude hiding (Enum, Eq, Ord)
 import PlutusTx.AssocMap qualified as AssocMap
-
+import PlutusTx.Prelude hiding (Enum, Eq, Ord)
+import Prelude (Bounded (..), Enum, Eq, Ord, Show)
 
 data Constraint
   = OutputDatumTimestampInRange
@@ -60,4 +61,3 @@ stateTokenReturned TestParameters {..} =
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
       Just 1 -> True
       _ -> False
-

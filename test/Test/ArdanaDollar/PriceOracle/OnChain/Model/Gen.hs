@@ -1,6 +1,6 @@
-module Test.ArdanaDollar.PriceOracle.OnChain.Model.Gen
-  ( genTestParameters
-  ) where
+module Test.ArdanaDollar.PriceOracle.OnChain.Model.Gen (
+  genTestParameters,
+) where
 
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
 
@@ -14,7 +14,6 @@ import Hedgehog (MonadGen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Plutus qualified as HP
 import Hedgehog.Range qualified as Range
-
 
 genTestParameters :: forall (m :: Type -> Type). MonadGen m => m TestParameters
 genTestParameters = do
@@ -100,4 +99,3 @@ genStateToken = do
   n <- genStateTokenTokenName
   v <- genStateTokenAmount
   return $ singleton s n v
-
