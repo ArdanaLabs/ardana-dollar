@@ -14,14 +14,11 @@ import Data.Kind (Type)
 import Data.Map qualified as M
 import Hedgehog (MonadGen)
 import Hedgehog.Gen qualified as Gen
-import Hedgehog.Gen.Plutus qualified as HP
-import Hedgehog.Range qualified as Range
 import Ledger qualified
 import Ledger.Crypto (pubKeyHash)
 import Ledger.Oracle qualified as Oracle
 import Ledger.Scripts (mkValidatorScript)
-import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Api (getValue, singleton)
+import Plutus.V1.Ledger.Api (getValue)
 import PlutusTx qualified
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Prelude hiding (Semigroup (..), mconcat)
@@ -36,18 +33,8 @@ import Wallet.Emulator.Types (knownWallet, walletPubKey)
 import Prelude (Bounded, Enum, Eq, IO, Ord, Show, String, maxBound, minBound, putStrLn, show)
 import Prelude qualified (Eq (..))
 
----------------------------------------------------------------------------------
--- mock currency symbol. can't construct with minter due to cycle
-mockCurrencySymbol :: Ledger.CurrencySymbol
-mockCurrencySymbol = "123456789012345678901234567890ef"
-
-correctNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
-correctNFTCurrency = ("123456789012345678901234567890ef", "PriceTracking")
-
-correctStateTokenValue :: Ledger.Value
-correctStateTokenValue = uncurry singleton correctNFTCurrency 1
-
----------------------------------------------------------------------------------
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Gen
 
 priceOracleValidatorGeneratedTests :: IO TestTree
 priceOracleValidatorGeneratedTests = genSpaceTreeIO
@@ -95,35 +82,6 @@ data NamedTestParameters = NamedTestParameters
   { subTreeName :: String
   , testName :: String
   , parameters :: TestParameters
-  }
-  deriving (Show)
-
-data TestParameters = TestParameters
-  { stateNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
-  , timeRangeLowerBound :: Integer
-  , timeRangeUpperBound :: Integer
-  , ownerWallet :: Integer
-  , transactorParams :: SpenderParams
-  , inputParams :: StateUTXOParams
-  , outputParams :: StateUTXOParams
-  , peggedCurrency :: BuiltinByteString
-  }
-  deriving (Show)
-
-data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Ledger.Value
-  deriving (Show)
-
-data StateUTXOParams = StateUTXOParams
-  { stateTokenValue :: Ledger.Value
-  , stateDatumValue :: TestDatumParameters
-  }
-  deriving (Show)
-
--- NOTE: we are not modelling missing/invalid datum
--- I haven't figured out a nice way to do that with Tasty.Plutus yet
-data TestDatumParameters = TestDatumParameters
-  { signedByWallet :: Integer
-  , timeStamp :: Integer
   }
   deriving (Show)
 
@@ -204,92 +162,6 @@ genFailingSingleConstraint constraint = do
   case constraintViolations tp of
     [c] | c Prelude.== constraint -> return tp
     _ -> genFailingSingleConstraint constraint
-
-genTestParameters :: forall (m :: Type -> Type). MonadGen m => m TestParameters
-genTestParameters = do
-  (tlb, tub) <- genTimeRange
-  w <- genKnownWalletIdx
-  sp <- genSpenderParams
-  ip <- genStateUTXOParams
-  op <- genStateUTXOParams
-  pc <- HP.builtinByteString (Range.linear 0 6)
-  return $
-    TestParameters
-      { stateNFTCurrency = correctNFTCurrency --TODO generate
-      , timeRangeLowerBound = tlb
-      , timeRangeUpperBound = tub
-      , ownerWallet = w
-      , transactorParams = sp
-      , inputParams = ip
-      , outputParams = op
-      , peggedCurrency = pc
-      }
-
-genSpenderParams :: forall (m :: Type -> Type). MonadGen m => m SpenderParams
-genSpenderParams = do
-  b <- Gen.bool
-  if b
-    then do
-      w <- genKnownWalletIdx
-      return $ JustSignedBy w
-    else do
-      -- hmmm janky ifology
-      b' <- Gen.bool
-      if b'
-        then return NoSigner
-        else do
-          w <- genKnownWalletIdx
-          v <- HP.value
-          return $ SignedByWithValue w v
-
-genStateUTXOParams :: forall (m :: Type -> Type). MonadGen m => m StateUTXOParams
-genStateUTXOParams = do
-  stok <- genStateToken
-  d <- genTestDatumParameters
-  return $ StateUTXOParams stok d
-
-genKnownWalletIdx :: forall (m :: Type -> Type). MonadGen m => m Integer
-genKnownWalletIdx = Gen.integral (Range.linear 1 5)
-
-genTimeStamp :: forall (m :: Type -> Type). MonadGen m => m Integer
-genTimeStamp = Gen.integral (Range.linear 0 100_000)
-
-genTimeRange :: forall (m :: Type -> Type). MonadGen m => m (Integer, Integer)
-genTimeRange = do
-  t1 <- Gen.integral (Range.linear 0 99_000)
-  t2 <- Gen.integral (Range.linear t1 100_000)
-  return (t1, t2)
-
-genTestDatumParameters :: forall (m :: Type -> Type). MonadGen m => m TestDatumParameters
-genTestDatumParameters = do
-  walletIdx <- genKnownWalletIdx
-  timestamped <- genTimeStamp
-  return $ TestDatumParameters walletIdx timestamped
-
-genStateTokenCurrencySymbol :: forall (m :: Type -> Type). MonadGen m => m Value.CurrencySymbol
-genStateTokenCurrencySymbol = do
-  b <- Gen.bool
-  if b
-    then return $ fst correctNFTCurrency
-    else HP.currencySymbol
-
-genStateTokenTokenName :: forall (m :: Type -> Type). MonadGen m => m Value.TokenName
-genStateTokenTokenName = do
-  b <- Gen.bool
-  if b
-    then return $ snd correctNFTCurrency
-    else HP.tokenName
-
-genStateTokenAmount :: forall (m :: Type -> Type). MonadGen m => m Integer
-genStateTokenAmount = Gen.integral (Range.linear 0 3)
-
-genStateToken :: forall (m :: Type -> Type). MonadGen m => m Ledger.Value
-genStateToken = do
-  s <- genStateTokenCurrencySymbol
-  n <- genStateTokenTokenName
-  v <- genStateTokenAmount
-  return $ singleton s n v
-
 ---- Constraints on the model domain
 --
 -- our model of why things should or should not validate
