@@ -148,10 +148,12 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
     Test.ArdanaDollar.VaultValidatorTest
-    Test.ArdanaDollar.PriceOracle.ValidatorTest
+    Test.ArdanaDollar.PriceOracle.OnChain.Test
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Exploration
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Gen
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Checker
     Test.AssertUtils
     Test.ContractModel.Buffer
     Test.ContractModel.Vault
