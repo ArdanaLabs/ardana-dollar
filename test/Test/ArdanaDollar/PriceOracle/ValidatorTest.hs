@@ -122,7 +122,7 @@ data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer
 data StateUTXOParams =
   StateUTXOParams {
     stateTokenValue :: Ledger.Value
-  , stateDatumValue :: Maybe TestDatumParameters
+  , stateDatumValue :: TestDatumParameters
   } deriving (Show)
 
 data TestDatumParameters = TestDatumParameters
@@ -172,13 +172,8 @@ genSpenderParams = do
 genStateUTXOParams :: forall (m :: Type -> Type). MonadGen m => m StateUTXOParams
 genStateUTXOParams = do
   stok <- genStateToken
-  b <- Gen.bool
-  if b
-     then do
-       d <- genTestDatumParameters
-       return $ StateUTXOParams stok (Just d)
-     else
-       return $ StateUTXOParams stok Nothing
+  d <- genTestDatumParameters
+  return $ StateUTXOParams stok d
 
 genKnownWalletIdx :: forall (m :: Type -> Type). MonadGen m => m Integer
 genKnownWalletIdx = Gen.integral (Range.linear 1 5)
@@ -254,9 +249,8 @@ constraintViolations p = filter (not . flip checkConstraint p) [minBound .. maxB
 
 outputDatumInRange :: ModelCheck
 outputDatumInRange TestParameters { .. } =
-  case stateDatumValue outputParams of
-    Nothing -> False
-    Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
+  let so = stateDatumValue outputParams
+  in timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
 -- TODO clarify expected behaviour of this constraint
 rangeWithinSizeLimit :: ModelCheck
@@ -266,16 +260,14 @@ rangeWithinSizeLimit TestParameters { .. } =
 
 inputSignedByOwner :: ModelCheck
 inputSignedByOwner TestParameters { .. } =
-  case stateDatumValue inputParams of
-    Nothing -> False
-    Just so -> signedByWallet so == ownerWallet
+  let so = stateDatumValue inputParams
+   in signedByWallet so == ownerWallet
 
 --TODO hasOutputDatum as separate constraint
 outputDatumSignedByOwner :: ModelCheck
 outputDatumSignedByOwner TestParameters { .. } =
-  case stateDatumValue outputParams of
-    Nothing -> False
-    Just d -> signedByWallet d == ownerWallet
+  let d = stateDatumValue outputParams
+   in signedByWallet d == ownerWallet
 
 txSignedByOwner :: ModelCheck
 txSignedByOwner TestParameters { .. } = case transactorParams of
@@ -321,11 +313,7 @@ modelDatum TestDatumParameters { .. } =
 
 modelTestData :: TestParameters -> TestData 'ForSpending
 modelTestData TestParameters { .. } =
-  case stateDatumValue inputParams of
-    Nothing -> SpendingTest () () $ stateTokenValue inputParams
-    Just so -> SpendingTest (modelDatum so) () $ stateTokenValue inputParams
-
-
+  SpendingTest (modelDatum $ stateDatumValue inputParams) () $ stateTokenValue inputParams
 
 setTimeRangeOpt :: Integer -> Integer -> OptionSet -> OptionSet
 setTimeRangeOpt from to =
@@ -349,10 +337,7 @@ transactorSpendingAction (SignedByWithValue signer value) =
 
 scriptOutputAction :: StateUTXOParams -> ContextBuilder p
 scriptOutputAction StateUTXOParams { .. } =
-  case stateDatumValue of
-    Nothing -> paysToPubKey (pubKeyHash $ walletPubKey $ knownWallet 1) stateTokenValue
-    Just d ->
-      output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum d) stateTokenValue)
+  output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum stateDatumValue) stateTokenValue)
 
 ---- reification of the test using plutus-extra. mmmmm Tasty!
 --
