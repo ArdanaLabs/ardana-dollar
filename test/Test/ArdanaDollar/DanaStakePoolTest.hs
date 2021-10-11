@@ -38,14 +38,14 @@ v =
     <> Value.assetClassValue Vault.dUSDAsset 100_000_000
 
 emCfg :: EmulatorConfig
-emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet 1, v), (Wallet 2, v), (Wallet 3, v)]) def def
+emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet 1, v), (knownWallet 2, v), (knownWallet 3, v)]) def def
 
 runTrace :: EmulatorTrace () -> IO ()
 runTrace = runEmulatorTraceIO' def emCfg
 
 initializeSystem :: EmulatorTrace NFTAssetClass
 initializeSystem = do
-  h <- activateContractWallet (Wallet 1) PEndpoints.initializeSystemEndpoint
+  h <- activateContractWallet (knownWallet 1) PEndpoints.initializeSystemEndpoint
   callEndpoint @"initializeSystem" h ()
   void $ Emulator.waitNSlots 5
   mAssetClass <- getLast <$> observableState h
@@ -57,7 +57,7 @@ testDeposit :: EmulatorTrace ()
 testDeposit = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
   void $ Emulator.waitNSlots 5
   callEndpoint @"initializeUser" h1 ()
   void $ Emulator.waitNSlots 5
@@ -70,7 +70,7 @@ testWithdraw :: EmulatorTrace ()
 testWithdraw = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
   void $ Emulator.waitNSlots 5
   callEndpoint @"initializeUser" h1 ()
   void $ Emulator.waitNSlots 5
@@ -83,7 +83,7 @@ testProvide :: EmulatorTrace ()
 testProvide = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
   void $ Emulator.waitNSlots 10
   callEndpoint @"provideRewards" h1 5
   void $ Emulator.waitNSlots 5
@@ -94,9 +94,9 @@ testDistribute1 :: EmulatorTrace ()
 testDistribute1 = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
-  h2 <- activateContractWallet (Wallet 2) (PEndpoints.endpoints ac)
-  h3 <- activateContractWallet (Wallet 3) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
+  h2 <- activateContractWallet (knownWallet 2) (PEndpoints.endpoints ac)
+  h3 <- activateContractWallet (knownWallet 3) (PEndpoints.endpoints ac)
 
   callEndpoint @"initializeUser" h1 ()
   void $ Emulator.waitNSlots 5
@@ -123,8 +123,8 @@ testDistribute2 :: EmulatorTrace ()
 testDistribute2 = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
-  h3 <- activateContractWallet (Wallet 3) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
+  h3 <- activateContractWallet (knownWallet 3) (PEndpoints.endpoints ac)
 
   callEndpoint @"initializeUser" h1 ()
   void $ Emulator.waitNSlots 5
@@ -145,9 +145,9 @@ testDistribute3 :: EmulatorTrace ()
 testDistribute3 = do
   ac <- initializeSystem
 
-  h1 <- activateContractWallet (Wallet 1) (PEndpoints.endpoints ac)
-  h2 <- activateContractWallet (Wallet 2) (PEndpoints.endpoints ac)
-  h3 <- activateContractWallet (Wallet 3) (PEndpoints.endpoints ac)
+  h1 <- activateContractWallet (knownWallet 1) (PEndpoints.endpoints ac)
+  h2 <- activateContractWallet (knownWallet 2) (PEndpoints.endpoints ac)
+  h3 <- activateContractWallet (knownWallet 3) (PEndpoints.endpoints ac)
 
   callEndpoint @"initializeUser" h1 ()
   void $ Emulator.waitNSlots 5
@@ -193,7 +193,7 @@ testDeposit' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "deposit to stake pool"
-    ( walletFundsChange (Wallet 1) (Value.assetClassValue danaAsset (-9))
+    ( walletFundsChange (knownWallet 1) (Value.assetClassValue danaAsset (-9))
     )
     testDeposit
 
@@ -202,7 +202,7 @@ testWithdraw' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "deposit & withdraw from stake pool"
-    ( walletFundsChange (Wallet 1) (Value.assetClassValue danaAsset (-3))
+    ( walletFundsChange (knownWallet 1) (Value.assetClassValue danaAsset (-3))
     )
     testWithdraw
 
@@ -211,8 +211,8 @@ testDistribute1' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "two users collect rewards"
-    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 301 <> Value.assetClassValue danaAsset (-60))
-        .&&. walletFundsChange (Wallet 2) (Value.assetClassValue Vault.dUSDAsset 201 <> Value.assetClassValue danaAsset (-40))
+    ( walletFundsChange (knownWallet 1) (Value.assetClassValue Vault.dUSDAsset 301 <> Value.assetClassValue danaAsset (-60))
+        .&&. walletFundsChange (knownWallet 2) (Value.assetClassValue Vault.dUSDAsset 201 <> Value.assetClassValue danaAsset (-40))
     )
     testDistribute1
 
@@ -221,7 +221,7 @@ testDistribute2' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "one user collects rewards"
-    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 503 <> Value.assetClassValue danaAsset (-60))
+    ( walletFundsChange (knownWallet 1) (Value.assetClassValue Vault.dUSDAsset 503 <> Value.assetClassValue danaAsset (-60))
     )
     testDistribute2
 
@@ -230,8 +230,8 @@ testDistribute3' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "two reward distribution sessions"
-    ( walletFundsChange (Wallet 1) (Value.assetClassValue Vault.dUSDAsset 307 <> Value.assetClassValue danaAsset (-50))
-        .&&. walletFundsChange (Wallet 2) (Value.assetClassValue Vault.dUSDAsset 207 <> Value.assetClassValue danaAsset (-50))
+    ( walletFundsChange (knownWallet 1) (Value.assetClassValue Vault.dUSDAsset 307 <> Value.assetClassValue danaAsset (-50))
+        .&&. walletFundsChange (knownWallet 2) (Value.assetClassValue Vault.dUSDAsset 207 <> Value.assetClassValue danaAsset (-50))
     )
     testDistribute3
 

@@ -29,14 +29,14 @@ v :: Value.Value
 v = Ada.lovelaceValueOf 100_000_000
 
 emCfg :: EmulatorConfig
-emCfg = EmulatorConfig (Left $ Map.fromList [(Wallet 1, v)]) def def
+emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet 1, v)]) def def
 
 runTrace :: EmulatorTrace () -> IO ()
 runTrace = runEmulatorTraceIO' def emCfg
 
 createMap :: EmulatorTrace MapInstance
 createMap = do
-  h <- activateContractWallet (Wallet 1) createEndpoint
+  h <- activateContractWallet (knownWallet 1) createEndpoint
   callEndpoint @"create" h ()
   void $ Emulator.waitNSlots 5
   mapInstance <- getLast <$> observableState h
@@ -48,7 +48,7 @@ testAddToEmptyMap :: EmulatorTrace ()
 testAddToEmptyMap = do
   mapInstance <- createMap
 
-  h1 <- activateContractWallet (Wallet 1) (endpoints mapInstance)
+  h1 <- activateContractWallet (knownWallet 1) (endpoints mapInstance)
   void $ Emulator.waitNSlots 1
   callEndpoint @"insert" h1 (5, 3)
   void $ Emulator.waitNSlots 1
@@ -57,7 +57,7 @@ testAddSmallest :: EmulatorTrace ()
 testAddSmallest = do
   mapInstance <- createMap
 
-  h1 <- activateContractWallet (Wallet 1) (endpoints mapInstance)
+  h1 <- activateContractWallet (knownWallet 1) (endpoints mapInstance)
   void $ Emulator.waitNSlots 1
   callEndpoint @"insert" h1 (5, 3)
   void $ Emulator.waitNSlots 1
@@ -69,7 +69,7 @@ testAddToEmptyMap' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "testAddToEmptyMap"
-    ( walletFundsChange (Wallet 1) (Ada.lovelaceValueOf 100_000_000) -- TODO correct assertions
+    ( walletFundsChange (knownWallet 1) (Ada.lovelaceValueOf 100_000_000) -- TODO correct assertions
     )
     testAddToEmptyMap
 
@@ -78,7 +78,7 @@ testAddSmallest' =
   checkPredicateOptions
     (defaultCheckOptions & emulatorConfig .~ emCfg)
     "testAddSmallest"
-    ( walletFundsChange (Wallet 1) (Ada.lovelaceValueOf 100_000_000) -- TODO correct assertions
+    ( walletFundsChange (knownWallet 1) (Ada.lovelaceValueOf 100_000_000) -- TODO correct assertions
     )
     testAddSmallest
 

@@ -50,6 +50,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
+import Wallet.Emulator.Wallet (knownWallet)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -98,7 +99,7 @@ pabSimulation = do
 
   logTitleSequence
 
-  cVaultId <- Simulator.activateContract (Wallet 2) VaultContract <* Simulator.waitNSlots 2
+  cVaultId <- Simulator.activateContract (knownWallet 2) VaultContract <* Simulator.waitNSlots 2
   logCurrentBalances_
 
   -- Init a vault
@@ -111,14 +112,14 @@ pabSimulation = do
 
   -- Treasury
   logBlueString "Init treasury"
-  cTreasuryId <- Simulator.activateContract (Wallet 1) TreasuryStart
+  cTreasuryId <- Simulator.activateContract (knownWallet 1) TreasuryStart
   Simulator.waitNSlots 10
   treasury <- getBus @Treasury cTreasuryId
   logCurrentBalances_
 
   -- Deposit funds in cost centers
   logBlueString "Deposit funds in cost centers"
-  cTreasuryUserId <- Simulator.activateContract (Wallet 2) (TreasuryContract treasury)
+  cTreasuryUserId <- Simulator.activateContract (knownWallet 2) (TreasuryContract treasury)
   Simulator.waitNSlots 10
   let callDepositEndpoint cc = do
         let params =
@@ -141,11 +142,11 @@ pabSimulation = do
 
   -- Start buffer
   logBlueString "Start buffer contract"
-  _ <- Simulator.activateContract (Wallet 1) (BufferStart treasury)
+  _ <- Simulator.activateContract (knownWallet 1) (BufferStart treasury (50, 50))
   Simulator.waitNSlots 10
   logCurrentBalances_
 
-  cBufferUserId <- Simulator.activateContract (Wallet 2) (BufferContract treasury)
+  cBufferUserId <- Simulator.activateContract (knownWallet 2) (BufferContract treasury)
   Simulator.waitNSlots 2
   logCurrentBalances_
 
@@ -165,7 +166,7 @@ pabSimulation = do
   shutdown
   where
     wallets :: [Wallet]
-    wallets = Wallet <$> [1 .. 2]
+    wallets = knownWallet <$> [1 .. 2]
 
     logBlueString :: String -> Eff (PAB.PABEffects t (Simulator.SimulatorState t)) ()
     logBlueString s = logPrettyColor (Vibrant Blue) ("[INFO] " <> s) >> logNewLine
@@ -180,7 +181,7 @@ data ArdanaContracts
   = VaultContract
   | TreasuryContract Treasury
   | TreasuryStart
-  | BufferStart Treasury
+  | BufferStart Treasury (Integer, Integer)
   | BufferContract Treasury
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -196,7 +197,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
     TreasuryStart -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
-    BufferStart _ -> Builtin.endpointsToSchemas @EmptySchema
+    BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
 
   getContract :: ArdanaContracts -> SomeBuiltin
@@ -204,7 +205,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> SomeBuiltin vaultContract
     TreasuryStart -> SomeBuiltin treasuryStartContract
     TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
-    BufferStart t -> SomeBuiltin (bufferStartContract @() @ContractError t)
+    BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 
 handlers :: SimulatorEffectHandlers (Builtin ArdanaContracts)

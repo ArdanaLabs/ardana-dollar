@@ -9,12 +9,12 @@ import Data.Map.Strict qualified as Map
 import Ledger.Ada qualified as Ada
 import Plutus.Trace.Emulator (EmulatorTrace)
 import Plutus.Trace.Emulator qualified as Emulator
-import Wallet.Emulator.Types (Wallet (..))
+import Wallet.Emulator.Wallet (knownWallet)
 import Prelude
 
 vaultTrace :: EmulatorTrace ()
 vaultTrace = do
-  h1 <- Emulator.activateContractWallet (Wallet 1) vaultContract
+  h1 <- Emulator.activateContractWallet (knownWallet 1) vaultContract
   _ <- Emulator.waitNSlots 10
   Emulator.callEndpoint @"initializeVault" h1 ()
   _ <- Emulator.waitNSlots 10
@@ -31,7 +31,7 @@ vaultTrace = do
 config :: Emulator.EmulatorConfig
 config =
   Emulator.EmulatorConfig
-    (Left (Map.singleton (Wallet 1) (Ada.lovelaceValueOf 1_000_000_000)))
+    (Left (Map.singleton (knownWallet 1) (Ada.lovelaceValueOf 1_000_000_000)))
     def
     def
 

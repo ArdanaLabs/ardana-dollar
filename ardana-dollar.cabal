@@ -92,12 +92,18 @@ common deps
 common test-deps
   import:        deps
   build-depends:
+    , freer-simple
     , hedgehog
     , lens
+    , optparse-applicative  ^>=0.16
+    , QuickCheck
+    , streaming
+    , tagged
     , tasty
     , tasty-hedgehog
     , tasty-hunit
     , tasty-plutus
+    , tasty-quickcheck
 
 library
   import:          lang
@@ -119,6 +125,7 @@ library
     ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.Map.Contracts
     ArdanaDollar.Map.Endpoints
+    ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
@@ -144,9 +151,14 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
+    Test.AssertUtils
+    Test.ContractModel.Buffer
+    Test.ContractModel.Vault
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
+    Test.TraceUtils
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
