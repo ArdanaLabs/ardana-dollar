@@ -25,6 +25,13 @@ import Prelude (String,show,error,IO,Enum,Bounded,Show,minBound,maxBound,putStrL
 import qualified PlutusTx.AssocMap as AssocMap
 import Control.Exception (catch,throwIO)
 import System.Exit (ExitCode (..))
+import Data.Kind (Type)
+import Hedgehog (MonadGen)
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import qualified Hedgehog.Gen.Plutus as HP
+import Ledger.Value qualified as Value
+
 import ArdanaDollar.PriceOracle.OnChain
 
 -- TODO compute maximally efficient exploration of the test parameter space
@@ -32,7 +39,8 @@ import ArdanaDollar.PriceOracle.OnChain
 -- using the constrants to filter/drive the generator would be a good idea
 priceOracleValidatorGeneratedTests :: IO ()
 priceOracleValidatorGeneratedTests = do
-    wrapParametricTest $ TestParameters "Price Oracle Generated test" "totally random I swear" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+  params <- Gen.sample genTestParameters
+  wrapParametricTest $ nameGeneratedParams params
 
     
 
@@ -45,32 +53,19 @@ priceOracleValidatorGeneratedTests = do
 
 priceOracleValidatorRegressionTests :: TestTree
 priceOracleValidatorRegressionTests =
-  --TODO check that these fail for specific and known reasons so that they can be named appropriately
   testGroup
     "Regression Tests"
-    [ parametricValidatorTest $ TestParameters "Parametric Test" "state token not returned" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams mempty (Just (TestDatumParameters 1 460)))
+    [ ]
 
 
-    , parametricValidatorTest $ TestParameters "Parametric Test" "output signed by another" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 2 460)))
-
-
-    , parametricValidatorTest $ TestParameters "Parametric Test" "everything is fine" correctNFTCurrency 400 465 1 (JustSignedBy 1) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
-
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx signed by another" correctNFTCurrency 400 465 1 (JustSignedBy 2) (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
-
-    , parametricValidatorTest $ TestParameters "Parametric Test" "tx not signed" correctNFTCurrency 400 465 1 NoSigner (InputParams correctStateTokenValue $ Just (TestDatumParameters 1 450)) (OutputParams correctStateTokenValue (Just (TestDatumParameters 1 460)))
-
-    ]
-
-
-wrapParametricTest :: TestParameters -> IO ()
+wrapParametricTest :: NamedTestParameters -> IO ()
 wrapParametricTest p =
   let tt = parametricValidatorTest p
    in defaultMain tt
        `catch` (\e ->
          case e of
            ExitSuccess -> return ()
-           _ -> explainExpectedTestResult p >> throwIO e
+           _ -> explainExpectedTestResult (parameters p) >> throwIO e
                )
 
 explainExpectedTestResult :: TestParameters -> IO ()
@@ -78,6 +73,7 @@ explainExpectedTestResult p =
   case constraintViolations p of
     [] -> putStrLn "\nExpected the validate but got failure\n"
     e -> putStrLn $ "\nExpected validation failure due to the following model constraint violations " <> show e <> "\n"
+                   <> show p <> "\n"
 
 ---- The test model domain
 --
@@ -92,39 +88,143 @@ correctNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
 correctNFTCurrency = ("123456789012345678901234567890ef", "PriceTracking")
 
 correctStateTokenValue :: Ledger.Value
-correctStateTokenValue = singleton (fst correctNFTCurrency) (snd correctNFTCurrency) 1
+correctStateTokenValue = uncurry singleton correctNFTCurrency 1
+
+nameGeneratedParams :: TestParameters -> NamedTestParameters
+nameGeneratedParams tp = NamedTestParameters
+  {
+    subTreeName = "Generated Price Oracle Validator Test"
+  , testName = show $ constraintViolations tp
+  , parameters = tp
+  }
 
 
-data TestParameters = TestParameters
+data NamedTestParameters = NamedTestParameters
   { subTreeName :: String
   , testName :: String
-  , stateNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
+  , parameters :: TestParameters
+  } deriving (Show)
+
+data TestParameters = TestParameters
+  { stateNFTCurrency :: (Ledger.CurrencySymbol, Ledger.TokenName)
   , timeRangeLowerBound :: Integer
   , timeRangeUpperBound :: Integer
   , ownerWallet :: Integer
   , transactorParams :: SpenderParams
-  , inputParams :: InputParams
-  , outputParams :: OutputParams
-  }
+  , inputParams :: StateUTXOParams
+  , outputParams :: StateUTXOParams
+  , peggedCurrency :: BuiltinByteString
+  } deriving (Show)
 
 data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Ledger.Value
+  deriving (Show)
 
-data OutputParams =
-  OutputParams {
-    tokenOutput :: Ledger.Value
-  , datumOutput :: Maybe TestDatumParameters
-  }
-
-data InputParams =
-  InputParams {
-    tokenInput :: Ledger.Value
-  , datumInput :: Maybe TestDatumParameters
-  }
+data StateUTXOParams =
+  StateUTXOParams {
+    stateTokenValue :: Ledger.Value
+  , stateDatumValue :: Maybe TestDatumParameters
+  } deriving (Show)
 
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
   , timeStamp :: Integer
-  }
+  } deriving (Show)
+
+genTestParameters :: forall (m :: Type -> Type). MonadGen m => m TestParameters
+genTestParameters = do
+  (tlb, tub) <- genTimeRange
+  w <- genKnownWalletIdx
+  sp <- genSpenderParams
+  ip <- genStateUTXOParams
+  op <- genStateUTXOParams
+  pc <- HP.builtinByteString (Range.linear 0 6)
+  return $ TestParameters
+    { stateNFTCurrency = correctNFTCurrency --TODO generate
+    , timeRangeLowerBound = tlb
+    , timeRangeUpperBound = tub
+    , ownerWallet = w
+    , transactorParams = sp
+    , inputParams = ip
+    , outputParams = op
+    , peggedCurrency = pc
+    }
+
+
+genSpenderParams :: forall (m :: Type -> Type). MonadGen m => m SpenderParams
+genSpenderParams = do
+  b <- Gen.bool
+  if b
+     then do
+       w <- genKnownWalletIdx
+       return $ JustSignedBy w
+     else do
+  --  janky ifology
+       b' <- Gen.bool
+       if b'
+          then return NoSigner
+          else do
+            w <- genKnownWalletIdx
+            v <- HP.value
+            return $ SignedByWithValue w v
+
+
+
+genStateUTXOParams :: forall (m :: Type -> Type). MonadGen m => m StateUTXOParams
+genStateUTXOParams = do
+  stok <- genStateToken
+  b <- Gen.bool
+  if b
+     then do
+       d <- genTestDatumParameters
+       return $ StateUTXOParams stok (Just d)
+     else
+       return $ StateUTXOParams stok Nothing
+
+genKnownWalletIdx :: forall (m :: Type -> Type). MonadGen m => m Integer
+genKnownWalletIdx = Gen.integral (Range.linear 1 5)
+
+genTimeStamp :: forall (m :: Type -> Type). MonadGen m => m Integer
+genTimeStamp = Gen.integral (Range.linear 0 10_000)
+
+
+genTimeRange :: forall (m :: Type -> Type). MonadGen m => m (Integer,Integer)
+genTimeRange = do
+  t1 <- Gen.integral (Range.linear 0 9_000)
+  t2 <- Gen.integral (Range.linear t1 10_000)
+  return (t1,t2)
+
+genTestDatumParameters :: forall (m :: Type -> Type). MonadGen m => m TestDatumParameters
+genTestDatumParameters = do
+  walletIdx <- genKnownWalletIdx
+  timestamped <- genTimeStamp
+  return $ TestDatumParameters walletIdx timestamped
+
+genStateTokenCurrencySymbol :: forall (m :: Type -> Type). MonadGen m => m Value.CurrencySymbol
+genStateTokenCurrencySymbol = do
+  b <- Gen.bool
+  if b
+     then return $ fst correctNFTCurrency
+     else HP.currencySymbol
+
+genStateTokenTokenName :: forall (m :: Type -> Type). MonadGen m => m Value.TokenName
+genStateTokenTokenName = do
+  b <- Gen.bool
+  if b
+     then return $ snd correctNFTCurrency
+     else HP.tokenName
+
+genStateTokenAmount :: forall (m :: Type -> Type). MonadGen m => m Integer
+genStateTokenAmount = Gen.integral (Range.linear 0 3)
+
+genStateToken :: forall (m :: Type -> Type). MonadGen m => m Ledger.Value
+genStateToken = do
+  s <- genStateTokenCurrencySymbol
+  n <- genStateTokenTokenName
+  v <- genStateTokenAmount
+  return $ singleton s n v
+
+
+
 
 ---- Constraints on the model domain
 --
@@ -139,8 +239,6 @@ data Constraint =
   | StateTokenReturned
   deriving stock (Prelude.Enum, Prelude.Bounded, Prelude.Show)
 
-
-
 type ModelCheck = TestParameters -> Bool
 
 checkConstraint :: Constraint -> ModelCheck
@@ -151,14 +249,12 @@ checkConstraint OutputDatumSignedByOwner = outputDatumSignedByOwner
 checkConstraint TransactionSignedByOwner = txSignedByOwner
 checkConstraint StateTokenReturned = stateTokenReturned
 
--- TODO if a test fails we can use this to explain the expected behaviour
--- e.g. expected validation failure since InputDatumSignedByOwner not satisfied
 constraintViolations :: TestParameters -> [Constraint]
 constraintViolations p = filter (not . flip checkConstraint p) [minBound .. maxBound]
 
 outputDatumInRange :: ModelCheck
 outputDatumInRange TestParameters { .. } =
-  case datumOutput outputParams of
+  case stateDatumValue outputParams of
     Nothing -> False
     Just so -> timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
 
@@ -170,14 +266,14 @@ rangeWithinSizeLimit TestParameters { .. } =
 
 inputSignedByOwner :: ModelCheck
 inputSignedByOwner TestParameters { .. } =
-  case datumInput inputParams of
+  case stateDatumValue inputParams of
     Nothing -> False
     Just so -> signedByWallet so == ownerWallet
 
---TODO hasOutputDatum as separate check
+--TODO hasOutputDatum as separate constraint
 outputDatumSignedByOwner :: ModelCheck
 outputDatumSignedByOwner TestParameters { .. } =
-  case datumOutput outputParams of
+  case stateDatumValue outputParams of
     Nothing -> False
     Just d -> signedByWallet d == ownerWallet
 
@@ -189,26 +285,19 @@ txSignedByOwner TestParameters { .. } = case transactorParams of
 
 stateTokenReturned :: ModelCheck
 stateTokenReturned TestParameters { .. } =
-  case AssocMap.lookup mockCurrencySymbol $ getValue $ tokenOutput outputParams of
+  case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
     Nothing -> False
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
                  Just 1  -> True
                  _ -> False
-    
 
 ---- Constraint composition forms the validation model
 --
--- how we expect the validator to behave given our set of constraints
+-- if all model constraints are satisfied we expect the test to pass
 
-data ExpectedResult = Validates | DoesNotValidate
-
-testResultModel :: TestParameters -> ExpectedResult
-testResultModel p | length (constraintViolations p) == 0 = Validates
-testResultModel _ = DoesNotValidate
-
-withExpectedResult :: ExpectedResult -> String -> TestData 'ForSpending -> ContextBuilder 'ForSpending -> WithScript 'ForSpending ()
-withExpectedResult Validates = shouldValidate
-withExpectedResult DoesNotValidate = shouldn'tValidate
+withExpectedResult :: TestParameters -> String -> TestData 'ForSpending -> ContextBuilder 'ForSpending -> WithScript 'ForSpending ()
+withExpectedResult p | null (constraintViolations p) = shouldValidate
+withExpectedResult _ = shouldn'tValidate
 
 ---- helpers
 --
@@ -222,7 +311,7 @@ lookupPrivateKey 4 = Ledger.privateKey4
 lookupPrivateKey 5 = Ledger.privateKey5
 lookupPrivateKey i = Prelude.error ("test parameterisation error: PrivateKey" <> Prelude.show i <> " not found.")
 
--- TODO fire some hedgehog randomness into the pricetracking data - it shouldn't matter to the model what's in there
+-- TODO parameterise/randomise the payload data - shouldn't matter what's in there
 modelDatum :: TestDatumParameters -> Oracle.SignedMessage PriceTracking 
 modelDatum TestDatumParameters { .. } =
   Oracle.signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (Ledger.POSIXTime timeStamp)) signedByPrivK
@@ -232,9 +321,9 @@ modelDatum TestDatumParameters { .. } =
 
 modelTestData :: TestParameters -> TestData 'ForSpending
 modelTestData TestParameters { .. } =
-  case datumInput inputParams of
-    Nothing -> SpendingTest () () $ tokenInput inputParams
-    Just so -> SpendingTest (modelDatum so) () $ tokenInput inputParams
+  case stateDatumValue inputParams of
+    Nothing -> SpendingTest () () $ stateTokenValue inputParams
+    Just so -> SpendingTest (modelDatum so) () $ stateTokenValue inputParams
 
 
 
@@ -258,21 +347,21 @@ transactorSpendingAction (JustSignedBy signer) =
 transactorSpendingAction (SignedByWithValue signer value) =
   (<>) (spendsFromPubKeySigned (pubKeyHash $ walletPubKey $ knownWallet signer) value)
 
-scriptOutputAction :: OutputParams -> ContextBuilder p
-scriptOutputAction OutputParams { .. } =
-  case datumOutput of
-    Nothing -> output (Output (OwnType . PlutusTx.toBuiltinData $ ()) tokenOutput)
+scriptOutputAction :: StateUTXOParams -> ContextBuilder p
+scriptOutputAction StateUTXOParams { .. } =
+  case stateDatumValue of
+    Nothing -> paysToPubKey (pubKeyHash $ walletPubKey $ knownWallet 1) stateTokenValue
     Just d ->
-      output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum d) tokenOutput)
+      output (Output (OwnType . PlutusTx.toBuiltinData $ modelDatum d) stateTokenValue)
 
 ---- reification of the test using plutus-extra. mmmmm Tasty!
 --
 
-parametricValidatorTest :: TestParameters -> TestTree
-parametricValidatorTest tp@TestParameters {..} =
+parametricValidatorTest :: NamedTestParameters -> TestTree
+parametricValidatorTest ntp@NamedTestParameters { parameters = tp@TestParameters { .. }, .. } =
   PlusTestOptions (setTimeRangeOption tp) $
     withValidator subTreeName validator $ do
-      withExpectedResult (testResultModel tp) testName (modelTestData tp) $
+      withExpectedResult tp testName (modelTestData tp) $
         transactorSpendingAction transactorParams $
            scriptOutputAction outputParams
   where
@@ -284,7 +373,7 @@ parametricValidatorTest tp@TestParameters {..} =
     ownerPubKeyHash = pubKeyHash ownerPubKey
 
     params :: OracleValidatorParams
-    params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash "USD"
+    params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
 
     validator :: Ledger.Validator
     validator =
