@@ -1,15 +1,14 @@
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections (
-  testReflections
+  testReflections,
 ) where
 
-import Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
 
-import Hedgehog
 import Control.Monad.Trans.Reader
+import Data.String (IsString (..))
+import Hedgehog
 import Prelude
-import Data.String (IsString(..))
-
 
 propReflectAll :: Property
 propReflectAll =
@@ -20,21 +19,19 @@ propReflectAll =
 
 propReflectConstraintViolations :: [Constraint] -> Property
 propReflectConstraintViolations violations =
-  property $ do 
+  property $ do
     params <- forAll $ runReaderT genTestParameters violations
     constraintViolations params === violations
 
 testReflections :: IO Bool
 testReflections = do
-  checkParallel $ Group "Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections" $
-    [ ("propReflectAll", propReflectAll)
-    , ("propReflectSuccesses", propReflectConstraintViolations [])
-    ] <>
-    [ (fromString ("propReflectSingleViolation_" <> show violation)
-      , propReflectConstraintViolations [violation]
-      )
-    | violation <- [minBound .. maxBound]
-    ]
-
-
-
+  checkParallel $
+    Group "Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections" $
+      [ ("propReflectAll", propReflectAll)
+      , ("propReflectSuccesses", propReflectConstraintViolations [])
+      ]
+        <> [ ( fromString ("propReflectSingleViolation_" <> show violation)
+             , propReflectConstraintViolations [violation]
+             )
+           | violation <- [minBound .. maxBound]
+           ]

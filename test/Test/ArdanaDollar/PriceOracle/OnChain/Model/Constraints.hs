@@ -20,7 +20,8 @@ data Constraint
   | TransactionSignedByOwner
   | StateTokenReturned
   deriving stock (Enum, Eq, Ord, Bounded, Show)
-  -- are we not missing StateTokenPresent?
+
+-- are we not missing StateTokenPresent?
 
 type ModelCheck = TestParameters -> Bool
 

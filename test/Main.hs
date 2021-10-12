@@ -9,6 +9,8 @@ import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
@@ -23,8 +25,6 @@ import Test.Tasty (
   testGroup,
  )
 import Test.Tasty.Options (IsOption (..), OptionDescription (Option), safeRead)
-import Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
-import Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
 
 main :: IO ()
 main = do

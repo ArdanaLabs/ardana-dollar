@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-specialise #-}
+
 module ArdanaDollar.PriceOracle.OnChain (
   getScriptOutputsWithDatum,
   mkOracleMintingPolicy,

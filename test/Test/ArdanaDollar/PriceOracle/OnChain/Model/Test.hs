@@ -1,16 +1,15 @@
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Test (
-  testValidatorProperties
+  testValidatorProperties,
 ) where
 
-import Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Reification
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
 
-import Hedgehog
 import Control.Monad.Trans.Reader
+import Data.String (IsString (..))
+import Hedgehog
 import Prelude
-import Data.String (IsString(..))
-
 
 validatorPropTestAll :: Property
 validatorPropTestAll =
@@ -29,15 +28,13 @@ validatorPropTestConstraintViolations violations =
 
 testValidatorProperties :: IO Bool
 testValidatorProperties = do
-  checkParallel $ Group "Test.ArdanaDollar.PriceOracle.OnChain.Model.Properties" $
-    [ ("validatorPropTestAll", validatorPropTestAll)
-    , ("validatorPropTestSuccesses", validatorPropTestConstraintViolations [])
-    ] <>
-    [ (fromString ("validatorPropTestSingleViolation_" <> show violation)
-      , validatorPropTestConstraintViolations [violation]
-      )
-    | violation <- [minBound .. maxBound]
-    ]
-
-
-
+  checkParallel $
+    Group "Test.ArdanaDollar.PriceOracle.OnChain.Model.Properties" $
+      [ ("validatorPropTestAll", validatorPropTestAll)
+      , ("validatorPropTestSuccesses", validatorPropTestConstraintViolations [])
+      ]
+        <> [ ( fromString ("validatorPropTestSingleViolation_" <> show violation)
+             , validatorPropTestConstraintViolations [violation]
+             )
+           | violation <- [minBound .. maxBound]
+           ]
