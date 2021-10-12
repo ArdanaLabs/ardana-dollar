@@ -120,7 +120,7 @@ One-shot tokens within the system are:
     { configs = [],
     , liquidationBenefitCap = 1 % 5 -- 20%
     , liquidationBenefitFloor = 1 % 20 -- 5%
-    , minCollateralRatio = 3 % 1 -- 150%
+    , minCollateralRatio = 3 % 2 -- 150%
     , lastUpdated = currentTime
     , savingsAddress = Nothing -- at stablecoin launch, there will be no savings address
     }
