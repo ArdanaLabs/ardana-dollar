@@ -8,6 +8,7 @@ module Test.ArdanaDollar.TreasuryValidatorTest (treasuryValidatorTests) where
 import Control.Exception (catch, throwIO)
 import Control.Monad.IO.Class (liftIO)
 import Data.Semigroup ((<>))
+import GHC.IO.Encoding
 import Hedgehog (Property, PropertyT, forAll, property)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Extra qualified as Gen (integer)
@@ -71,13 +72,15 @@ upgradePathProperty validationBuilder = do
   -- TODO: Unfortunately, `capture` catches a bit more of the output than it
   -- should and so it "eats" part of the test framework output. Maybe with some
   -- Haskell's IO magic it could be fixed?
-  (stdOutput, result) <-
-    liftIO . capture $
-      (defaultMain (const test) >> return ExitSuccess)
-        `catch` (\(e :: ExitCode) -> return e)
-  liftIO $ case result of
-    ExitSuccess -> return ()
-    _ -> putStrLn stdOutput >> throwIO result
+  liftIO $ do
+    setLocaleEncoding utf8
+    (stdOutput, result) <-
+      capture $
+        (defaultMain (const test) >> return ExitSuccess)
+          `catch` (\(e :: ExitCode) -> return e)
+    case result of
+      ExitSuccess -> return ()
+      _ -> putStrLn stdOutput >> throwIO result
   where
     validator :: Treasury -> Ledger.Validator
     validator t =
