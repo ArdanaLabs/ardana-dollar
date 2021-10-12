@@ -7,6 +7,7 @@ module ArdanaDollar.PriceOracle.OnChain (
   getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
   mkOracleValidator,
+  oracleCompiledTypedValidator,
   OracleMintingParams (..),
   oracleMintingPolicy,
   OracleValidatorParams (..),
@@ -210,13 +211,19 @@ instance Scripts.ValidatorTypes PriceOracling where
   type DatumType PriceOracling = Oracle.SignedMessage PriceTracking
   type RedeemerType PriceOracling = ()
 
+{-# INLINEABLE oracleCompiledTypedValidator #-}
+oracleCompiledTypedValidator ::
+  OracleValidatorParams ->
+  PlutusTx.CompiledCode (Oracle.SignedMessage PriceTracking -> () -> Ledger.ScriptContext -> Bool)
+oracleCompiledTypedValidator params =
+  $$(PlutusTx.compile [||mkOracleValidator||])
+    `PlutusTx.applyCode` PlutusTx.liftCode params
+
 {-# INLINEABLE oracleInst #-}
 oracleInst :: OracleValidatorParams -> Scripts.TypedValidator PriceOracling
 oracleInst params =
   Scripts.mkTypedValidator @PriceOracling
-    ( $$(PlutusTx.compile [||mkOracleValidator||])
-        `PlutusTx.applyCode` PlutusTx.liftCode params
-    )
+    (oracleCompiledTypedValidator params)
     $$(PlutusTx.compile [||wrap||])
   where
     wrap = Scripts.wrapValidator @(Oracle.SignedMessage PriceTracking) @()

@@ -104,6 +104,10 @@ common test-deps
     , tasty-hunit
     , tasty-plutus
     , tasty-quickcheck
+    , safe
+    , transformers
+    , pretty
+    , pretty-show
 
 library
   import:          lang
@@ -145,6 +149,12 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.Plutus
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Reification
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
     Test.AssertUtils

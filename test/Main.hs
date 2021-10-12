@@ -23,11 +23,16 @@ import Test.Tasty (
   testGroup,
  )
 import Test.Tasty.Options (IsOption (..), OptionDescription (Option), safeRead)
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
 
 main :: IO ()
 main = do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
+
+  _ <- testReflections
+  _ <- testValidatorProperties
 
   let ings =
         includingOptions [Option (Proxy :: Proxy ContractMaxSuccess)] :
