@@ -25,6 +25,7 @@ import Data.Default (Default (def))
 import Data.Foldable (traverse_)
 import Data.List (intercalate)
 import Data.Map qualified as Map
+import Data.OpenApi.Schema qualified as OpenApi
 import Data.Text qualified as Text (unpack)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
@@ -197,7 +198,7 @@ data ArdanaContracts
   | BufferStart Treasury (Integer, Integer)
   | BufferContract Treasury
   deriving stock (Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
 instance Pretty ArdanaContracts where
   pretty = viaShow

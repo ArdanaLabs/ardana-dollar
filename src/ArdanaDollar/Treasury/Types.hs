@@ -29,6 +29,7 @@ import Prelude qualified
 --------------------------------------------------------------------------------
 
 import Data.Aeson (FromJSON, ToJSON)
+import Data.OpenApi.Schema qualified as OpenApi
 
 --------------------------------------------------------------------------------
 
@@ -59,14 +60,14 @@ data Treasury = Treasury
   , treasury'upgradeTokenParams :: TreasuryUpgradeContractTokenParams
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
 data TreasuryStateTokenParams = TreasuryStateTokenParams
   { stateToken :: !Value.TokenName
   , initialOutput :: !Contexts.TxOutRef
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
 data TreasuryUpgradeContractTokenParams = TreasuryUpgradeContractTokenParams
   { upgradeToken'initialOwner :: !Ledger.PubKeyHash
@@ -74,7 +75,7 @@ data TreasuryUpgradeContractTokenParams = TreasuryUpgradeContractTokenParams
   , upgradeToken'initialOutput :: !Contexts.TxOutRef
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
 data TreasuryDatum = TreasuryDatum
   { auctionDanaAmount :: !Integer

@@ -74,6 +74,7 @@ common deps
     , freer-extras
     , lens
     , mtl
+    , openapi3
     , playground-common
     , plutus-contract
     , plutus-core
@@ -179,3 +180,4 @@ executable ardana-pab
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
+    , openapi3
