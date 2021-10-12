@@ -1,0 +1,34 @@
+digraph "PriceUpdate" {
+  rankdir = LR;
+
+  vault_script_in
+    [ shape=record
+    , label=
+        "{{ Oracle Script
+         | {OracleStateToken: 1}
+         | SignedMessage PriceTracking
+         }}"
+    ];
+  vault_script_out
+    [ shape=record
+    , label=
+        "{{ Oracle Script
+         | {OracleStateToken: 1}
+         | SignedMessage PriceTracking
+         }}"
+    ];
+
+  redeemer
+    [ shape=record
+    , label="{{Redeemer
+             | ()
+             }}"
+    ];
+
+  tx [label="Tx"];
+
+
+  vault_script_in -> redeemer;
+  redeemer -> tx;
+  tx -> vault_script_out;
+}
