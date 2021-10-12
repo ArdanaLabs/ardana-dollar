@@ -165,7 +165,7 @@ test-suite ardana-dollar-test
     Test.TraceUtils
 
   hs-source-dirs: test
-  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
+  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O1
   build-depends:  ardana-dollar
 
 executable ardana-pab
