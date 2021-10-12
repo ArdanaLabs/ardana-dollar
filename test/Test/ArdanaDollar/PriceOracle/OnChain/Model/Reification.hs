@@ -281,10 +281,19 @@ baseTxInfo tp@TestParameters { } =
         , txInfoDCert = []
         , txInfoWdrl = []
         , txInfoValidRange = testTimeRange tp
-        , txInfoSignatories = []
+        , txInfoSignatories = txSignatories tp
         , txInfoData = datumWithHash <$> [buildInputDatum tp, buildOutputDatum tp]
         , txInfoId = TxId "testTx"
         }
+
+txSignatories :: TestParameters -> [PubKeyHash]
+txSignatories TestParameters { .. } =
+    case transactorParams of
+      NoSigner -> []
+      JustSignedBy signer -> [go signer]
+      SignedByWithValue signer _ -> [go signer]
+  where
+    go = pubKeyHash . walletPubKey . knownWallet
 
 scriptTxInInfo :: TestParameters -> TxInInfo
 scriptTxInInfo tp@TestParameters { .. } =
