@@ -108,7 +108,7 @@ mkValidator ::
   Bool
 mkValidator inst pointerCS datum redeemer ctx =
   case redeemer of
-    Use -> tokensInPlace -- TODO check that node'key, node'next, map'head haven't changed
+    Use -> validateUseRedeemer
     ListOp -> burnsXorMintsOneToken
   where
     info :: Ledger.TxInfo
@@ -138,13 +138,21 @@ mkValidator inst pointerCS datum redeemer ctx =
     ownInputSatisfies :: (Ledger.TxOut -> Bool) -> Bool
     ownInputSatisfies f = maybe False (f . Ledger.txInInfoResolved) (Ledger.findOwnInput ctx)
 
-    tokensInPlace :: Bool
-    tokensInPlace = case datum of
-      MapDatum _ -> inputHasNFT && outputHasNFT
-      NodeDatum (Node key _ _) -> fromMaybe False $ do
+    validateUseRedeemer :: Bool
+    validateUseRedeemer = case datum of
+      MapDatum inputMap ->
+        fromMaybe False $ do
+          (_, outputMap) <- mapOutput
+          return
+            ( inputHasNFT
+                && outputHasNFT
+                && inputMap == outputMap
+            )
+      NodeDatum inputNode@(Node key _ _) -> fromMaybe False $ do
         i <- inputToken
         o <- outputToken key
-        return (i == o)
+        (_, outputNode) <- nodeOutput key
+        return (i == o && inputNode{node'value = node'value outputNode} == outputNode)
 
     burnsXorMintsOneToken :: Bool
     burnsXorMintsOneToken =
@@ -341,11 +349,11 @@ mkNodeValidPolicy inst redeemer ctx =
           ( hasUs (Ledger.txInInfoResolved prevInput')
               && hasUs (Ledger.txInInfoResolved nextInput')
               && Ledger.txOutAddress prevOutput' == expectedAddress
-              && prevInput{node'next = node'next prevOutput} == prevOutput
+              && prevInput{node'next = Nothing} == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && prevInput `nodePointsTo` Ledger.txInInfoResolved nextInput'
               && isNothing (node'next nextInput)
-              && isNothing (node'next prevOutput)
+              && isNothing (node'next prevOutput) -- redundant?
               && inputsAtAddress expectedAddress == 2
               && outputsAtAddress expectedAddress == 1
               && checkMintedAmount (unPointer burntPointer) (-1)
@@ -390,15 +398,17 @@ mkNodeValidPolicy inst redeemer ctx =
 
     mapPointsTo :: Map -> Ledger.TxOut -> Bool
     mapPointsTo map' txOut =
-      fromMaybe
+      maybe
         False
-        ((\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (unPointer pointer) == 1) <$> map'head map')
+        (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (unPointer pointer) == 1)
+        (map'head map')
 
     nodePointsTo :: Node -> Ledger.TxOut -> Bool
     nodePointsTo node txOut =
-      fromMaybe
+      maybe
         False
-        ((\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (unPointer pointer) == 1) <$> node'next node)
+        (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (unPointer pointer) == 1)
+        (node'next node)
 
     checkMintedAmount :: Ledger.AssetClass -> Integer -> Bool
     checkMintedAmount ac num = Value.assetClassValueOf (Ledger.txInfoMint info) ac == num
