@@ -27,7 +27,15 @@ import Ledger
     PubKey,
     PubKeyHash,
     pubKeyHash,
+    Interval(..),
+    LowerBound(..),
+    UpperBound(..),
+    Extended(Finite),
+    POSIXTime(..),
+    PrivateKey,
+    knownPrivateKeys,
   )
+import PlutusTx.UniqueMap qualified as UniqueMap
 import PlutusTx.Prelude ( BuiltinByteString )
 import Plutus.V1.Ledger.Api
   ( getValue
@@ -55,6 +63,8 @@ import Prelude (
     (-),
     (+),
     ($),
+    (!!),
+    (.),
     flip,
     uncurry,
     fst,
@@ -62,12 +72,14 @@ import Prelude (
     pure,
     elem,
     filter,
+    fromInteger,
   )
 import Control.Monad
   ( void,
   )
 import Ledger.Oracle
   ( SignedMessage,
+    signMessage,
   )
 import PlutusTx.Builtins
   ( BuiltinData,
@@ -82,6 +94,7 @@ import Plutus.V1.Ledger.Contexts
 import PlutusTx
   ( applyCode,
     compile,
+    toBuiltinData,
   )
 import Wallet.Emulator.Wallet (
   knownWallet,
@@ -125,6 +138,8 @@ data TestDatumParameters = TestDatumParameters
   }
   deriving (Show)
 
+instance IsCheck (Check PriceOracleModel)
+
 instance Proper PriceOracleModel where
 
   data Model PriceOracleModel =
@@ -149,7 +164,9 @@ instance Proper PriceOracleModel where
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
   check = flip doCheck
+
   genModel = genModel'
+
   validator TestParameters {..} = mkTestValidator params
     where
       ownerPubKey :: PubKey
@@ -161,9 +178,40 @@ instance Proper PriceOracleModel where
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
 
+  hasTimeRange TestParameters {..} =
+    Interval
+      (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
+      (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
 
+  hasTxSignatories TestParameters {..} =
+    case transactorParams of
+      NoSigner -> []
+      JustSignedBy signer -> [go signer]
+      SignedByWithValue signer _ -> [go signer]
+    where
+      go = pubKeyHash . walletPubKey . knownWallet
 
-instance IsCheck (Check PriceOracleModel)
+  hasInputData TestParameters {..} =
+    [(stateTokenValue inputParams
+     , toBuiltinData $ modelDatum $ stateDatumValue inputParams
+     )
+    ]
+
+  hasOutputData TestParameters {..} =
+    [(stateTokenValue inputParams
+     , toBuiltinData $ modelDatum $ stateDatumValue outputParams
+     )
+    ]
+
+modelDatum :: TestDatumParameters -> SignedMessage PriceTracking
+modelDatum TestDatumParameters {..} =
+  signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (POSIXTime timeStamp)) signedByPrivK
+  where
+    signedByPrivK :: PrivateKey
+    signedByPrivK = lookupPrivateKey signedByWallet
+    lookupPrivateKey :: Integer -> PrivateKey
+    lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
+
 
 ---------------------------------------------------------------------------------
 -- TODO use the real currency symbol

@@ -44,7 +44,10 @@ import Prelude
     zip,
     null,
   )
-import Safe (lastMay)
+import Safe
+  ( lastMay,
+    headMay,
+  )
 import Text.PrettyPrint (
   Doc,
   Style (lineLength),
@@ -289,7 +292,10 @@ class Proper model where
   hasRedeemer _ = Redeemer $ toBuiltinData ()
 
   hasDatum :: Model model -> Datum
-  hasDatum _ = Datum $ toBuiltinData ()
+  hasDatum model =
+    case headMay (hasInputData model) of
+      Nothing -> Datum $ toBuiltinData ()
+      Just (_,so) -> Datum $ so
 
   reify :: Show (Model model) => IsCheck (Check model) => MonadTest t => Model model -> t ()
   reify model =
