@@ -17,7 +17,6 @@ import Data.Kind (Type)
 import Ledger qualified
 import Ledger.Constraints (ScriptLookups, TxConstraints)
 import Ledger.Constraints qualified as Constraints
-import Ledger.Contexts (ScriptPurpose (Minting))
 import Ledger.Contexts qualified as Contexts
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Typed.Scripts qualified as Scripts
@@ -53,13 +52,10 @@ upgradeContractTokenName = Value.TokenName "UpgradeToken"
 {-# INLINEABLE mkUpgradeContractTokenMintingPolicy #-}
 mkUpgradeContractTokenMintingPolicy :: TreasuryUpgradeContractTokenParams -> () -> Contexts.ScriptContext -> Bool
 mkUpgradeContractTokenMintingPolicy params () sc =
-  case Contexts.scriptContextPurpose sc of
-    Minting cs ->
-      traceIfFalse "expected utxos missing from input" hasCorrectInput
-        && traceIfFalse "should have minted exactly two tokens" (hasCorrectOutput cs)
-        && traceIfFalse "is not signed by initialOwner" isSigned
-        && traceIfFalse "minting wrong token" (isCorrectlyForging cs)
-    _ -> traceError "minting policy is not minting"
+  traceIfFalse "expected utxos missing from input" hasCorrectInput
+    && traceIfFalse "should have minted exactly two tokens" hasCorrectOutput
+    && traceIfFalse "is not signed by initialOwner" isSigned
+    && traceIfFalse "minting wrong token" isCorrectlyForging
   where
     info :: Contexts.TxInfo
     info = Ledger.scriptContextTxInfo sc
@@ -67,16 +63,17 @@ mkUpgradeContractTokenMintingPolicy params () sc =
     signatories :: [PubKeyHash]
     signatories = Ledger.txInfoSignatories info
 
-    upgradeTokenAssetClass :: Value.CurrencySymbol -> Value.AssetClass
-    upgradeTokenAssetClass = flip Value.assetClass upgradeContractTokenName
+    upgradeTokenAssetClass :: Value.AssetClass
+    upgradeTokenAssetClass =
+      Value.assetClass (Ledger.ownCurrencySymbol sc) upgradeContractTokenName
 
     hasCorrectInput :: Bool
     hasCorrectInput = flip any (Contexts.txInfoInputs info) $ \input ->
       Contexts.txInInfoOutRef input == upgradeToken'initialOutput params
 
     -- TODO: check for datum and state tokens!
-    hasCorrectOutput :: Value.CurrencySymbol -> Bool
-    hasCorrectOutput cs =
+    hasCorrectOutput :: Bool
+    hasCorrectOutput =
       (2 ==) . length $
         flip filter (Contexts.txInfoOutputs info) $
           \Contexts.TxOut
@@ -84,17 +81,17 @@ mkUpgradeContractTokenMintingPolicy params () sc =
             , txOutValue = v
             } ->
               isScriptAddress addr
-                && v `valueSubsetOf` forgeValue cs 1
-                && Value.assetClassValueOf v (upgradeTokenAssetClass cs) == 1
+                && v `valueSubsetOf` forgeValue 1
+                && Value.assetClassValueOf v upgradeTokenAssetClass == 1
 
-    forgeValue :: Value.CurrencySymbol -> Integer -> Value.Value
-    forgeValue cs i = Value.assetClassValue (upgradeTokenAssetClass cs) i
+    forgeValue :: Integer -> Value.Value
+    forgeValue i = Value.assetClassValue upgradeTokenAssetClass i
 
     isSigned :: Bool
     isSigned = upgradeToken'initialOwner params `elem` signatories
 
-    isCorrectlyForging :: Value.CurrencySymbol -> Bool
-    isCorrectlyForging cs = Contexts.txInfoMint info `valueSubsetOf` forgeValue cs 2
+    isCorrectlyForging :: Bool
+    isCorrectlyForging = Contexts.txInfoMint info `valueSubsetOf` forgeValue 2
 
     isScriptAddress :: Ledger.Address -> Bool
     isScriptAddress =
