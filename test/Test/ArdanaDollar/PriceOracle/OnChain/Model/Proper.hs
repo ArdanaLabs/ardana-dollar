@@ -1,8 +1,10 @@
 {-# LANGUAGE TypeFamilies    #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
   priceOracleTest
    ) where
+import ArdanaDollar.PriceOracle.OnChain
 import Proper.Plutus
 import Control.Monad.Trans.Reader
   ( ReaderT (runReaderT),
@@ -22,6 +24,9 @@ import Ledger
   ( CurrencySymbol,
     TokenName,
     Value,
+    PubKey,
+    PubKeyHash,
+    pubKeyHash,
   )
 import PlutusTx.Prelude ( BuiltinByteString )
 import Plutus.V1.Ledger.Api
@@ -61,6 +66,42 @@ import Prelude (
 import Control.Monad
   ( void,
   )
+import Ledger.Oracle
+  ( SignedMessage,
+  )
+import PlutusTx.Builtins
+  ( BuiltinData,
+  )
+import Plutus.V1.Ledger.Scripts
+  ( Validator,
+    mkValidatorScript,
+  )
+import Plutus.V1.Ledger.Contexts
+  ( ScriptContext (..),
+  )
+import PlutusTx
+  ( applyCode,
+    compile,
+  )
+import Wallet.Emulator.Wallet (
+  knownWallet,
+  walletPubKey,
+ )
+
+
+
+mkTestValidator :: OracleValidatorParams -> Validator
+mkTestValidator params =
+  mkValidatorScript $
+    $$(compile [||go||])
+      `applyCode` oracleCompiledTypedValidator params
+  where
+    {-# INLINEABLE go #-}
+    go ::
+      (SignedMessage PriceTracking -> () -> ScriptContext -> Bool) ->
+      (BuiltinData -> BuiltinData -> BuiltinData -> ())
+    go = toTestValidator
+
 
 priceOracleTest :: IO ()
 priceOracleTest = do
@@ -109,7 +150,18 @@ instance Proper PriceOracleModel where
 
   check = flip doCheck
   genModel = genModel'
-  reify _ = pure () -- TODO make this do the test
+  validator TestParameters {..} = mkTestValidator params
+    where
+      ownerPubKey :: PubKey
+      ownerPubKey = walletPubKey (knownWallet ownerWallet)
+
+      ownerPubKeyHash :: PubKeyHash
+      ownerPubKeyHash = pubKeyHash ownerPubKey
+
+      params :: OracleValidatorParams
+      params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
+
+
 
 instance IsCheck (Check PriceOracleModel)
 
@@ -166,7 +218,7 @@ stateTokenReturned TestParameters {..} =
       Just 1 -> True
       _ -> False
 
--- Gen
+-- Gen TODO move anything that is not model specific to a common lib
 ---------------------------------------------------------------------------------
 
 genModel' :: MonadGen m => [Check PriceOracleModel] -> m (Model PriceOracleModel)

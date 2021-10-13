@@ -11,6 +11,8 @@ import Hedgehog
     property,
     footnoteShow,
     footnote,
+    success,
+    failure,
     (===),
     Group (..),
   )
@@ -35,11 +37,11 @@ import Prelude
     (<>),
     (<$>),
     (>>=),
+    (>>),
     mempty,
     snd,
     fmap,
     zip,
-    pure,
     null,
   )
 import Safe (lastMay)
@@ -292,7 +294,7 @@ class Proper model where
   reify :: Show (Model model) => IsCheck (Check model) => MonadTest t => Model model -> t ()
   reify model =
     case runScript ctx val dat red of
-      Left err -> footnoteShow err
+      Left err -> footnoteShow err >> failure
       Right (_, logs) -> deliverResult model ctx logs
     where
       val = validator model
@@ -306,15 +308,15 @@ class Proper model where
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
           (False, Just "Pass") -> failWithFootnote unexpectedSuccess
-          (False, Just "Fail") -> pure ()
-          (True, Just "Pass") -> pure ()
+          (False, Just "Fail") -> success
+          (True, Just "Pass") -> success
           (True, Just "Fail") -> failWithFootnote unexpectedFailure
           (_, Just t) -> case Text.stripPrefix "Parse failed: " t of
             Nothing -> failWithFootnote $ internalError t
             Just t' -> failWithFootnote $ noParse t'
     where
       failWithFootnote :: MonadTest m => String -> m ()
-      failWithFootnote s = footnote s
+      failWithFootnote s = footnote s >> failure
       noOutcome :: String
       noOutcome =
         renderStyle ourStyle $
