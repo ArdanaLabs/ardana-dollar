@@ -147,14 +147,9 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    Proper.Plutus
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Constraints
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Parameters
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Reification
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
-    Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
@@ -164,7 +159,6 @@ test-suite ardana-dollar-test
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
     Test.TraceUtils
-    Proper.Plutus
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O1
