@@ -6,12 +6,13 @@ module ArdanaDollar.Treasury.Endpoints (
 
 --------------------------------------------------------------------------------
 
-import Control.Monad (forever)
+import Control.Monad (forever, (>=>))
 import Data.Kind (Type)
 import Data.Vector (Vector)
 
 --------------------------------------------------------------------------------
 
+import Ledger qualified
 import Ledger.Value qualified as Value
 import Plutus.Contract
 import PlutusTx.Prelude
@@ -20,6 +21,7 @@ import PlutusTx.Prelude
 
 import ArdanaDollar.Treasury.OffChain
 import ArdanaDollar.Treasury.Types (
+  NewContract,
   Treasury,
   TreasuryDepositParams,
   TreasurySpendParams,
@@ -30,11 +32,12 @@ type TreasurySchema =
   Endpoint "depositFundsWithCostCenter" TreasuryDepositParams
     .\/ Endpoint "spendFromCostCenter" TreasurySpendParams
     .\/ Endpoint "queryCostCenters" ()
-    .\/ Endpoint "initUpgrade" ()
+    .\/ Endpoint "initUpgrade" NewContract
 
 treasuryStartContract ::
+  (Ledger.ValidatorHash, BuiltinByteString) ->
   Contract (OutputBus Treasury) EmptySchema ContractError ()
-treasuryStartContract = startTreasury >>= maybe (return ()) sendBus
+treasuryStartContract = uncurry startTreasury >=> maybe (return ()) sendBus
 
 treasuryContract ::
   forall (e :: Type).
@@ -47,5 +50,5 @@ treasuryContract treasury =
       [ endpoint @"depositFundsWithCostCenter" (depositFundsWithCostCenter treasury)
       , endpoint @"spendFromCostCenter" spendFromCostCenter
       , endpoint @"queryCostCenters" (const $ queryCostCenters treasury)
-      , endpoint @"initUpgrade" (const initiateUpgrade)
+      , endpoint @"initUpgrade" (initiateUpgrade treasury)
       ]

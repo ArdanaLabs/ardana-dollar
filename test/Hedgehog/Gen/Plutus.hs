@@ -7,6 +7,7 @@ module Hedgehog.Gen.Plutus (
   tokenName,
   txId,
   txOutRef,
+  validatorHash,
   value,
 ) where
 
@@ -17,6 +18,7 @@ import Hedgehog.Gen.Extra (integer)
 import Hedgehog.Range qualified as Range
 import Prelude
 
+import Ledger.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Crypto (PubKeyHash (..))
 import Plutus.V1.Ledger.Tx (TxOutRef (..))
@@ -50,6 +52,9 @@ txId = TxId <$> builtinByteString (Range.singleton 32)
 
 txOutRef :: forall (m :: Type -> Type). MonadGen m => m TxOutRef
 txOutRef = TxOutRef <$> txId <*> integer
+
+validatorHash :: forall (m :: Type -> Type). MonadGen m => m Scripts.ValidatorHash
+validatorHash = Scripts.ValidatorHash <$> builtinByteString (Range.singleton 32)
 
 value :: forall (m :: Type -> Type). MonadGen m => m Value.Value
 value = mconcat <$> Gen.list (Range.linear 0 32) singletonValue
