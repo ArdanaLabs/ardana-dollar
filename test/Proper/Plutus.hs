@@ -321,7 +321,7 @@ class Proper model where
   hasDatum model =
     case headMay (hasInputData model) of
       Nothing -> Datum $ toBuiltinData ()
-      Just (_, so) -> Datum $ so
+      Just (_, so) -> Datum so
 
   reify :: Show (Model model) => IsCheck (Check model) => MonadTest t => Model model -> t ()
   reify model =

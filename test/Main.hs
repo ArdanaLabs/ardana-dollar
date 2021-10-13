@@ -37,4 +37,3 @@ main = do
       , BufferModel.contractTests cms
       , VaultModel.contractTests cms
       ]
-
