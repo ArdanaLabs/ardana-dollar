@@ -4,16 +4,20 @@ module Test.ArdanaDollar.TreasuryPrerun (
   treasuryStartContract',
 ) where
 
-import Control.Applicative ((<|>))
+--------------------------------------------------------------------------------
+
 import Control.Lens
 import Control.Monad.Freer qualified as Freer
 import Control.Monad.Freer.Error qualified as FrError
 import Data.Default (Default (..))
+import Data.Foldable (asum)
 import Data.Map qualified as Map
 import Data.OpenUnion.Internal (FindElem)
 import Data.Text qualified as Text
 import Streaming.Prelude qualified as S
 import Prelude (String, show)
+
+--------------------------------------------------------------------------------
 
 import Ledger qualified
 import Ledger.Ada as Ada
@@ -23,13 +27,14 @@ import Plutus.Contract qualified as Contract
 import Plutus.Contract.Test hiding (not)
 import Plutus.PAB.OutputBus
 import Plutus.Trace.Emulator as Emulator hiding (chainState)
-import Plutus.V1.Ledger.Api (Credential (..))
-import PlutusTx.Prelude
+import PlutusTx.Prelude hiding (asum)
 import Wallet.Emulator.Folds qualified as Folds
 import Wallet.Emulator.MultiAgent
 import Wallet.Emulator.Stream qualified as Stream
 import Wallet.Emulator.Stream.Extra (takeUntilSlot')
 import Wallet.Emulator.Wallet qualified as Wallet
+
+--------------------------------------------------------------------------------
 
 import ArdanaDollar.MockAdmin (startAdmin)
 import ArdanaDollar.Treasury.Endpoints (treasuryStartContract)
@@ -39,30 +44,23 @@ import ArdanaDollar.Treasury.Types (
  )
 import ArdanaDollar.Vault (dUSDAsset)
 
+--------------------------------------------------------------------------------
+
 lastValidatorHash :: EmulatorState -> Either String Ledger.ValidatorHash
 lastValidatorHash es =
   let blocks = es ^. chainState . chainNewestFirst
-   in case getValidatorRec blocks of
+   in case getValidatorFromBlocks blocks of
         Nothing -> Left . show $ blocks
         Just vh -> Right vh
   where
-    getValidatorRec :: [Ledger.Block] -> Maybe Ledger.ValidatorHash
-    getValidatorRec (h : t) = getValidatorFromBlock h <|> getValidatorRec t
-    getValidatorRec [] = Nothing
-
-    getValidatorFromBlock :: Ledger.Block -> Maybe Ledger.ValidatorHash
-    getValidatorFromBlock (htx : t) =
-      ( let maybes =
-              Ledger.txOutputs (Ledger.eitherTx id id htx)
-                >>= \txOut -> case (Ledger.addressCredential . Ledger.txOutAddress) txOut of
-                  ScriptCredential sc -> [sc]
-                  _ -> []
-         in case maybes of
-              (h : _) -> Just h
-              _ -> Nothing
-      )
-        <|> getValidatorFromBlock t
-    getValidatorFromBlock [] = Nothing
+    getValidatorFromBlocks :: [Ledger.Block] -> Maybe Ledger.ValidatorHash
+    getValidatorFromBlocks blocks =
+      asum
+        [ Ledger.toValidatorHash (Ledger.txOutAddress txOut)
+        | block <- blocks
+        , htx <- block
+        , txOut <- Ledger.txOutputs (Ledger.eitherTx id id htx)
+        ]
 
 getStartAdmin :: Either String Ledger.ValidatorHash
 getStartAdmin = case run of

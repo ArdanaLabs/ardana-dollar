@@ -116,9 +116,8 @@ newtype NewContract = NewContract {unNewContract :: Ledger.ValidatorHash}
 
 -- instances
 instance Eq TreasuryDatum where
-  (TreasuryDatum ada1 cc1 ccs1) == (TreasuryDatum ada2 cc2 ccs2)
-    | ada1 == ada2 && cc1 == cc2 && ccs1 == ccs2 = True
-    | otherwise = False
+  (TreasuryDatum ada1 cc1 ccs1) == (TreasuryDatum ada2 cc2 ccs2) =
+    ada1 == ada2 && cc1 == cc2 && ccs1 == ccs2
 
 -- helper functions
 {-# INLINEABLE isInitialDatum #-}
