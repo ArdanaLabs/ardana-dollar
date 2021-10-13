@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Proper.Plutus (
   Proper(..),
+  IsCheck,
   ) where
 import Hedgehog
   ( MonadGen,

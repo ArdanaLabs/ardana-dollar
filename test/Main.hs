@@ -11,6 +11,7 @@ import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Reflections
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
 import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
@@ -31,6 +32,7 @@ main = do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
 
+  priceOracleTest
   _ <- testReflections
   _ <- testValidatorProperties
 

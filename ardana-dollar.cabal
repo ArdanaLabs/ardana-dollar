@@ -1,4 +1,4 @@
-cabal-version: 2.4
+Cabal-version: 2.4
 name:          ardana-dollar
 version:       0.1.0.0
 
@@ -155,6 +155,7 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Reification
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Space
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Test
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.Utils
     Test.AssertUtils
