@@ -1,53 +1,75 @@
-{-# LANGUAGE TypeFamilies #-} module Proper.Plutus (
-  Proper(..),
+{-# LANGUAGE TypeFamilies #-}
+
+module Proper.Plutus (
+  Proper (..),
   IsCheck,
   toTestValidator,
-  ) where
-import Hedgehog
-  ( MonadGen,
-    Property,
-    MonadTest,
-    forAll,
-    property,
-    footnoteShow,
-    footnote,
-    success,
-    failure,
-    (===),
-    Group (..),
-  )
-import qualified Hedgehog.Gen as Gen
+) where
+
+import Data.Kind (
+  Type,
+ )
+import Data.String (
+  fromString,
+ )
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Prelude
-  ( Bool(..),
-    Bounded(..),
-    Enum,
-    Eq,
-    Ord,
-    Show (..),
-    Maybe(..),
-    Either(..),
-    String,
-    Int,
-    filter,
-    not,
-    (.),
-    ($),
-    (<>),
-    (<$>),
-    (>>=),
-    (>>),
-    mempty,
-    snd,
-    fmap,
-    zip,
-    null,
-  )
-import Safe
-  ( lastMay,
-    headMay,
-  )
+import Hedgehog (
+  Group (..),
+  MonadGen,
+  MonadTest,
+  Property,
+  failure,
+  footnote,
+  footnoteShow,
+  forAll,
+  property,
+  success,
+  (===),
+ )
+import Hedgehog.Gen qualified as Gen
+import Ledger (
+  Datum (..),
+  DatumHash,
+  PubKeyHash,
+  Redeemer (..),
+  TxId (..),
+  TxInInfo (..),
+  TxOut (..),
+  TxOutRef (..),
+  Value,
+  always,
+  datumHash,
+  runScript,
+ )
+import Ledger.Address (scriptHashAddress)
+import Plutus.V1.Ledger.Api (
+  FromData (fromBuiltinData),
+  POSIXTimeRange,
+ )
+import Plutus.V1.Ledger.Contexts (
+  ScriptContext (..),
+  ScriptPurpose (Spending),
+  TxInfo (..),
+ )
+import Plutus.V1.Ledger.Scripts (
+  Context (..),
+  Validator,
+  ValidatorHash,
+ )
+import PlutusTx (
+  toBuiltinData,
+ )
+import PlutusTx.Builtins (
+  BuiltinData,
+  BuiltinString,
+  appendString,
+  trace,
+ )
+import Safe (
+  headMay,
+  lastMay,
+ )
 import Text.PrettyPrint (
   Doc,
   Style (lineLength),
@@ -62,56 +84,36 @@ import Text.PrettyPrint (
   (<+>),
  )
 import Text.Show.Pretty (ppDoc)
-import Data.Kind
-  ( Type,
-  )
-import Data.String
-  ( fromString,
-  )
-import PlutusTx (
-  toBuiltinData,
- )
-import Ledger.Address (scriptHashAddress)
-import Plutus.V1.Ledger.Scripts
-  ( Validator,
-    ValidatorHash,
-    Context(..),
-  )
-import Plutus.V1.Ledger.Api (
-  POSIXTimeRange,
-  FromData(fromBuiltinData),
- )
-import Ledger (
-  Datum (..),
-  DatumHash,
-  PubKeyHash,
-  Redeemer (..),
-  TxId (..),
-  TxInInfo (..),
-  TxOut (..),
-  TxOutRef (..),
-  Value,
-  datumHash,
-  always,
-  runScript,
- )
-import Plutus.V1.Ledger.Contexts
-  ( ScriptContext(..),
-    ScriptPurpose (Spending),
-    TxInfo(..),
-  )
-import PlutusTx.Builtins (
-  BuiltinData,
-  BuiltinString,
-  appendString,
-  trace,
+import Prelude (
+  Bool (..),
+  Bounded (..),
+  Either (..),
+  Enum,
+  Eq,
+  Int,
+  Maybe (..),
+  Ord,
+  Show (..),
+  String,
+  filter,
+  fmap,
+  mempty,
+  not,
+  null,
+  snd,
+  zip,
+  ($),
+  (.),
+  (<$>),
+  (<>),
+  (>>),
+  (>>=),
  )
 
 -- these things combined make a valid Check
 class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsCheck c
 
 class Proper model where
-
   -- a model for a validator context
   data Model model :: Type
 
@@ -126,6 +128,7 @@ class Proper model where
 
   -- to test a validator you must specify how to build one from the model
   validator :: Model model -> Validator
+
   --e.g.
   --validator model@MyModel{..} =
   --  mkValidatorScript $
@@ -142,78 +145,97 @@ class Proper model where
   -- (this is below the property tests)
 
   -- the property tests
-  checkViolations :: IsCheck (Check model)
-                  => Model model -> [Check model]
+  checkViolations ::
+    IsCheck (Check model) =>
+    Model model ->
+    [Check model]
   checkViolations x = filter (not . check x) [minBound .. maxBound]
 
-  genChecks :: MonadGen m
-            => IsCheck (Check model)
-            => model -> m [Check model]
+  genChecks ::
+    MonadGen m =>
+    IsCheck (Check model) =>
+    model ->
+    m [Check model]
   genChecks _ = Gen.subsequence [minBound .. maxBound]
 
-  selfTestAll :: IsCheck (Check model)
-              => Show (Model model)
-              => model -> Property
+  selfTestAll ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    model ->
+    Property
   selfTestAll m =
     property $ do
       violations <- forAll $ genChecks m
       model <- forAll $ genModel violations
       checkViolations model === violations
 
-  selfTestGivenViolations :: IsCheck (Check model)
-                          => Show (Model model)
-                          => [Check model] -> Property
+  selfTestGivenViolations ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    [Check model] ->
+    Property
   selfTestGivenViolations violations =
     property $ do
       model <- forAll $ genModel violations
       checkViolations model === violations
 
-  selfTestGroup :: IsCheck (Check model)
-                => Show (Model model)
-                => Show model
-                => model -> Group
-  selfTestGroup model = Group (fromString $ show model) $
-    [ (fromString $ "selfTestAll_" <> show model, selfTestAll model)
-    , (fromString $ "selfTestSuccesses_" <> show model, selfTestGivenViolations ([] :: [Check model]))
-    ] <>
-    [ (fromString $ "selfTestSingleViolation_" <> show model <> "_" <> show violation
-      , selfTestGivenViolations [violation])
-    | violation <- ([minBound .. maxBound] :: [Check model])
-    ]
+  selfTestGroup ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    Show model =>
+    model ->
+    Group
+  selfTestGroup model =
+    Group (fromString $ show model) $
+      [ (fromString $ "selfTestAll_" <> show model, selfTestAll model)
+      , (fromString $ "selfTestSuccesses_" <> show model, selfTestGivenViolations ([] :: [Check model]))
+      ]
+        <> [ ( fromString $ "selfTestSingleViolation_" <> show model <> "_" <> show violation
+             , selfTestGivenViolations [violation]
+             )
+           | violation <- ([minBound .. maxBound] :: [Check model])
+           ]
 
-  validatorTestAll :: IsCheck (Check model)
-                   => Show (Model model)
-                   => model -> Property
+  validatorTestAll ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    model ->
+    Property
   validatorTestAll m =
     property $ do
       violations <- forAll $ genChecks m
       model <- forAll $ genModel violations
       reify model
 
-  validatorTestGivenViolations :: IsCheck (Check model)
-                          => Show (Model model)
-                          => [Check model] -> Property
+  validatorTestGivenViolations ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    [Check model] ->
+    Property
   validatorTestGivenViolations violations =
     property $ do
       model <- forAll $ genModel violations
       reify model
 
-  validatorTestGroup :: IsCheck (Check model)
-                => Show (Model model)
-                => Show model
-                => model -> Group
-  validatorTestGroup model = Group (fromString $ show model) $
-    [ (fromString $ "validatorTestAll_" <> show model, validatorTestAll model)
-    , (fromString $ "validatorTestSuccesses_" <> show model, validatorTestGivenViolations ([] :: [Check model]))
-    ] <>
-    [ (fromString $ "validatorTestSingleViolation_" <> show model <> "_" <> show violation
-      , validatorTestGivenViolations [violation])
-    | violation <- ([minBound .. maxBound] :: [Check model])
-    ]
+  validatorTestGroup ::
+    IsCheck (Check model) =>
+    Show (Model model) =>
+    Show model =>
+    model ->
+    Group
+  validatorTestGroup model =
+    Group (fromString $ show model) $
+      [ (fromString $ "validatorTestAll_" <> show model, validatorTestAll model)
+      , (fromString $ "validatorTestSuccesses_" <> show model, validatorTestGivenViolations ([] :: [Check model]))
+      ]
+        <> [ ( fromString $ "validatorTestSingleViolation_" <> show model <> "_" <> show violation
+             , validatorTestGivenViolations [violation]
+             )
+           | violation <- ([minBound .. maxBound] :: [Check model])
+           ]
 
   -- all of this Context generation api could be improved
   -- the idea is to give lots of options for overriding while having some sensible defaults
-
 
   hasTxId :: Model model -> TxId
   hasTxId _ = "abcd"
@@ -230,10 +252,10 @@ class Proper model where
   hasFee :: Model model -> Value
   hasFee _ = mempty
 
-  hasInputData :: Model model -> [(Value,BuiltinData)]
+  hasInputData :: Model model -> [(Value, BuiltinData)]
   hasInputData _ = []
 
-  hasOutputData :: Model model -> [(Value,BuiltinData)]
+  hasOutputData :: Model model -> [(Value, BuiltinData)]
   hasOutputData _ = []
 
   hasTxSignatories :: Model model -> [PubKeyHash]
@@ -259,7 +281,7 @@ class Proper model where
 
   hasTxOuts :: Model model -> [TxOut]
   hasTxOuts model =
-    (\(v,d) -> TxOut (scriptHashAddress $ hasValidatorHash model) v (justDatumHash d)) <$> hasOutputData model
+    (\(v, d) -> TxOut (scriptHashAddress $ hasValidatorHash model) v (justDatumHash d)) <$> hasOutputData model
 
   hasSpenderTxInInfo :: Model model -> [TxInInfo]
   hasSpenderTxInInfo _ = []
@@ -267,17 +289,21 @@ class Proper model where
   hasScriptTxInInfo :: Model model -> [TxInInfo]
   hasScriptTxInInfo model =
     let sha = scriptHashAddress $ hasValidatorHash model
-     in (\(v,d) ->TxInInfo (TxOutRef (hasTxId model) 0) $
-        TxOut sha v $ justDatumHash d) <$> hasInputData model
+     in ( \(v, d) ->
+            TxInInfo (TxOutRef (hasTxId model) 0) $
+              TxOut sha v $ justDatumHash d
+        )
+          <$> hasInputData model
 
   hasCtx :: Model model -> Context
   hasCtx model = Context . toBuiltinData $ context
     where
       context :: ScriptContext
-      context = ScriptContext go
-                . Spending
-                . TxOutRef (hasTxId model)
-                $ 0
+      context =
+        ScriptContext go
+          . Spending
+          . TxOutRef (hasTxId model)
+          $ 0
       go :: TxInfo
       go =
         let baseInfo = hasBaseTxInfo model
@@ -295,7 +321,7 @@ class Proper model where
   hasDatum model =
     case headMay (hasInputData model) of
       Nothing -> Datum $ toBuiltinData ()
-      Just (_,so) -> Datum $ so
+      Just (_, so) -> Datum $ so
 
   reify :: Show (Model model) => IsCheck (Check model) => MonadTest t => Model model -> t ()
   reify model =
@@ -364,7 +390,6 @@ class Proper model where
       ourStyle :: Style
       ourStyle = style {lineLength = 80}
 
-
 datumWithHash :: BuiltinData -> (DatumHash, Datum)
 datumWithHash dt = (datumHash dt', dt')
   where
@@ -406,5 +431,3 @@ reportFail = report "Fail"
 {-# INLINEABLE report #-}
 report :: BuiltinString -> ()
 report what = trace ("proper-plutus: " `appendString` what) ()
-
-

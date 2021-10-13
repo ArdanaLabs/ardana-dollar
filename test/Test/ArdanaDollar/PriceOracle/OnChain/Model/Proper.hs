@@ -1,107 +1,107 @@
-{-# LANGUAGE TypeFamilies    #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
-  priceOracleTest
-   ) where
+  priceOracleTest,
+) where
+
 import ArdanaDollar.PriceOracle.OnChain
-import Proper.Plutus
-import Control.Monad.Trans.Reader
-  ( ReaderT (runReaderT),
-    ask,
-  )
-import Data.Kind
-  ( Type,
-  )
-import Hedgehog
-  ( MonadGen,
-    checkParallel,
-  )
+import Control.Monad (
+  void,
+ )
+import Control.Monad.Trans.Reader (
+  ReaderT (runReaderT),
+  ask,
+ )
+import Data.Kind (
+  Type,
+ )
+import Hedgehog (
+  MonadGen,
+  checkParallel,
+ )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Plutus qualified as HP
 import Hedgehog.Range qualified as Range
-import Ledger
-  ( CurrencySymbol,
-    TokenName,
-    Value,
-    PubKey,
-    PubKeyHash,
-    pubKeyHash,
-    Interval(..),
-    LowerBound(..),
-    UpperBound(..),
-    Extended(Finite),
-    POSIXTime(..),
-    PrivateKey,
-    knownPrivateKeys,
-  )
-import PlutusTx.UniqueMap qualified as UniqueMap
-import PlutusTx.Prelude ( BuiltinByteString )
-import Plutus.V1.Ledger.Api
-  ( getValue
-  )
-import Plutus.V1.Ledger.Value
-  ( singleton
-  )
+import Ledger (
+  CurrencySymbol,
+  Extended (Finite),
+  Interval (..),
+  LowerBound (..),
+  POSIXTime (..),
+  PrivateKey,
+  PubKey,
+  PubKeyHash,
+  TokenName,
+  UpperBound (..),
+  Value,
+  knownPrivateKeys,
+  pubKeyHash,
+ )
+import Ledger.Oracle (
+  SignedMessage,
+  signMessage,
+ )
+import Plutus.V1.Ledger.Api (
+  getValue,
+ )
+import Plutus.V1.Ledger.Contexts (
+  ScriptContext (..),
+ )
+import Plutus.V1.Ledger.Scripts (
+  Validator,
+  mkValidatorScript,
+ )
+import Plutus.V1.Ledger.Value (
+  singleton,
+ )
+import PlutusTx (
+  applyCode,
+  compile,
+  toBuiltinData,
+ )
 import PlutusTx.AssocMap qualified as AssocMap
-import Prelude (
-    IO,
-    Enum,
-    Eq,
-    Ord,
-    Bounded,
-    Show,
-    Integer,
-    Bool(..),
-    Maybe(..),
-    (==),
-    (/=),
-    (&&),
-    (<=),
-    (>=),
-    (>),
-    (-),
-    (+),
-    ($),
-    (!!),
-    (.),
-    flip,
-    uncurry,
-    fst,
-    snd,
-    pure,
-    elem,
-    filter,
-    fromInteger,
-  )
-import Control.Monad
-  ( void,
-  )
-import Ledger.Oracle
-  ( SignedMessage,
-    signMessage,
-  )
-import PlutusTx.Builtins
-  ( BuiltinData,
-  )
-import Plutus.V1.Ledger.Scripts
-  ( Validator,
-    mkValidatorScript,
-  )
-import Plutus.V1.Ledger.Contexts
-  ( ScriptContext (..),
-  )
-import PlutusTx
-  ( applyCode,
-    compile,
-    toBuiltinData,
-  )
+import PlutusTx.Builtins (
+  BuiltinData,
+ )
+import PlutusTx.Prelude (BuiltinByteString)
+import PlutusTx.UniqueMap qualified as UniqueMap
+import Proper.Plutus
 import Wallet.Emulator.Wallet (
   knownWallet,
   walletPubKey,
  )
-
-
+import Prelude (
+  Bool (..),
+  Bounded,
+  Enum,
+  Eq,
+  IO,
+  Integer,
+  Maybe (..),
+  Ord,
+  Show,
+  elem,
+  filter,
+  flip,
+  fromInteger,
+  fst,
+  pure,
+  snd,
+  uncurry,
+  (!!),
+  ($),
+  (&&),
+  (+),
+  (-),
+  (.),
+  (/=),
+  (<=),
+  (==),
+  (>),
+  (>=),
+ )
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -114,7 +114,6 @@ mkTestValidator params =
       (SignedMessage PriceTracking -> () -> ScriptContext -> Bool) ->
       (BuiltinData -> BuiltinData -> BuiltinData -> ())
     go = toTestValidator
-
 
 priceOracleTest :: IO ()
 priceOracleTest = do
@@ -141,19 +140,17 @@ data TestDatumParameters = TestDatumParameters
 instance IsCheck (Check PriceOracleModel)
 
 instance Proper PriceOracleModel where
-
-  data Model PriceOracleModel =
-    TestParameters
-      { stateNFTCurrency :: (CurrencySymbol, TokenName)
-      , timeRangeLowerBound :: Integer
-      , timeRangeUpperBound :: Integer
-      , ownerWallet :: Integer
-      , transactorParams :: SpenderParams
-      , inputParams :: StateUTXOParams
-      , outputParams :: StateUTXOParams
-      , peggedCurrency :: BuiltinByteString
-      }
-      deriving (Show)
+  data Model PriceOracleModel = TestParameters
+    { stateNFTCurrency :: (CurrencySymbol, TokenName)
+    , timeRangeLowerBound :: Integer
+    , timeRangeUpperBound :: Integer
+    , ownerWallet :: Integer
+    , transactorParams :: SpenderParams
+    , inputParams :: StateUTXOParams
+    , outputParams :: StateUTXOParams
+    , peggedCurrency :: BuiltinByteString
+    }
+    deriving (Show)
 
   data Check PriceOracleModel
     = OutputDatumTimestampInRange
@@ -192,15 +189,17 @@ instance Proper PriceOracleModel where
       go = pubKeyHash . walletPubKey . knownWallet
 
   hasInputData TestParameters {..} =
-    [(stateTokenValue inputParams
-     , toBuiltinData $ modelDatum $ stateDatumValue inputParams
-     )
+    [
+      ( stateTokenValue inputParams
+      , toBuiltinData $ modelDatum $ stateDatumValue inputParams
+      )
     ]
 
   hasOutputData TestParameters {..} =
-    [(stateTokenValue inputParams
-     , toBuiltinData $ modelDatum $ stateDatumValue outputParams
-     )
+    [
+      ( stateTokenValue inputParams
+      , toBuiltinData $ modelDatum $ stateDatumValue outputParams
+      )
     ]
 
 modelDatum :: TestDatumParameters -> SignedMessage PriceTracking
@@ -211,7 +210,6 @@ modelDatum TestDatumParameters {..} =
     signedByPrivK = lookupPrivateKey signedByWallet
     lookupPrivateKey :: Integer -> PrivateKey
     lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
-
 
 ---------------------------------------------------------------------------------
 -- TODO use the real currency symbol
@@ -271,7 +269,6 @@ stateTokenReturned TestParameters {..} =
 
 genModel' :: MonadGen m => [Check PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' = runReaderT genTestParameters
-
 
 genTestParameters ::
   forall (m :: Type -> Type).
