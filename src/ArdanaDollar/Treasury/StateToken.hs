@@ -18,7 +18,6 @@ import Data.Kind (Type)
 import Ledger qualified
 import Ledger.Constraints (ScriptLookups, TxConstraints)
 import Ledger.Constraints qualified as Constraints
-import Ledger.Contexts (ScriptPurpose (Minting))
 import Ledger.Contexts qualified as Contexts
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
@@ -62,18 +61,16 @@ treasuryStateTokenName = Value.TokenName "TreasuryToken"
 {-# INLINEABLE mkTreasuryStateTokenMintingPolicy #-}
 mkTreasuryStateTokenMintingPolicy :: TreasuryStateTokenParams -> () -> Contexts.ScriptContext -> Bool
 mkTreasuryStateTokenMintingPolicy params () sc =
-  case Contexts.scriptContextPurpose sc of
-    Minting cs ->
-      traceIfFalse "expected utxo missing from input" hasCorrectInput
-        && traceIfFalse "expected datum missing from output" (hasCorrectOutput cs)
-        && traceIfFalse "minting wrong token" (isCorrectlyForging cs)
-    _ -> traceError "minting policy is not minting"
+  traceIfFalse "expected utxo missing from input" hasCorrectInput
+    && traceIfFalse "expected datum missing from output" hasCorrectOutput
+    && traceIfFalse "minting wrong token" isCorrectlyForging
   where
-    stateTokenAssetClass :: Value.CurrencySymbol -> Value.AssetClass
-    stateTokenAssetClass = flip Value.assetClass (stateToken params)
+    stateTokenAssetClass :: Value.AssetClass
+    stateTokenAssetClass =
+      Value.assetClass (Ledger.ownCurrencySymbol sc) (stateToken params)
 
-    forgeValue :: Value.CurrencySymbol -> Value.Value
-    forgeValue cs = Value.assetClassValue (stateTokenAssetClass cs) 1
+    forgeValue :: Value.Value
+    forgeValue = Value.assetClassValue stateTokenAssetClass 1
 
     info :: Contexts.TxInfo
     info = Ledger.scriptContextTxInfo sc
@@ -82,8 +79,8 @@ mkTreasuryStateTokenMintingPolicy params () sc =
     hasCorrectInput = flip any (Contexts.txInfoInputs info) $ \input ->
       Contexts.txInInfoOutRef input == initialOutput params
 
-    hasCorrectOutput :: Value.CurrencySymbol -> Bool
-    hasCorrectOutput cs =
+    hasCorrectOutput :: Bool
+    hasCorrectOutput =
       flip any (Contexts.txInfoOutputs info) $
         \Contexts.TxOut
           { txOutAddress = addr
@@ -91,12 +88,12 @@ mkTreasuryStateTokenMintingPolicy params () sc =
           , txOutDatumHash = dh
           } ->
             isScriptAddress addr
-              && v `valueSubsetOf` forgeValue cs
-              && Value.assetClassValueOf v (stateTokenAssetClass cs) == 1
+              && v `valueSubsetOf` forgeValue
+              && Value.assetClassValueOf v stateTokenAssetClass == 1
               && maybeEmpty isCorrectDatum (dh >>= flip Contexts.findDatum info)
 
-    isCorrectlyForging :: Value.CurrencySymbol -> Bool
-    isCorrectlyForging cs = Contexts.txInfoMint info `valueSubsetOf` forgeValue cs
+    isCorrectlyForging :: Bool
+    isCorrectlyForging = Contexts.txInfoMint info `valueSubsetOf` forgeValue
 
     isScriptAddress :: Ledger.Address -> Bool
     isScriptAddress =
