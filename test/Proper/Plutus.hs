@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Proper.Plutus (
@@ -56,8 +57,11 @@ import Plutus.V1.Ledger.Scripts (
   Context (..),
   Validator,
   ValidatorHash,
+  mkValidatorScript,
  )
 import PlutusTx (
+  applyCode,
+  compile,
   toBuiltinData,
  )
 import PlutusTx.Builtins (
@@ -110,6 +114,18 @@ import Prelude (
   (>>=),
  )
 
+defaultValidator :: Validator
+defaultValidator =
+  mkValidatorScript $
+    $$(compile [||go||])
+      `applyCode` $$(compile [||\_ _ _ -> False||])
+  where
+    {-# INLINEABLE go #-}
+    go ::
+      (() -> () -> ScriptContext -> Bool) ->
+      (BuiltinData -> BuiltinData -> BuiltinData -> ())
+    go = toTestValidator
+
 -- these things combined make a valid Check
 class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsCheck c
 
@@ -127,7 +143,9 @@ class Proper model where
   genModel :: MonadGen m => [Check model] -> m (Model model)
 
   -- to test a validator you must specify how to build one from the model
+  -- a default is provided to enable construction of the model up front before the validator is written
   validator :: Model model -> Validator
+  validator _ = defaultValidator
 
   --e.g.
   --validator model@MyModel{..} =
