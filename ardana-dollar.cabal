@@ -163,6 +163,7 @@ test-suite ardana-dollar-test
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
     Test.TraceUtils
+    Proper.Plutus
 
   hs-source-dirs: test
   ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O1
