@@ -2,7 +2,7 @@ digraph "LiquidationCallAct" {
   rankdir = LR;
 
   wallet_in [shape=record,label="{{Liquidator Wallet | {Lovelace: 900_000_000 | dUSD: 10_000}}}"];
-  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 950_000_000 | dUSD: 4_000}}}"];
+  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 950_000_000 | dUSD: 6_000}}}"];
 
   vault_script_in
     [ shape=record
