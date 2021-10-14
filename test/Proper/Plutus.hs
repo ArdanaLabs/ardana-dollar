@@ -6,6 +6,10 @@ module Proper.Plutus (
   IsProperty,
   toTestValidator,
   PropLogic (..),
+  (\/),
+  (/\),
+  (-->),
+  (<->),
 ) where
 
 import Control.Monad.Reader (
@@ -136,12 +140,25 @@ import Prelude (
 
 data PropLogic a
   = Atom Bool
-  | Proposition a
-  | Negation (PropLogic a)
+  | Prop a
+  | Neg (PropLogic a)
   | Conjunction (PropLogic a) (PropLogic a)
   | Disjunction (PropLogic a) (PropLogic a)
   | Implication (PropLogic a) (PropLogic a)
   | IfAndOnlyIf (PropLogic a) (PropLogic a)
+
+
+(/\) :: PropLogic a -> PropLogic a -> PropLogic a
+(/\) = Conjunction
+
+(\/) :: PropLogic a -> PropLogic a -> PropLogic a
+(\/) = Disjunction
+
+(-->) :: PropLogic a -> PropLogic a -> PropLogic a
+(-->) = Implication
+
+(<->) :: PropLogic a -> PropLogic a -> PropLogic a
+(<->) = IfAndOnlyIf
 
 genGivenPropLogic :: IsProperty a => MonadGen m => GenBase m ~ Identity => PropLogic a -> m (Set a)
 genGivenPropLogic f =
@@ -153,10 +170,10 @@ satisfiesPropLogic l = runReader $ go l
   where
     go :: Eq a => PropLogic a -> Reader (Set a) Bool
     go (Atom a) = pure a
-    go (Proposition a) = do
+    go (Prop a) = do
       ctx <- ask
       pure $ a `elem` ctx
-    go (Negation a) = not <$> go a
+    go (Neg a) = not <$> go a
     go (Conjunction a b) = (&&) <$> go a <*> go b
     go (Disjunction a b) = do
       ia <- go a
