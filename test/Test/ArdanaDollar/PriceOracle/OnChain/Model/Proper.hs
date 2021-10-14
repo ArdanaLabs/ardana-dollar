@@ -103,8 +103,8 @@ mkTestValidator params =
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ selfTestGroup PriceOracleModel
-  void $ checkParallel $ validatorTestGroup PriceOracleModel
+  void $ checkParallel $ selfTestGroup PriceOracleModel 3
+  void $ checkParallel $ validatorTestGroup PriceOracleModel 1
 
 data PriceOracleModel = PriceOracleModel deriving (Show)
 

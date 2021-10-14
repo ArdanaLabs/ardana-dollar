@@ -118,6 +118,8 @@ import Prelude (
   pure,
   snd,
   zip,
+  length,
+  (<=),
   ($),
   (&&),
   (.),
@@ -129,6 +131,7 @@ import Prelude (
   (>>=),
   (||),
  )
+import Data.List (subsequences)
 
 data PropLogic a
   = Atom Bool
@@ -444,18 +447,18 @@ class Proper model where
     Show (Model model) =>
     Show model =>
     model ->
+    Int ->
     Group
-  selfTestGroup model =
+  selfTestGroup model l =
     Group (fromString $ show model) $
-      [ (fromString "selfTestRandomProperties", selfTestAll model)
-      , (fromString "selfTestNoProperties", selfTestGivenProperties (Set.empty :: Set (Property model)))
-      ]
-        <> [ ( fromString $ "selfTestSingleProperty" <> "_" <> show property'
-             , selfTestGivenProperties $ Set.singleton property'
-             )
-           | property' <- ([minBound .. maxBound] :: [Property model])
-           , satisfiesPropLogic logic (Set.singleton property')
-           ]
+        (fromString "selfTestRandomProperties", selfTestAll model)
+        :
+        [ (fromString $ "selfTestProperties " <> show p, selfTestGivenProperties p)
+        | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
+        , satisfiesPropLogic logic p
+        ]
+
+
 
   validatorTestAll ::
     IsProperty (Property model) =>
@@ -483,20 +486,22 @@ class Proper model where
     Show (Model model) =>
     Show model =>
     model ->
+    Int ->
     Group
-  validatorTestGroup model =
+  validatorTestGroup model l =
     Group (fromString $ show model) $
-      [ (fromString "validatorTestRandomProperties", validatorTestAll model)
-      , (fromString "validatorTestNullProperties", validatorTestGivenProperties (Set.empty :: Set (Property model)))
-      ]
-        <> [ ( fromString $ "validatorTestSingleProperty" <> "_" <> show property'
-             , validatorTestGivenProperties $ Set.singleton property'
-             )
-           | property' <- ([minBound .. maxBound] :: [Property model])
-           , satisfiesPropLogic logic (Set.singleton property')
-           ]
+        (fromString "validatorTestRandomProperties", validatorTestAll model)
+        :
+        [ (fromString $ "validatorTestProperties " <> show p, validatorTestGivenProperties p)
+        | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
+        , satisfiesPropLogic logic p
+        ]
+
 
 -- helpers
+
+combinationsUpToLength :: Int -> [a] -> [[a]]
+combinationsUpToLength l li = filter ((<=l) . length) $ subsequences li
 
 datumWithHash :: BuiltinData -> (DatumHash, Datum)
 datumWithHash dt = (datumHash dt', dt')
