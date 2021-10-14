@@ -1,6 +1,6 @@
 # Admin (State Machine)
 
-Purpose: Admin holds the global state for a `(targetCurrency, collateralCurrency)` pair.
+Purpose: Admin holds the global state for a `(peggedCurrency, collateralCurrency)` pair.
 
 Parameterized by:
 ```haskell
@@ -8,7 +8,7 @@ data AdminParams = AdminParams
   { targetCurrency :: ByteString -- fiat currency identifier
   , collateralCurrency :: AssetClass
   , treasuryAddress :: ValidatorHash
-  , treasuryCurrencySymbol :: CurrencySymbol
+  , treasuryStateTokenSymbol :: CurrencySymbol
   , adminStateCurrencySymbol :: CurrencySymbol
   , adminOperator :: PubKey
   , ownerAddress :: PubKey
