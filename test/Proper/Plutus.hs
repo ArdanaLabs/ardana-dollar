@@ -139,7 +139,6 @@ data PropLogic a
   | Implication (PropLogic a) (PropLogic a)
   | IfAndOnlyIf (PropLogic a) (PropLogic a)
 
-
 (/\) :: PropLogic a -> PropLogic a -> PropLogic a
 (/\) = Conjunction
 
