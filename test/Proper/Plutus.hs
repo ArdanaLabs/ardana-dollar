@@ -5,7 +5,7 @@ module Proper.Plutus (
   Proper (..),
   IsProperty,
   toTestValidator,
-  FOL (..),
+  PropLogic (..),
 ) where
 
 import Control.Monad.Reader (
@@ -134,24 +134,24 @@ import Prelude (
   (||),
  )
 
-data FOL a
+data PropLogic a
   = Atom Bool
   | Proposition a
-  | Negation (FOL a)
-  | Conjunction (FOL a) (FOL a)
-  | Disjunction (FOL a) (FOL a)
-  | Implication (FOL a) (FOL a)
-  | IfAndOnlyIf (FOL a) (FOL a)
+  | Negation (PropLogic a)
+  | Conjunction (PropLogic a) (PropLogic a)
+  | Disjunction (PropLogic a) (PropLogic a)
+  | Implication (PropLogic a) (PropLogic a)
+  | IfAndOnlyIf (PropLogic a) (PropLogic a)
 
-genGivenFOL :: IsProperty a => MonadGen m => GenBase m ~ Identity => FOL a -> m (Set a)
-genGivenFOL f =
+genGivenPropLogic :: IsProperty a => MonadGen m => GenBase m ~ Identity => PropLogic a -> m (Set a)
+genGivenPropLogic f =
   let g = Set.fromList <$> Gen.subsequence [minBound .. maxBound]
-   in Gen.filter (satisfiesFOL f) g
+   in Gen.filter (satisfiesPropLogic f) g
 
-satisfiesFOL :: Eq a => FOL a -> Set a -> Bool
-satisfiesFOL l = runReader $ go l
+satisfiesPropLogic :: Eq a => PropLogic a -> Set a -> Bool
+satisfiesPropLogic l = runReader $ go l
   where
-    go :: Eq a => FOL a -> Reader (Set a) Bool
+    go :: Eq a => PropLogic a -> Reader (Set a) Bool
     go (Atom a) = pure a
     go (Proposition a) = do
       ctx <- ask
@@ -223,10 +223,10 @@ class Proper model where
     IsProperty (Property model) =>
     model ->
     m (Set (Property model))
-  genProperties _ = genGivenFOL logic
+  genProperties _ = genGivenPropLogic logic
 
   -- some properties imply others
-  logic :: FOL (Property model)
+  logic :: PropLogic (Property model)
   logic = Atom True
 
   -- to test a validator specify how to build one from the model
@@ -451,7 +451,7 @@ class Proper model where
              , selfTestGivenProperties $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
-           , satisfiesFOL logic (Set.singleton property')
+           , satisfiesPropLogic logic (Set.singleton property')
            ]
 
   validatorTestAll ::
@@ -490,7 +490,7 @@ class Proper model where
              , validatorTestGivenProperties $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
-           , satisfiesFOL logic (Set.singleton property')
+           , satisfiesPropLogic logic (Set.singleton property')
            ]
 
 -- helpers
