@@ -19,6 +19,7 @@ import Control.Monad.Reader (
  )
 import Data.Functor.Identity (Identity)
 import Data.Kind (Type)
+import Data.List (subsequences)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
@@ -112,26 +113,25 @@ import Prelude (
   elem,
   filter,
   fmap,
+  length,
   mempty,
   not,
   or,
   pure,
   snd,
   zip,
-  length,
-  (<=),
   ($),
   (&&),
   (.),
   (<$>),
   (<*>),
+  (<=),
   (<>),
   (==),
   (>>),
   (>>=),
   (||),
  )
-import Data.List (subsequences)
 
 data PropLogic a
   = Atom Bool
@@ -451,14 +451,11 @@ class Proper model where
     Group
   selfTestGroup model l =
     Group (fromString $ show model) $
-        (fromString "selfTestRandomProperties", selfTestAll model)
-        :
+      (fromString "selfTestRandomProperties", selfTestAll model) :
         [ (fromString $ "selfTestProperties " <> show p, selfTestGivenProperties p)
         | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
         , satisfiesPropLogic logic p
         ]
-
-
 
   validatorTestAll ::
     IsProperty (Property model) =>
@@ -490,18 +487,16 @@ class Proper model where
     Group
   validatorTestGroup model l =
     Group (fromString $ show model) $
-        (fromString "validatorTestRandomProperties", validatorTestAll model)
-        :
+      (fromString "validatorTestRandomProperties", validatorTestAll model) :
         [ (fromString $ "validatorTestProperties " <> show p, validatorTestGivenProperties p)
         | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
         , satisfiesPropLogic logic p
         ]
 
-
 -- helpers
 
 combinationsUpToLength :: Int -> [a] -> [[a]]
-combinationsUpToLength l li = filter ((<=l) . length) $ subsequences li
+combinationsUpToLength l li = filter ((<= l) . length) $ subsequences li
 
 datumWithHash :: BuiltinData -> (DatumHash, Datum)
 datumWithHash dt = (datumHash dt', dt')
