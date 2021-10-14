@@ -17,19 +17,11 @@ import Control.Monad.Reader (
   ask,
   runReader,
  )
-import Data.Functor.Identity (
-  Identity,
- )
-import Data.Kind (
-  Type,
- )
-import Data.Set (
-  Set,
- )
+import Data.Functor.Identity (Identity)
+import Data.Kind (Type)
+import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.String (
-  fromString,
- )
+import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Hedgehog (
@@ -160,7 +152,7 @@ data PropLogic a
 (<->) :: PropLogic a -> PropLogic a -> PropLogic a
 (<->) = IfAndOnlyIf
 
-genGivenPropLogic :: IsProperty a => MonadGen m => GenBase m ~ Identity => PropLogic a -> m (Set a)
+genGivenPropLogic :: (IsProperty a, MonadGen m, GenBase m ~ Identity) => PropLogic a -> m (Set a)
 genGivenPropLogic f =
   let g = Set.fromList <$> Gen.subsequence [minBound .. maxBound]
    in Gen.filter (satisfiesPropLogic f) g
@@ -175,10 +167,7 @@ satisfiesPropLogic l = runReader $ go l
       pure $ a `elem` ctx
     go (Neg a) = not <$> go a
     go (Conjunction a b) = (&&) <$> go a <*> go b
-    go (Disjunction a b) = do
-      ia <- go a
-      ib <- go b
-      pure $ ia || ib
+    go (Disjunction a b) = (||) <$> go a <*> go b
     go (Implication a b) = do
       ia <- go a
       if ia then go b else pure True
@@ -213,13 +202,13 @@ class Proper model where
   data Property model :: Type
 
   -- check whether a property is satisfied
-  hasProperty :: Model model -> Property model -> Bool
+  satisfiesProperty :: Model model -> Property model -> Bool
 
-  hasProperties ::
+  properties ::
     IsProperty (Property model) =>
     Model model ->
     Set (Property model)
-  hasProperties x = Set.fromList $ filter (hasProperty x) [minBound .. maxBound]
+  properties x = Set.fromList $ filter (satisfiesProperty x) [minBound .. maxBound]
 
   -- properties may be in a positive or negative context
   -- by default all properties are negative and should cause a failure
@@ -232,8 +221,6 @@ class Proper model where
   -- generate a model that satisfies specified properties
   genModel :: MonadGen m => Set (Property model) -> m (Model model)
 
-  -- genProperties has a sensible default but some properties may be mutually exclusive
-  -- so this can be overridden
   genProperties ::
     MonadGen m =>
     GenBase m ~ Identity =>
@@ -269,89 +256,89 @@ class Proper model where
   -- all of this Context generation api could be improved
   -- the idea is to give lots of options for overriding while having some sensible defaults
 
-  hasTxId :: Model model -> TxId
-  hasTxId _ = "abcd"
+  modelTxId :: Model model -> TxId
+  modelTxId _ = "abcd"
 
-  hasValidatorHash :: Model model -> ValidatorHash
-  hasValidatorHash _ = "90ab"
+  modelValidatorHash :: Model model -> ValidatorHash
+  modelValidatorHash _ = "90ab"
 
-  hasSpendingValue :: Model model -> Value
-  hasSpendingValue _ = mempty
+  modelSpendingValue :: Model model -> Value
+  modelSpendingValue _ = mempty
 
-  hasTxInfoId :: Model model -> TxId
-  hasTxInfoId _ = TxId "testTx"
+  modelTxInfoId :: Model model -> TxId
+  modelTxInfoId _ = TxId "testTx"
 
-  hasFee :: Model model -> Value
-  hasFee _ = mempty
+  modelFee :: Model model -> Value
+  modelFee _ = mempty
 
-  hasInputData :: Model model -> [(Value, BuiltinData)]
-  hasInputData _ = []
+  modelInputData :: Model model -> [(Value, BuiltinData)]
+  modelInputData _ = []
 
-  hasOutputData :: Model model -> [(Value, BuiltinData)]
-  hasOutputData _ = []
+  modelOutputData :: Model model -> [(Value, BuiltinData)]
+  modelOutputData _ = []
 
-  hasTxSignatories :: Model model -> [PubKeyHash]
-  hasTxSignatories _ = []
+  modelTxSignatories :: Model model -> [PubKeyHash]
+  modelTxSignatories _ = []
 
-  hasTimeRange :: Model model -> POSIXTimeRange
-  hasTimeRange _ = always
+  modelTimeRange :: Model model -> POSIXTimeRange
+  modelTimeRange _ = always
 
-  hasBaseTxInfo :: Model model -> TxInfo
-  hasBaseTxInfo model =
+  modelBaseTxInfo :: Model model -> TxInfo
+  modelBaseTxInfo model =
     TxInfo
-      { txInfoInputs = hasScriptTxInInfo model <> hasSpenderTxInInfo model
-      , txInfoOutputs = hasTxOuts model
-      , txInfoFee = hasFee model
+      { txInfoInputs = modelScriptTxInInfo model <> modelSpenderTxInInfo model
+      , txInfoOutputs = modelTxOuts model
+      , txInfoFee = modelFee model
       , txInfoMint = mempty
       , txInfoDCert = []
       , txInfoWdrl = []
-      , txInfoValidRange = hasTimeRange model
-      , txInfoSignatories = hasTxSignatories model
-      , txInfoData = datumWithHash <$> (snd <$> hasInputData model) <> (snd <$> hasOutputData model)
-      , txInfoId = hasTxInfoId model
+      , txInfoValidRange = modelTimeRange model
+      , txInfoSignatories = modelTxSignatories model
+      , txInfoData = datumWithHash <$> (snd <$> modelInputData model) <> (snd <$> modelOutputData model)
+      , txInfoId = modelTxInfoId model
       }
 
-  hasTxOuts :: Model model -> [TxOut]
-  hasTxOuts model =
-    (\(v, d) -> TxOut (scriptHashAddress $ hasValidatorHash model) v (justDatumHash d)) <$> hasOutputData model
+  modelTxOuts :: Model model -> [TxOut]
+  modelTxOuts model =
+    (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
 
-  hasSpenderTxInInfo :: Model model -> [TxInInfo]
-  hasSpenderTxInInfo _ = []
+  modelSpenderTxInInfo :: Model model -> [TxInInfo]
+  modelSpenderTxInInfo _ = []
 
-  hasScriptTxInInfo :: Model model -> [TxInInfo]
-  hasScriptTxInInfo model =
-    let sha = scriptHashAddress $ hasValidatorHash model
+  modelScriptTxInInfo :: Model model -> [TxInInfo]
+  modelScriptTxInInfo model =
+    let sha = scriptHashAddress $ modelValidatorHash model
      in ( \(v, d) ->
-            TxInInfo (TxOutRef (hasTxId model) 0) $
+            TxInInfo (TxOutRef (modelTxId model) 0) $
               TxOut sha v $ justDatumHash d
         )
-          <$> hasInputData model
+          <$> modelInputData model
 
-  hasCtx :: Model model -> Context
-  hasCtx model = Context . toBuiltinData $ context
+  modelCtx :: Model model -> Context
+  modelCtx model = Context . toBuiltinData $ context
     where
       context :: ScriptContext
       context =
         ScriptContext go
           . Spending
-          . TxOutRef (hasTxId model)
+          . TxOutRef (modelTxId model)
           $ 0
       go :: TxInfo
       go =
-        let baseInfo = hasBaseTxInfo model
-            inInfo = hasScriptTxInInfo model
-            inData = datumWithHash . snd <$> hasInputData model
+        let baseInfo = modelBaseTxInfo model
+            inInfo = modelScriptTxInInfo model
+            inData = datumWithHash . snd <$> modelInputData model
          in baseInfo
               { txInfoInputs = inInfo <> txInfoInputs baseInfo
               , txInfoData = inData <> txInfoData baseInfo
               }
 
-  hasRedeemer :: Model model -> Redeemer
-  hasRedeemer _ = Redeemer $ toBuiltinData ()
+  modelRedeemer :: Model model -> Redeemer
+  modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  hasDatum :: Model model -> Datum
-  hasDatum model =
-    case headMay (hasInputData model) of
+  modelDatum :: Model model -> Datum
+  modelDatum model =
+    case headMay (modelInputData model) of
       Nothing -> Datum $ toBuiltinData ()
       Just (_, so) -> Datum so
 
@@ -362,13 +349,13 @@ class Proper model where
       Right (_, logs) -> deliverResult model ctx logs
     where
       val = validator model
-      ctx = hasCtx model
-      dat = hasDatum model
-      red = hasRedeemer model
+      ctx = modelCtx model
+      dat = modelDatum model
+      red = modelRedeemer model
 
   deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m => Model model -> Context -> [Text] -> m ()
   deliverResult p ctx logs =
-    let shouldPass = expect $ hasProperties p
+    let shouldPass = expect $ properties p
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
           (Fail, Just "Fail") -> success
@@ -417,8 +404,8 @@ class Proper model where
           $+$ hang "Context" 4 (ppDoc ctx)
           $+$ hang "Inputs" 4 dumpInputs
           $+$ hang "Logs" 4 dumpLogs
-          $+$ hang "Expected " 4 (ppDoc $ expect $ hasProperties p)
-          $+$ hang "Properties " 4 (ppDoc $ hasProperties p)
+          $+$ hang "Expected " 4 (ppDoc $ expect $ properties p)
+          $+$ hang "Properties " 4 (ppDoc $ properties p)
       dumpInputs :: Doc
       dumpInputs =
         "Parameters"
@@ -441,7 +428,7 @@ class Proper model where
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
-      hasProperties model === properties'
+      properties model === properties'
 
   selfTestGivenProperties ::
     IsProperty (Property model) =>
@@ -451,7 +438,7 @@ class Proper model where
   selfTestGivenProperties properties' =
     property $ do
       model <- forAll $ genModel properties'
-      hasProperties model === properties'
+      properties model === properties'
 
   selfTestGroup ::
     IsProperty (Property model) =>

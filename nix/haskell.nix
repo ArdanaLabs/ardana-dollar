@@ -83,7 +83,8 @@ in pkgs.haskell-nix.cabalProject rec {
       "1mv1dhpkdj9ridm1fvq6jc85qs6zvbp172228rq72gyawjwrgvi6";
     "https://github.com/input-output-hk/cardano-addresses"."d2f86caa085402a953920c6714a0de6a50b655ec" =
       "0p6jbnd7ky2yf7bwb1350k8880py8dgqg39k49q02a6ij4ld01ay";
-    "https://github.com/Liqwid-Labs/plutus-extra.git"."${sources.plutus-extra.rev}" =
+
+      "https://github.com/Liqwid-Labs/plutus-extra.git"."${sources.plutus-extra.rev}" =
       sources.plutus-extra.sha256;
   };
 }

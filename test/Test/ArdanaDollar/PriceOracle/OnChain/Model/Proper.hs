@@ -7,16 +7,12 @@ module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
 ) where
 
 import ArdanaDollar.PriceOracle.OnChain
-import Control.Monad (
-  void,
- )
+import Control.Monad (void)
 import Control.Monad.Trans.Reader (
   ReaderT (runReaderT),
   ask,
  )
-import Data.Kind (
-  Type,
- )
+import Data.Kind (Type)
 import Data.Set qualified as Set
 import Hedgehog (
   MonadGen,
@@ -44,28 +40,20 @@ import Ledger.Oracle (
   SignedMessage,
   signMessage,
  )
-import Plutus.V1.Ledger.Api (
-  getValue,
- )
-import Plutus.V1.Ledger.Contexts (
-  ScriptContext (..),
- )
+import Plutus.V1.Ledger.Api (getValue)
+import Plutus.V1.Ledger.Contexts (ScriptContext (..))
 import Plutus.V1.Ledger.Scripts (
   Validator,
   mkValidatorScript,
  )
-import Plutus.V1.Ledger.Value (
-  singleton,
- )
+import Plutus.V1.Ledger.Value (singleton)
 import PlutusTx (
   applyCode,
   compile,
   toBuiltinData,
  )
 import PlutusTx.AssocMap qualified as AssocMap
-import PlutusTx.Builtins (
-  BuiltinData,
- )
+import PlutusTx.Builtins (BuiltinData)
 import PlutusTx.Prelude (BuiltinByteString)
 import PlutusTx.UniqueMap qualified as UniqueMap
 import Proper.Plutus
@@ -160,7 +148,7 @@ instance Proper PriceOracleModel where
     | HasIncorrectOutputDatum
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
-  hasProperty = flip hasProperty'
+  satisfiesProperty = flip satisfiesProperty'
 
   logic =
       Neg (Prop HasIncorrectOutputDatum) \/ (Prop HasIncorrectOutputDatum
@@ -180,12 +168,12 @@ instance Proper PriceOracleModel where
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
 
-  hasTimeRange TestParameters {..} =
+  modelTimeRange TestParameters {..} =
     Interval
       (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
       (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
 
-  hasTxSignatories TestParameters {..} =
+  modelTxSignatories TestParameters {..} =
     case transactorParams of
       NoSigner -> []
       JustSignedBy signer -> [go signer]
@@ -193,23 +181,23 @@ instance Proper PriceOracleModel where
     where
       go = pubKeyHash . walletPubKey . knownWallet
 
-  hasInputData TestParameters {..} =
+  modelInputData TestParameters {..} =
     [
       ( stateTokenValue inputParams
-      , modelDatum $ stateDatumValue inputParams
+      , modelDatum' $ stateDatumValue inputParams
       )
     ]
 
-  hasOutputData TestParameters {..} =
+  modelOutputData TestParameters {..} =
     [
       ( stateTokenValue inputParams
-      , modelDatum $ stateDatumValue outputParams
+      , modelDatum' $ stateDatumValue outputParams
       )
     ]
 
-modelDatum :: Maybe TestDatumParameters -> BuiltinData
-modelDatum Nothing = toBuiltinData ()
-modelDatum (Just TestDatumParameters {..}) =
+modelDatum' :: Maybe TestDatumParameters -> BuiltinData
+modelDatum' Nothing = toBuiltinData ()
+modelDatum' (Just TestDatumParameters {..}) =
   toBuiltinData $ signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (POSIXTime timeStamp)) signedByPrivK
   where
     signedByPrivK :: PrivateKey
@@ -232,14 +220,14 @@ correctNFTCurrency = (mockCurrencySymbol, "PriceTracking")
 -- Property
 ---------------------------------------------------------------------------------
 
-hasProperty' :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
-hasProperty' OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
-hasProperty' RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
-hasProperty' OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
-hasProperty' TransactionNotSignedByOwner = txNotSignedByOwner
-hasProperty' StateTokenNotReturned = stateTokenNotReturned
-hasProperty' HasIncorrectInputDatum = hasIncorrectInputDatum
-hasProperty' HasIncorrectOutputDatum = hasIncorrectOutputDatum
+satisfiesProperty' :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
+satisfiesProperty' OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
+satisfiesProperty' RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
+satisfiesProperty' OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
+satisfiesProperty' TransactionNotSignedByOwner = txNotSignedByOwner
+satisfiesProperty' StateTokenNotReturned = stateTokenNotReturned
+satisfiesProperty' HasIncorrectInputDatum = hasIncorrectInputDatum
+satisfiesProperty' HasIncorrectOutputDatum = hasIncorrectOutputDatum
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
