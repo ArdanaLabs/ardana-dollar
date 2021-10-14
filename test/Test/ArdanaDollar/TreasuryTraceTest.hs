@@ -2,74 +2,67 @@ module Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests) where
 
 import Control.Lens
 import Control.Monad (void)
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Default (Default (..))
 import Data.Map qualified as Map
 import Data.Semigroup qualified as Semigroup
 import Data.Vector (Vector)
+import Test.Tasty
+import Prelude (String)
+
 import Ledger qualified
 import Ledger.Ada as Ada
 import Ledger.Value as Value
-import Plutus.Contract (Contract, ContractError, EmptySchema)
+import Plutus.Contract (ContractError, EmptySchema)
 import Plutus.Contract qualified as Contract
 import Plutus.Contract.Test hiding (not)
 import Plutus.Contract.Test.Extra (
   dataAtComputedAddress,
   valueAtComputedAddress,
  )
-import Plutus.Trace.Emulator as Emulator
+import Plutus.Trace.Emulator as Emulator hiding (chainState)
 import Plutus.V1.Ledger.Contexts (TxOutRef)
 import PlutusTx.Prelude
 import PlutusTx.UniqueMap qualified as UniqueMap
-import Test.Tasty
-import Prelude (String)
 
 import ArdanaDollar.Treasury.Endpoints
 import ArdanaDollar.Treasury.OffChain (treasuryAddress)
 import ArdanaDollar.Treasury.Types (
+  NewContract (..),
   Treasury (..),
   TreasuryDatum (..),
   TreasuryDepositParams (..),
   TreasuryStateTokenParams (..),
+  TreasuryUpgradeContractTokenParams (..),
   danaAssetClass,
  )
 import ArdanaDollar.Vault (dUSDAsset)
 import Plutus.PAB.OutputBus
+import Test.ArdanaDollar.TreasuryPrerun (
+  emCfg,
+  startAdminTrace,
+  treasuryStartContract',
+ )
 import Test.AssertUtils (logChecker, logErrorAndThrow)
+import Test.TraceUtils (getBus)
 
 treasuryTraceTests :: TestTree
 treasuryTraceTests =
   testGroup
     "Treasury Trace tests"
     [ noTreasury
-    , -- , cannotStartTreasury
-      depositTwiceCostCenter
+    , depositTwiceCostCenter
     , depositIntoTwoCostCenters
     , sumDifferentDeposits
+    , upgrade
     ]
 
 -- Utils -----------------------------------------------------------------------
-treasuryStartContract' :: Contract (OutputBus Treasury) EmptySchema ContractError ()
-treasuryStartContract' = treasuryStartContract <* Contract.waitNSlots 5
-
-emCfg :: EmulatorConfig
-emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet w, v' w) | w <- [1 .. 3]]) def def
-  where
-    v :: Value.Value
-    v = Ada.lovelaceValueOf 1_000_000_000
-
-    v' :: Integer -> Value.Value
-    v' w
-      | w == 1 = v
-      | w == 3 = mempty
-      | otherwise = v <> assetClassValue dUSDAsset 1000 <> assetClassValue danaAssetClass 10
-
 draftTrace ::
   EmulatorTrace
     ( Treasury
     , ContractHandle (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema ContractError
     )
 draftTrace = do
+  _ <- startAdminTrace
   cTreasuryId <- activateContractWallet (knownWallet 1) treasuryStartContract'
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
@@ -77,21 +70,6 @@ draftTrace = do
   treasuryUserId <- activateContractWallet (knownWallet 2) (treasuryContract @ContractError treasury <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   return (treasury, treasuryUserId)
-
-getBus ::
-  forall w s e.
-  ( ContractConstraints s
-  , FromJSON e
-  , FromJSON w
-  , ToJSON w
-  ) =>
-  ContractHandle (OutputBus w) s e ->
-  EmulatorTrace w
-getBus cId = do
-  ob <- observableState cId
-  case getOutputBus ob of
-    Just (Semigroup.Last s) -> return s
-    Nothing -> throwError $ GenericError "error in getOutputBus"
 
 -- Tests -----------------------------------------------------------------------
 noTreasury :: TestTree
@@ -111,25 +89,35 @@ noTreasury =
     treasuryTrace :: EmulatorTrace ()
     treasuryTrace = do
       walletPubKeyId <- activateContractWallet (knownWallet 2) $ do
-        pka <- Ledger.pubKeyAddress <$> Contract.ownPubKey @[TxOutRef] @EmptySchema @ContractError
+        pk <- Contract.ownPubKey @[(TxOutRef, Ledger.PubKeyHash)] @EmptySchema @ContractError
+        let pka = Ledger.pubKeyAddress pk
+            pkh = Ledger.pubKeyHash pk
         utxos <- Map.toList <$> Contract.utxosAt pka
         case utxos of
           [] -> Contract.logError @String "No UTXO found at public address"
-          (oref, _) : _ -> Contract.tell [oref]
+          (oref, _) : _ -> Contract.tell [(oref, pkh)]
         void $ Contract.waitNSlots 1_000_000
       void $ waitNSlots 5
       orefs <- observableState walletPubKeyId
 
       case orefs of
         [] -> logErrorAndThrow "Could not find UTXO"
-        (oref : _) -> do
+        ((oref, pkh) : _) -> do
           let mockTreasury =
                 Treasury
-                  { stateTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token1")
-                  , stateTokenParams =
+                  { treasury'peggedCurrency = "USD"
+                  , treasury'stateTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token1")
+                  , treasury'stateTokenParams =
                       TreasuryStateTokenParams
                         { stateToken = TokenName "Token2"
                         , initialOutput = oref
+                        }
+                  , treasury'upgradeTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token3")
+                  , treasury'upgradeTokenParams =
+                      TreasuryUpgradeContractTokenParams
+                        { upgradeToken'initialOwner = pkh
+                        , upgradeToken'peggedCurrency = "USD"
+                        , upgradeToken'initialOutput = oref
                         }
                   }
           cTreasuryUserId <-
@@ -140,9 +128,8 @@ noTreasury =
 
           callEndpoint @"depositFundsWithCostCenter" cTreasuryUserId $
             TreasuryDepositParams
-              { treasuryDepositAmount = 50
-              , treasuryDepositCurrency = dUSDAsset
-              , treasuryDepositCostCenter = "TestCenter1"
+              { treasuryDeposit'value = Value.assetClassValue dUSDAsset 50
+              , treasuryDeposit'costCenter = "TestCenter1"
               }
           void $ Emulator.waitNSlots 10
 
@@ -183,9 +170,8 @@ depositTwiceCostCenter =
       twice $ do
         callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
           TreasuryDepositParams
-            { treasuryDepositAmount = 50
-            , treasuryDepositCurrency = dUSDAsset
-            , treasuryDepositCostCenter = costCenterName
+            { treasuryDeposit'value = Value.assetClassValue dUSDAsset 50
+            , treasuryDeposit'costCenter = costCenterName
             }
         void $ Emulator.waitNSlots 10
 
@@ -226,16 +212,14 @@ depositIntoTwoCostCenters =
       (_, treasuryUserId) <- draftTrace
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
-          { treasuryDepositAmount = 100
-          , treasuryDepositCurrency = dUSDAsset
-          , treasuryDepositCostCenter = costCenter1Name
+          { treasuryDeposit'value = Value.assetClassValue dUSDAsset 100
+          , treasuryDeposit'costCenter = costCenter1Name
           }
       void $ Emulator.waitNSlots 10
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
-          { treasuryDepositAmount = 50
-          , treasuryDepositCurrency = dUSDAsset
-          , treasuryDepositCostCenter = costCenter2Name
+          { treasuryDeposit'value = Value.assetClassValue dUSDAsset 50
+          , treasuryDeposit'costCenter = costCenter2Name
           }
       void $ Emulator.waitNSlots 10
 
@@ -273,15 +257,42 @@ sumDifferentDeposits =
       (_, treasuryUserId) <- draftTrace
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
-          { treasuryDepositAmount = 100
-          , treasuryDepositCurrency = dUSDAsset
-          , treasuryDepositCostCenter = costCenterName
+          { treasuryDeposit'value = Value.assetClassValue dUSDAsset 100
+          , treasuryDeposit'costCenter = costCenterName
           }
       void $ Emulator.waitNSlots 10
       callEndpoint @"depositFundsWithCostCenter" treasuryUserId $
         TreasuryDepositParams
-          { treasuryDepositAmount = 5
-          , treasuryDepositCurrency = danaAssetClass
-          , treasuryDepositCostCenter = costCenterName
+          { treasuryDeposit'value = Value.assetClassValue danaAssetClass 5
+          , treasuryDeposit'costCenter = costCenterName
           }
+      void $ Emulator.waitNSlots 10
+
+upgrade :: TestTree
+upgrade =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "upgrade treasury contract"
+    ( walletFundsChange (knownWallet 1) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0)
+        .&&. walletFundsChange (knownWallet 2) (assetClassValue dUSDAsset 0 <> assetClassValue danaAssetClass 0)
+        .&&. dataAtComputedAddress treasuryStartContract' t1 addressGetter dataChecker
+    )
+    upgradeTrace
+  where
+    nc :: Ledger.ValidatorHash
+    nc = Ledger.ValidatorHash "abcd"
+
+    t1 :: ContractInstanceTag
+    t1 = walletInstanceTag (knownWallet 1)
+
+    addressGetter :: OutputBus Treasury -> Maybe Ledger.Address
+    addressGetter = fmap (\(Semigroup.Last t) -> treasuryAddress t) . getOutputBus
+
+    dataChecker :: TreasuryDatum -> Bool
+    dataChecker TreasuryDatum {currentContract = cc} = cc == nc
+
+    upgradeTrace :: EmulatorTrace ()
+    upgradeTrace = do
+      (_, treasuryUserId) <- draftTrace
+      callEndpoint @"initUpgrade" treasuryUserId (NewContract nc)
       void $ Emulator.waitNSlots 10

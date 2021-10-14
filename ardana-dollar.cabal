@@ -74,6 +74,7 @@ common deps
     , freer-extras
     , lens
     , mtl
+    , openapi3
     , playground-common
     , plutus-contract
     , plutus-core
@@ -97,6 +98,7 @@ common test-deps
     , lens
     , optparse-applicative  ^>=0.16
     , QuickCheck
+    , silently
     , streaming
     , tagged
     , tasty
@@ -120,6 +122,7 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
     ArdanaDollar.Treasury.Endpoints
@@ -127,6 +130,7 @@ library
     ArdanaDollar.Treasury.OnChain
     ArdanaDollar.Treasury.StateToken
     ArdanaDollar.Treasury.Types
+    ArdanaDollar.Treasury.UpgradeContractToken
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault
@@ -143,9 +147,12 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    TastyDefaultMain
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest
+    Test.ArdanaDollar.TreasuryValidatorTest
     Test.ArdanaDollar.Utils
     Test.AssertUtils
     Test.ContractModel.Buffer
@@ -153,9 +160,10 @@ test-suite ardana-dollar-test
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
     Test.TraceUtils
+    Wallet.Emulator.Stream.Extra
 
   hs-source-dirs: test
-  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O0
+  ghc-options:    -Wnoncanonical-monad-instances -Widentities -rtsopts -O1
   build-depends:  ardana-dollar
 
 executable ardana-pab
@@ -172,3 +180,4 @@ executable ardana-pab
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
+    , openapi3

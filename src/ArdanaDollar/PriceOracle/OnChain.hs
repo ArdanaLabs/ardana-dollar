@@ -83,10 +83,8 @@ checkMessageOutput
         ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum dat) of
             Nothing ->
               False
-            Just (PriceTracking fiatFeed cryptoFeed upd) ->
-              UniqueMap.null fiatFeed
-                && UniqueMap.null cryptoFeed
-                && upd `Ledger.member` range
+            Just (PriceTracking _ _ upd) ->
+              upd `Ledger.member` range
         )
 
 {-# INLINEABLE withinInterval #-}
@@ -113,6 +111,8 @@ mkOracleMintingPolicy
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
     narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
     where
+      range :: Ledger.POSIXTimeRange
+      range = Ledger.txInfoValidRange txInfo
       narrowInterval :: Bool
       narrowInterval = withinInterval 10000 txInfo
       minted :: Ledger.Value
@@ -132,10 +132,19 @@ mkOracleMintingPolicy
           checkMessageOutput
             op
             oracle
-            (Ledger.txInfoValidRange txInfo)
+            range
             expected
             output
             dat
+            && traceIfFalse
+              "no PriceTracking datum"
+              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
+                  Nothing ->
+                    False
+                  Just (PriceTracking fiatFeed cryptoFeed _) ->
+                    UniqueMap.null fiatFeed
+                      && UniqueMap.null cryptoFeed
+              )
         _ ->
           traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
