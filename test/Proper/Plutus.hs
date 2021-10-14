@@ -8,10 +8,13 @@ module Proper.Plutus (
   FOL (..),
 ) where
 
-import Control.Monad.Reader
- ( Reader,
-   ask,
-   runReader,
+import Control.Monad.Reader (
+  Reader,
+  ask,
+  runReader,
+ )
+import Data.Functor.Identity (
+  Identity,
  )
 import Data.Kind (
   Type,
@@ -25,14 +28,11 @@ import Data.String (
  )
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Functor.Identity
- ( Identity
- )
 import Hedgehog (
+  GenBase,
   Group (..),
   MonadGen,
   MonadTest,
-  GenBase,
   failure,
   footnote,
   footnoteShow,
@@ -113,13 +113,17 @@ import Prelude (
   Ord,
   Show (..),
   String,
+  elem,
   filter,
   fmap,
   mempty,
+  not,
   or,
+  pure,
   snd,
   zip,
   ($),
+  (&&),
   (.),
   (<$>),
   (<*>),
@@ -127,25 +131,21 @@ import Prelude (
   (==),
   (>>),
   (>>=),
-  (&&),
   (||),
-  pure,
-  elem,
-  not,
  )
 
-data FOL a =
-      Atom Bool
-    | Proposition a
-    | Negation (FOL a)
-    | Conjunction (FOL a) (FOL a)
-    | Disjunction (FOL a) (FOL a)
-    | Implication (FOL a) (FOL a)
-    | IfAndOnlyIf (FOL a) (FOL a)
+data FOL a
+  = Atom Bool
+  | Proposition a
+  | Negation (FOL a)
+  | Conjunction (FOL a) (FOL a)
+  | Disjunction (FOL a) (FOL a)
+  | Implication (FOL a) (FOL a)
+  | IfAndOnlyIf (FOL a) (FOL a)
 
 genGivenFOL :: IsProperty a => MonadGen m => GenBase m ~ Identity => FOL a -> m (Set a)
 genGivenFOL f =
-  let g = Set.fromList <$> Gen.subsequence [minBound..maxBound]
+  let g = Set.fromList <$> Gen.subsequence [minBound .. maxBound]
    in Gen.filter (satisfiesFOL f) g
 
 satisfiesFOL :: Eq a => FOL a -> Set a -> Bool
