@@ -27,7 +27,7 @@ import Hedgehog (
   success,
   (===),
  )
-import qualified Hedgehog
+import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Ledger (
   Datum (..),
@@ -102,9 +102,9 @@ import Prelude (
   filter,
   fmap,
   mempty,
+  or,
   snd,
   zip,
-  or,
   ($),
   (.),
   (<$>),
@@ -346,7 +346,6 @@ class Proper model where
       ourStyle :: Style
       ourStyle = style {lineLength = 80}
 
-
   -- HedgeHog property tests
   --
   selfTestAll ::
@@ -424,9 +423,6 @@ class Proper model where
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
            ]
-
-
-
 
 -- helpers
 
