@@ -5,10 +5,13 @@ module Proper.Plutus (
   Proper (..),
   IsProperty,
   toTestValidator,
+  FOL (..),
 ) where
 
-import Control.Monad (
-  join,
+import Control.Monad.Reader
+ ( Reader,
+   ask,
+   runReader,
  )
 import Data.Kind (
   Type,
@@ -22,10 +25,14 @@ import Data.String (
  )
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Functor.Identity
+ ( Identity
+ )
 import Hedgehog (
   Group (..),
   MonadGen,
   MonadTest,
+  GenBase,
   failure,
   footnote,
   footnoteShow,
@@ -115,11 +122,53 @@ import Prelude (
   ($),
   (.),
   (<$>),
+  (<*>),
   (<>),
   (==),
   (>>),
   (>>=),
+  (&&),
+  (||),
+  pure,
+  elem,
+  not,
  )
+
+data FOL a =
+      Atom Bool
+    | Proposition a
+    | Negation (FOL a)
+    | Conjunction (FOL a) (FOL a)
+    | Disjunction (FOL a) (FOL a)
+    | Implication (FOL a) (FOL a)
+    | IfAndOnlyIf (FOL a) (FOL a)
+
+genGivenFOL :: IsProperty a => MonadGen m => GenBase m ~ Identity => FOL a -> m (Set a)
+genGivenFOL f =
+  let g = Set.fromList <$> Gen.subsequence [minBound..maxBound]
+   in Gen.filter (satisfiesFOL f) g
+
+satisfiesFOL :: Eq a => FOL a -> Set a -> Bool
+satisfiesFOL l = runReader $ go l
+  where
+    go :: Eq a => FOL a -> Reader (Set a) Bool
+    go (Atom a) = pure a
+    go (Proposition a) = do
+      ctx <- ask
+      pure $ a `elem` ctx
+    go (Negation a) = not <$> go a
+    go (Conjunction a b) = (&&) <$> go a <*> go b
+    go (Disjunction a b) = do
+      ia <- go a
+      ib <- go b
+      pure $ ia || ib
+    go (Implication a b) = do
+      ia <- go a
+      if ia then go b else pure True
+    go (IfAndOnlyIf a b) = do
+      ia <- go a
+      ib <- go b
+      pure $ (not ia && not ib) || (ia && ib)
 
 defaultValidator :: Validator
 defaultValidator =
@@ -170,18 +219,15 @@ class Proper model where
   -- so this can be overridden
   genProperties ::
     MonadGen m =>
+    GenBase m ~ Identity =>
     IsProperty (Property model) =>
     model ->
     m (Set (Property model))
-  genProperties _ = do
-    includeImplications . Set.fromList <$> Gen.subsequence [minBound .. maxBound]
+  genProperties _ = genGivenFOL logic
 
   -- some properties imply others
-  implications :: Property model -> [Property model]
-  implications _ = []
-
-  includeImplications :: IsProperty (Property model) => Set (Property model) -> Set (Property model)
-  includeImplications s = Set.fromList $ join $ Set.toList s : (implications <$> Set.toList s)
+  logic :: FOL (Property model)
+  logic = Atom True
 
   -- to test a validator specify how to build one from the model
   -- a default is provided to enable construction of the model before the validator is written
@@ -402,9 +448,10 @@ class Proper model where
       , (fromString "selfTestNoProperties", selfTestGivenProperties (Set.empty :: Set (Property model)))
       ]
         <> [ ( fromString $ "selfTestSingleProperty" <> "_" <> show property'
-             , selfTestGivenProperties $ includeImplications $ Set.singleton property'
+             , selfTestGivenProperties $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
+           , satisfiesFOL logic (Set.singleton property')
            ]
 
   validatorTestAll ::
@@ -440,9 +487,10 @@ class Proper model where
       , (fromString "validatorTestNullProperties", validatorTestGivenProperties (Set.empty :: Set (Property model)))
       ]
         <> [ ( fromString $ "validatorTestSingleProperty" <> "_" <> show property'
-             , validatorTestGivenProperties $ includeImplications $ Set.singleton property'
+             , validatorTestGivenProperties $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
+           , satisfiesFOL logic (Set.singleton property')
            ]
 
 -- helpers

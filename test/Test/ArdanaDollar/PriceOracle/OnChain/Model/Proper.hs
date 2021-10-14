@@ -162,11 +162,12 @@ instance Proper PriceOracleModel where
 
   hasProperty = flip hasProperty'
 
-  implications HasIncorrectOutputDatum =
-    [ OutputDatumTimestampNotInRange
-    , OutputDatumNotSignedByOwner
-    ]
-  implications _ = []
+  logic = Disjunction (Negation (Proposition HasIncorrectOutputDatum))
+                      (Implication (Proposition HasIncorrectOutputDatum)
+                                   (Conjunction (Proposition OutputDatumTimestampNotInRange)
+                                                (Proposition OutputDatumNotSignedByOwner)
+                                   )
+                      )
 
   genModel = genModel' . Set.toList
 
