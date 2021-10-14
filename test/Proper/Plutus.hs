@@ -111,6 +111,7 @@ import Prelude (
   (<>),
   (>>),
   (>>=),
+  (==),
  )
 
 defaultValidator :: Validator
@@ -292,15 +293,20 @@ class Proper model where
     let shouldPass = expect $ hasProperties p
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
-          (Fail, Just "Pass") -> failWithFootnote unexpectedSuccess
           (Fail, Just "Fail") -> success
           (Pass, Just "Pass") -> success
-          (Pass, Just "Fail") -> failWithFootnote unexpectedFailure
-          -- TODO perhaps we want to test for parse failures?
-          -- e.g. with a property like HasIncorrectDatum
-          (_, Just t) -> case Text.stripPrefix "Parse failed: " t of
-            Nothing -> failWithFootnote $ internalError t
-            Just t' -> failWithFootnote $ noParse t'
+          (Pass, Just t) ->
+            if t == "Fail"
+               then failWithFootnote unexpectedFailure
+               else case Text.stripPrefix "Parse failed: " t of
+                 Nothing -> failWithFootnote $ internalError t
+                 Just t' -> failWithFootnote $ noParse t'
+          (Fail, Just t) ->
+            if t == "Pass"
+               then failWithFootnote unexpectedSuccess
+               else case Text.stripPrefix "Parse failed: " t of
+                 Nothing -> failWithFootnote $ internalError t
+                 Just _ -> success
     where
       failWithFootnote :: MonadTest m => String -> m ()
       failWithFootnote s = footnote s >> failure
@@ -377,10 +383,10 @@ class Proper model where
     Group
   selfTestGroup model =
     Group (fromString $ show model) $
-      [ (fromString $ "selfTestAll_" <> show model, selfTestAll model)
-      , (fromString $ "selfTestSuccesses_" <> show model, selfTestGivenProperties ([] :: [Property model]))
+      [ (fromString "selfTestRandomProperties", selfTestAll model)
+      , (fromString "selfTestNoProperties", selfTestGivenProperties ([] :: [Property model]))
       ]
-        <> [ ( fromString $ "selfTestSingleViolation_" <> show model <> "_" <> show property'
+        <> [ ( fromString $ "selfTestSingleProperty" <> "_" <> show property'
              , selfTestGivenProperties [property']
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
@@ -415,10 +421,10 @@ class Proper model where
     Group
   validatorTestGroup model =
     Group (fromString $ show model) $
-      [ (fromString $ "validatorTestAll_" <> show model, validatorTestAll model)
-      , (fromString $ "validatorTestSuccesses_" <> show model, validatorTestGivenProperties ([] :: [Property model]))
+      [ (fromString "validatorTestRandomProperties", validatorTestAll model)
+      , (fromString "validatorTestNullProperties", validatorTestGivenProperties ([] :: [Property model]))
       ]
-        <> [ ( fromString $ "validatorTestSingleViolation_" <> show model <> "_" <> show property'
+        <> [ ( fromString $ "validatorTestSingleProperty" <> "_" <> show property'
              , validatorTestGivenProperties [property']
              )
            | property' <- ([minBound .. maxBound] :: [Property model])

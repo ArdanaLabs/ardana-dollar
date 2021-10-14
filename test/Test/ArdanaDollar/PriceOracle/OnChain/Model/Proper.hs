@@ -157,7 +157,7 @@ instance Proper PriceOracleModel where
     | StateTokenNotReturned
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
-  hasProperty = flip doProperty
+  hasProperty = flip hasProperty'
 
   genModel = genModel'
 
@@ -223,12 +223,12 @@ correctNFTCurrency = (mockCurrencySymbol, "PriceTracking")
 -- Property
 ---------------------------------------------------------------------------------
 
-doProperty :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
-doProperty OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
-doProperty RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
-doProperty OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
-doProperty TransactionNotSignedByOwner = txNotSignedByOwner
-doProperty StateTokenNotReturned = stateTokenNotReturned
+hasProperty' :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
+hasProperty' OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
+hasProperty' RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
+hasProperty' OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
+hasProperty' TransactionNotSignedByOwner = txNotSignedByOwner
+hasProperty' StateTokenNotReturned = stateTokenNotReturned
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
@@ -298,8 +298,8 @@ genSpenderParams ::
   Integer ->
   ReaderT [Property PriceOracleModel] m SpenderParams
 genSpenderParams w = do
-  violations <- ask
-  if TransactionNotSignedByOwner `elem` violations
+  properties' <- ask
+  if TransactionNotSignedByOwner `elem` properties'
     then do
       b <- Gen.bool
       if b
@@ -361,8 +361,8 @@ genOutputTimeStamp ::
   (Integer, Integer) ->
   ReaderT [Property PriceOracleModel] m Integer
 genOutputTimeStamp ts = do
-  violations <- ask
-  if OutputDatumTimestampNotInRange `elem` violations
+  properties' <- ask
+  if OutputDatumTimestampNotInRange `elem` properties'
     then do
       b <- Gen.bool
       if b
@@ -382,8 +382,8 @@ genTimeRange ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (Integer, Integer)
 genTimeRange = do
-  violations <- ask
-  if RangeNotWithinSizeLimit `elem` violations
+  properties' <- ask
+  if RangeNotWithinSizeLimit `elem` properties'
     then do
       t1 <- Gen.integral (Range.linear 1 100_000)
       t2 <- Gen.integral (Range.linear (t1 + 10_1000) (t1 + 200_000))
@@ -400,9 +400,9 @@ genOutputDatumParameters ::
   (Integer, Integer) ->
   ReaderT [Property PriceOracleModel] m TestDatumParameters
 genOutputDatumParameters w ts = do
-  violations <- ask
+  properties' <- ask
   walletIdx <-
-    if OutputDatumNotSignedByOwner `elem` violations
+    if OutputDatumNotSignedByOwner `elem` properties'
       then genWalletIdxOtherThan w
       else pure w
   t <- genOutputTimeStamp ts
@@ -422,8 +422,8 @@ genStateTokenCurrencySymbol ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m CurrencySymbol
 genStateTokenCurrencySymbol = do
-  violations <- ask
-  if StateTokenNotReturned `elem` violations
+  properties' <- ask
+  if StateTokenNotReturned `elem` properties'
     then HP.currencySymbol
     else pure $ fst correctNFTCurrency
 
@@ -432,9 +432,9 @@ genStateTokenTokenName ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m TokenName
 genStateTokenTokenName = do
-  violations <- ask
+  properties' <- ask
   --TODO disambiguate. StateTokenNotReturned should be distinct from StateTokenCurrencyCorrect
-  if StateTokenNotReturned `elem` violations
+  if StateTokenNotReturned `elem` properties'
     then HP.tokenName
     else pure $ snd correctNFTCurrency
 
@@ -443,8 +443,8 @@ genStateTokenAmount ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m Integer
 genStateTokenAmount = do
-  violations <- ask
-  if StateTokenNotReturned `elem` violations
+  properties' <- ask
+  if StateTokenNotReturned `elem` properties'
     then do
       b <- Gen.bool
       if b
