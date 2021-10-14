@@ -30,12 +30,15 @@ import Data.Text (Text)
 import Control.Lens
 import Control.Monad (void)
 
-import Test.Tasty
-
+import ArdanaDollar.Map.Contracts (address)
 import ArdanaDollar.Map.Endpoints
 import ArdanaDollar.Map.Types as Types
 import ArdanaDollar.Map.Utils
-import ArdanaDollar.Map.ValidatorsTH (address)
+import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
+import Test.Tasty
+
+type Key = Integer
+type Value = Integer
 
 emCfg :: EmulatorConfig
 emCfg = EmulatorConfig (Left $ Map.fromList [(knownWallet 1, Ada.lovelaceValueOf 100_000_000)]) def def
@@ -61,15 +64,15 @@ middlePair = (6, 4)
 greatestPair :: (Integer, Integer)
 greatestPair = (7, 5)
 
-asNode :: Types.Datum -> Maybe Types.Node
+asNode :: Types.Datum Key Value -> Maybe (Types.Node Key Value)
 asNode (Types.NodeDatum n) = Just n
 asNode _ = Nothing
 
-asMap :: Types.Datum -> Maybe Types.Map
+asMap :: Types.Datum Key Value -> Maybe Types.Map
 asMap (Types.MapDatum m) = Just m
 asMap _ = Nothing
 
-toSortedList :: [(Types.Node, Value.Value)] -> Types.Pointer -> Maybe [((Types.Key, Types.Value), Value.Value)]
+toSortedList :: [(Types.Node Key Value, Value.Value)] -> Types.Pointer -> Maybe [((Key, Value), Value.Value)]
 toSortedList utxos pointer =
   let f = (\(_, v) -> Value.assetClassValueOf v (unPointer pointer) == 1) `filter` utxos
    in case f of
@@ -80,7 +83,7 @@ toSortedList utxos pointer =
                 Nothing -> pure [e]
         _ -> Nothing
 
-toSortedList' :: [(Types.Datum, Value.Value)] -> Maybe [((Types.Key, Types.Value), Value.Value)]
+toSortedList' :: [(Types.Datum Key Value, Value.Value)] -> Maybe [((Key, Value), Value.Value)]
 toSortedList' utxos =
   let f = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asMap d)
       nodes = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asNode d)
@@ -90,9 +93,9 @@ toSortedList' utxos =
           Nothing -> Just []
         _ -> Nothing
 
-mapIs :: [((Types.Key, Types.Value), Value.Value)] -> TracePredicate
+mapIs :: [((Key, Value), Value.Value)] -> TracePredicate
 mapIs expected =
-  dataAndValueAtAddress (address mapInstance') pred'
+  dataAndValueAtAddress (address @Integer2IntegerMap mapInstance') pred'
   where
     pred' utxos = toSortedList' utxos == Just expected
 

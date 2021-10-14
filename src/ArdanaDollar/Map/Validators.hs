@@ -1,5 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.Map.Validators (
@@ -21,6 +24,7 @@ import Data.Maybe (maybeToList)
 
 import ArdanaDollar.Map.Types
 import ArdanaDollar.Utils (datumForOnchain)
+import PlutusTx.IsData.Class (FromData)
 
 {-# INLINEABLE tokenName #-}
 tokenName :: Ledger.TxOutRef -> Ledger.TokenName
@@ -34,14 +38,14 @@ singleList l = case l of
   _ -> Nothing
 
 {-# INLINEABLE mapDatum #-}
-mapDatum :: Ledger.TxInfo -> Ledger.TxOut -> Maybe Map
-mapDatum info txOut = case datumForOnchain @Datum info txOut of
+mapDatum :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe Map
+mapDatum info txOut = case datumForOnchain @(Datum k v) info txOut of
   Just (MapDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE mapNode #-}
-mapNode :: Ledger.TxInfo -> Ledger.TxOut -> Maybe Node
-mapNode info txOut = case datumForOnchain @Datum info txOut of
+mapNode :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Node k v)
+mapNode info txOut = case datumForOnchain @(Datum k v) info txOut of
   Just (NodeDatum dat) -> Just dat
   _ -> Nothing
 
@@ -67,29 +71,29 @@ hasToken :: Ledger.CurrencySymbol -> Ledger.TxOut -> Maybe Ledger.AssetClass
 hasToken expected txOut = hasToken' expected (Ledger.txOutValue txOut)
 
 {-# INLINEABLE mapInput' #-}
-mapInput' :: Ledger.TxInfo -> [Ledger.TxInInfo] -> Maybe (Ledger.TxInInfo, Map)
+mapInput' :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> [Ledger.TxInInfo] -> Maybe (Ledger.TxInInfo, Map)
 mapInput' info inputs =
-  let l = inputs >>= \txOut -> maybeToList ((txOut,) <$> mapDatum info (Ledger.txInInfoResolved txOut))
+  let l = inputs >>= \txOut -> maybeToList ((txOut,) <$> mapDatum @k @v info (Ledger.txInInfoResolved txOut))
    in singleList l
 
 {-# INLINEABLE mapOutput' #-}
-mapOutput' :: Ledger.TxInfo -> [Ledger.TxOut] -> Maybe (Ledger.TxOut, Map)
+mapOutput' :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> [Ledger.TxOut] -> Maybe (Ledger.TxOut, Map)
 mapOutput' info outputs =
-  let l = outputs >>= \txOut -> maybeToList ((txOut,) <$> mapDatum info txOut)
+  let l = outputs >>= \txOut -> maybeToList ((txOut,) <$> mapDatum @k @v info txOut)
    in singleList l
 
 {-# INLINEABLE nodeOutput' #-}
-nodeOutput' :: Ledger.TxInfo -> [Ledger.TxOut] -> Key -> Maybe (Ledger.TxOut, Node)
+nodeOutput' :: forall k v. (FromData k, Ord k, FromData v) => Ledger.TxInfo -> [Ledger.TxOut] -> k -> Maybe (Ledger.TxOut, Node k v)
 nodeOutput' info outputs key =
   let l = outputs >>= \txOut -> maybeToList ((txOut,) <$> mapNode info txOut)
       ll = (matchesKey . snd) `filter` l
    in singleList ll
   where
-    matchesKey :: Node -> Bool
+    matchesKey :: Node k v -> Bool
     matchesKey node = node'key node == key
 
 {-# INLINEABLE nodeInputRef' #-}
-nodeInputRef' :: Ledger.TxInfo -> [Ledger.TxInInfo] -> Ledger.TxOutRef -> Maybe (Ledger.TxInInfo, Node)
+nodeInputRef' :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> [Ledger.TxInInfo] -> Ledger.TxOutRef -> Maybe (Ledger.TxInInfo, Node k v)
 nodeInputRef' info inputs ref =
   let l = inputs >>= \txInInfo -> maybeToList ((txInInfo,) <$> mapNode info (Ledger.txInInfoResolved txInInfo))
       ll = (matchesRef . fst) `filter` l
@@ -100,9 +104,11 @@ nodeInputRef' info inputs ref =
 
 {-# INLINEABLE mkValidator #-}
 mkValidator ::
+  forall k v.
+  (Ord k, FromData k, FromData v, Eq v) =>
   MapInstance ->
   PointerCS ->
-  Datum ->
+  Datum k v ->
   Redeemer ->
   Ledger.ScriptContext ->
   Bool
@@ -115,9 +121,9 @@ mkValidator inst pointerCS datum redeemer ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     mapOutput :: Maybe (Ledger.TxOut, Map)
-    mapOutput = mapOutput' info (Ledger.getContinuingOutputs ctx)
+    mapOutput = mapOutput' @k @v info (Ledger.getContinuingOutputs ctx)
 
-    nodeOutput :: Key -> Maybe (Ledger.TxOut, Node)
+    nodeOutput :: k -> Maybe (Ledger.TxOut, Node k v)
     nodeOutput = nodeOutput' info (Ledger.getContinuingOutputs ctx)
 
     hasNFT :: Ledger.TxOut -> Bool
@@ -132,7 +138,7 @@ mkValidator inst pointerCS datum redeemer ctx =
     inputToken :: Maybe Ledger.AssetClass
     inputToken = Ledger.findOwnInput ctx >>= hasToken (unPointerCS pointerCS) . Ledger.txInInfoResolved
 
-    outputToken :: Key -> Maybe Ledger.AssetClass
+    outputToken :: k -> Maybe Ledger.AssetClass
     outputToken key = nodeOutput key >>= hasToken (unPointerCS pointerCS) . fst
 
     ownInputSatisfies :: (Ledger.TxOut -> Bool) -> Bool
@@ -163,7 +169,7 @@ mkValidator inst pointerCS datum redeemer ctx =
             _ -> False
 
 {-# INLINEABLE mkNodeValidPolicy #-}
-mkNodeValidPolicy :: MapInstance -> TokenRedeemer -> Ledger.ScriptContext -> Bool
+mkNodeValidPolicy :: forall k v. (Ord k, Eq v, FromData k, FromData v) => MapInstance -> TokenRedeemer k -> Ledger.ScriptContext -> Bool
 mkNodeValidPolicy inst redeemer ctx =
   case redeemer of
     ----
@@ -372,15 +378,15 @@ mkNodeValidPolicy inst redeemer ctx =
     hasUs txOut = isJust $ hasToken (Ledger.ownCurrencySymbol ctx) txOut
 
     mapInput :: Maybe (Ledger.TxInInfo, Map)
-    mapInput = mapInput' info (Ledger.txInfoInputs info)
+    mapInput = mapInput' @k @v info (Ledger.txInfoInputs info)
 
     mapOutput :: Maybe (Ledger.TxOut, Map)
-    mapOutput = mapOutput' info (Ledger.txInfoOutputs info)
+    mapOutput = mapOutput' @k @v info (Ledger.txInfoOutputs info)
 
-    nodeOutput :: Key -> Maybe (Ledger.TxOut, Node)
+    nodeOutput :: k -> Maybe (Ledger.TxOut, Node k v)
     nodeOutput = nodeOutput' info (Ledger.txInfoOutputs info)
 
-    nodeInputRef :: Ledger.TxOutRef -> Maybe (Ledger.TxInInfo, Node)
+    nodeInputRef :: Ledger.TxOutRef -> Maybe (Ledger.TxInInfo, Node k v)
     nodeInputRef = nodeInputRef' info (Ledger.txInfoInputs info)
 
     hasNFT :: Ledger.TxOut -> Bool
@@ -403,7 +409,7 @@ mkNodeValidPolicy inst redeemer ctx =
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (unPointer pointer) == 1)
         (map'head map')
 
-    nodePointsTo :: Node -> Ledger.TxOut -> Bool
+    nodePointsTo :: Node k v -> Ledger.TxOut -> Bool
     nodePointsTo node txOut =
       maybe
         False

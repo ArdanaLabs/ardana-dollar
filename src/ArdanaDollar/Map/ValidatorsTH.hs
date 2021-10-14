@@ -1,14 +1,14 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.Map.ValidatorsTH (
   inst,
-  validator,
-  address,
   nodeValidPolicy,
-  nodeValidPolicySymbol,
-  ValidatorTypes,
+  Integer2IntegerMap,
 ) where
 
 import Ledger qualified
@@ -18,6 +18,7 @@ import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.TH qualified as TH
 
+import ArdanaDollar.Map.MapTerms
 import ArdanaDollar.Map.Types
 import ArdanaDollar.Map.Validators
 
@@ -25,7 +26,7 @@ import ArdanaDollar.Map.Validators
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy
 nodeValidPolicy mapInstance =
   Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||Scripts.wrapMintingPolicy . mkNodeValidPolicy||])
+    $$(TH.compile [||Scripts.wrapMintingPolicy . mkNodeValidPolicy @Integer @Integer||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
 
 {-# INLINEABLE nodeValidPolicySymbol #-}
@@ -34,7 +35,7 @@ nodeValidPolicySymbol = Ledger.scriptCurrencySymbol . nodeValidPolicy
 
 data ValidatorTypes
 instance Scripts.ValidatorTypes ValidatorTypes where
-  type DatumType ValidatorTypes = Datum
+  type DatumType ValidatorTypes = Datum Integer Integer
   type RedeemerType ValidatorTypes = Redeemer
 
 {-# INLINEABLE _inst #-}
@@ -44,23 +45,26 @@ _inst ::
   Scripts.TypedValidator ValidatorTypes
 _inst mapInstance pointerCS =
   Scripts.mkTypedValidator @ValidatorTypes
-    ( $$(PlutusTx.compile [||mkValidator||])
+    ( $$(PlutusTx.compile [||mkValidator @Integer @Integer||])
         `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
         `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
     )
     $$(PlutusTx.compile [||wrap||])
   where
-    wrap = Scripts.wrapValidator @Datum @Redeemer
+    wrap = Scripts.wrapValidator @(Datum Integer Integer) @Redeemer
 
 --
 {-# INLINEABLE inst #-}
 inst :: MapInstance -> Scripts.TypedValidator ValidatorTypes
 inst mapInstance = _inst mapInstance (PointerCS $ nodeValidPolicySymbol mapInstance)
 
-{-# INLINEABLE validator #-}
-validator :: MapInstance -> Ledger.Validator
-validator mapInstance = Scripts.validatorScript $ inst mapInstance
+data Integer2IntegerMap
 
-{-# INLINEABLE address #-}
-address :: MapInstance -> Ledger.Address
-address mapInstance = Ledger.scriptAddress $ validator mapInstance
+instance MapTerms' Integer2IntegerMap where
+  type ValidatorTypes' Integer2IntegerMap = ValidatorTypes
+  type K' Integer2IntegerMap = Integer
+  type V' Integer2IntegerMap = Integer
+  nodeValidPolicy' = nodeValidPolicy
+  inst' = inst
+
+instance MapTerms Integer2IntegerMap

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -11,8 +12,6 @@ module ArdanaDollar.Map.Types (
   Datum (..),
   Redeemer (..),
   TokenRedeemer (..),
-  Key,
-  Value,
 ) where
 
 import PlutusTx qualified
@@ -22,9 +21,6 @@ import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger qualified
 import Prelude qualified as Haskell
-
-type Key = Integer
-type Value = Integer
 
 newtype MapInstance = MapInstance {unMapInstance :: Ledger.AssetClass}
   deriving stock (Haskell.Show, Generic)
@@ -40,9 +36,9 @@ newtype Map = Map
   { map'head :: Maybe Pointer
   }
 
-data Node = Node
-  { node'key :: Key
-  , node'value :: Value
+data Node k v = Node
+  { node'key :: k
+  , node'value :: v
   , node'next :: Maybe Pointer
   }
 
@@ -50,7 +46,7 @@ instance Eq Pointer where
   {-# INLINEABLE (==) #-}
   x == y = unPointer x == unPointer y
 
-instance Eq Node where
+instance (Eq k, Eq v) => Eq (Node k v) where
   {-# INLINEABLE (==) #-}
   x == y =
     node'key x == node'key y
@@ -61,14 +57,14 @@ instance Eq Map where
   {-# INLINEABLE (==) #-}
   x == y = map'head x == map'head y
 
-data Datum = MapDatum Map | NodeDatum Node
+data Datum k v = MapDatum Map | NodeDatum (Node k v)
 data Redeemer = Use | ListOp
 
-data TokenRedeemer
-  = AddToEmptyMap Key
-  | AddSmallest Key Ledger.TxOutRef
-  | AddInTheMiddle Key Ledger.TxOutRef Ledger.TxOutRef
-  | AddGreatest Key Ledger.TxOutRef
+data TokenRedeemer k
+  = AddToEmptyMap k
+  | AddSmallest k Ledger.TxOutRef
+  | AddInTheMiddle k Ledger.TxOutRef Ledger.TxOutRef
+  | AddGreatest k Ledger.TxOutRef
   | RemoveFromOneElementMap Ledger.TxOutRef
   | RemoveSmallest Ledger.TxOutRef Ledger.TxOutRef
   | RemoveInTheMiddle Ledger.TxOutRef Ledger.TxOutRef Ledger.TxOutRef
@@ -77,7 +73,9 @@ data TokenRedeemer
 PlutusTx.makeLift ''PointerCS
 PlutusTx.makeLift ''MapInstance
 
+PlutusTx.makeIsDataIndexed ''MapInstance [('MapInstance, 0)]
 PlutusTx.makeIsDataIndexed ''Pointer [('Pointer, 0)]
+
 PlutusTx.makeIsDataIndexed ''Map [('Map, 0)]
 PlutusTx.makeIsDataIndexed ''Node [('Node, 0)]
 PlutusTx.makeIsDataIndexed

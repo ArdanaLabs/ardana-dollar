@@ -7,15 +7,16 @@ import Options.Applicative
 import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
 
-import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
-import Test.ArdanaDollar.DanaStakePoolTest
+-- import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
+-- import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.MapTest
-import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
-import Test.ArdanaDollar.Utils (vaultUnitTests)
-import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
-import Test.ContractModel.Vault qualified as VaultModel (contractTests)
-import Test.Roundtrips.BuiltinData (builtinDataRoundtripTests)
-import Test.Roundtrips.JSON (jsonRoundtripTests)
+
+-- import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
+-- import Test.ArdanaDollar.Utils (vaultUnitTests)
+-- import Test.ContractModel.Buffer qualified as BufferModel (contractTests)
+-- import Test.ContractModel.Vault qualified as VaultModel (contractTests)
+-- import Test.Roundtrips.BuiltinData (builtinDataRoundtripTests)
+-- import Test.Roundtrips.JSON (jsonRoundtripTests)
 import Test.Tasty (
   askOption,
   defaultIngredients,
@@ -35,18 +36,18 @@ main = do
         defaultIngredients
 
   defaultMainWithIngredients ings $
-    askOption $ \(ContractMaxSuccess cms) ->
+    askOption $ \(ContractMaxSuccess _) ->
       testGroup
         "tests"
-        [ vaultUnitTests
-        , bufferTraceTests
-        , danaStakePoolTests
-        , treasuryTraceTests
-        , jsonRoundtripTests
-        , builtinDataRoundtripTests
-        , BufferModel.contractTests cms
-        , VaultModel.contractTests cms
-        , mapTests
+        [ -- [ vaultUnitTests
+          -- , bufferTraceTests
+          -- , danaStakePoolTests
+          -- , treasuryTraceTests
+          -- , jsonRoundtripTests
+          -- , builtinDataRoundtripTests
+          -- , BufferModel.contractTests cms
+          -- , VaultModel.contractTests cms
+          mapTests
         ]
 
 newtype ContractMaxSuccess = ContractMaxSuccess Int

@@ -122,6 +122,7 @@ library
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
     ArdanaDollar.Map.Types
+    ArdanaDollar.Map.MapTerms
     ArdanaDollar.Map.Utils
     ArdanaDollar.Map.Validators
     ArdanaDollar.Map.ValidatorsTH
