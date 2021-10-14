@@ -7,9 +7,16 @@ module Proper.Plutus (
   toTestValidator,
 ) where
 
+import Control.Monad (
+  join,
+ )
 import Data.Kind (
   Type,
  )
+import Data.Set (
+  Set,
+ )
+import Data.Set qualified as Set
 import Data.String (
   fromString,
  )
@@ -109,9 +116,9 @@ import Prelude (
   (.),
   (<$>),
   (<>),
+  (==),
   (>>),
   (>>=),
-  (==),
  )
 
 defaultValidator :: Validator
@@ -145,19 +152,19 @@ class Proper model where
   hasProperties ::
     IsProperty (Property model) =>
     Model model ->
-    [Property model]
-  hasProperties x = filter (hasProperty x) [minBound .. maxBound]
+    Set (Property model)
+  hasProperties x = Set.fromList $ filter (hasProperty x) [minBound .. maxBound]
 
   -- properties may be in a positive or negative context
   -- by default all properties are negative and should cause a failure
   shouldCauseFailure :: Property model -> Bool
   shouldCauseFailure _ = True
 
-  expect :: [Property model] -> Result
-  expect p = if or (shouldCauseFailure <$> p) then Fail else Pass
+  expect :: Set (Property model) -> Result
+  expect p = if or (shouldCauseFailure <$> Set.toList p) then Fail else Pass
 
   -- generate a model that satisfies specified properties
-  genModel :: MonadGen m => [Property model] -> m (Model model)
+  genModel :: MonadGen m => Set (Property model) -> m (Model model)
 
   -- genProperties has a sensible default but some properties may be mutually exclusive
   -- so this can be overridden
@@ -165,8 +172,16 @@ class Proper model where
     MonadGen m =>
     IsProperty (Property model) =>
     model ->
-    m [Property model]
-  genProperties _ = Gen.subsequence [minBound .. maxBound]
+    m (Set (Property model))
+  genProperties _ = do
+    includeImplications . Set.fromList <$> Gen.subsequence [minBound .. maxBound]
+
+  -- some properties imply others
+  implications :: Property model -> [Property model]
+  implications _ = []
+
+  includeImplications :: IsProperty (Property model) => Set (Property model) -> Set (Property model)
+  includeImplications s = Set.fromList $ join $ Set.toList s : (implications <$> Set.toList s)
 
   -- to test a validator specify how to build one from the model
   -- a default is provided to enable construction of the model before the validator is written
@@ -297,16 +312,16 @@ class Proper model where
           (Pass, Just "Pass") -> success
           (Pass, Just t) ->
             if t == "Fail"
-               then failWithFootnote unexpectedFailure
-               else case Text.stripPrefix "Parse failed: " t of
-                 Nothing -> failWithFootnote $ internalError t
-                 Just t' -> failWithFootnote $ noParse t'
+              then failWithFootnote unexpectedFailure
+              else case Text.stripPrefix "Parse failed: " t of
+                Nothing -> failWithFootnote $ internalError t
+                Just t' -> failWithFootnote $ noParse t'
           (Fail, Just t) ->
             if t == "Pass"
-               then failWithFootnote unexpectedSuccess
-               else case Text.stripPrefix "Parse failed: " t of
-                 Nothing -> failWithFootnote $ internalError t
-                 Just _ -> success
+              then failWithFootnote unexpectedSuccess
+              else case Text.stripPrefix "Parse failed: " t of
+                Nothing -> failWithFootnote $ internalError t
+                Just _ -> success
     where
       failWithFootnote :: MonadTest m => String -> m ()
       failWithFootnote s = footnote s >> failure
@@ -368,7 +383,7 @@ class Proper model where
   selfTestGivenProperties ::
     IsProperty (Property model) =>
     Show (Model model) =>
-    [Property model] ->
+    Set (Property model) ->
     Hedgehog.Property
   selfTestGivenProperties properties' =
     property $ do
@@ -384,10 +399,10 @@ class Proper model where
   selfTestGroup model =
     Group (fromString $ show model) $
       [ (fromString "selfTestRandomProperties", selfTestAll model)
-      , (fromString "selfTestNoProperties", selfTestGivenProperties ([] :: [Property model]))
+      , (fromString "selfTestNoProperties", selfTestGivenProperties (Set.empty :: Set (Property model)))
       ]
         <> [ ( fromString $ "selfTestSingleProperty" <> "_" <> show property'
-             , selfTestGivenProperties [property']
+             , selfTestGivenProperties $ includeImplications $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
            ]
@@ -406,7 +421,7 @@ class Proper model where
   validatorTestGivenProperties ::
     IsProperty (Property model) =>
     Show (Model model) =>
-    [Property model] ->
+    Set (Property model) ->
     Hedgehog.Property
   validatorTestGivenProperties properties' =
     property $ do
@@ -422,10 +437,10 @@ class Proper model where
   validatorTestGroup model =
     Group (fromString $ show model) $
       [ (fromString "validatorTestRandomProperties", validatorTestAll model)
-      , (fromString "validatorTestNullProperties", validatorTestGivenProperties ([] :: [Property model]))
+      , (fromString "validatorTestNullProperties", validatorTestGivenProperties (Set.empty :: Set (Property model)))
       ]
         <> [ ( fromString $ "validatorTestSingleProperty" <> "_" <> show property'
-             , validatorTestGivenProperties [property']
+             , validatorTestGivenProperties $ includeImplications $ Set.singleton property'
              )
            | property' <- ([minBound .. maxBound] :: [Property model])
            ]

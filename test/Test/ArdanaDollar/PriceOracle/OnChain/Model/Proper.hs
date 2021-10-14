@@ -17,6 +17,7 @@ import Control.Monad.Trans.Reader (
 import Data.Kind (
   Type,
  )
+import Data.Set qualified as Set
 import Hedgehog (
   MonadGen,
   checkParallel,
@@ -74,7 +75,7 @@ import Wallet.Emulator.Wallet (
  )
 import Prelude (
   Bool (..),
-  Bounded,
+  Bounded (..),
   Enum,
   Eq,
   IO,
@@ -124,7 +125,7 @@ data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer
 
 data StateUTXOParams = StateUTXOParams
   { stateTokenValue :: Value
-  , stateDatumValue :: TestDatumParameters
+  , stateDatumValue :: Maybe TestDatumParameters
   }
   deriving (Show)
 
@@ -155,11 +156,19 @@ instance Proper PriceOracleModel where
     | OutputDatumNotSignedByOwner
     | TransactionNotSignedByOwner
     | StateTokenNotReturned
+    | HasIncorrectInputDatum
+    | HasIncorrectOutputDatum
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
   hasProperty = flip hasProperty'
 
-  genModel = genModel'
+  implications HasIncorrectOutputDatum =
+    [ OutputDatumTimestampNotInRange
+    , OutputDatumNotSignedByOwner
+    ]
+  implications _ = []
+
+  genModel = genModel' . Set.toList
 
   validator TestParameters {..} = mkTestValidator params
     where
@@ -188,20 +197,21 @@ instance Proper PriceOracleModel where
   hasInputData TestParameters {..} =
     [
       ( stateTokenValue inputParams
-      , toBuiltinData $ modelDatum $ stateDatumValue inputParams
+      , modelDatum $ stateDatumValue inputParams
       )
     ]
 
   hasOutputData TestParameters {..} =
     [
       ( stateTokenValue inputParams
-      , toBuiltinData $ modelDatum $ stateDatumValue outputParams
+      , modelDatum $ stateDatumValue outputParams
       )
     ]
 
-modelDatum :: TestDatumParameters -> SignedMessage PriceTracking
-modelDatum TestDatumParameters {..} =
-  signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (POSIXTime timeStamp)) signedByPrivK
+modelDatum :: Maybe TestDatumParameters -> BuiltinData
+modelDatum Nothing = toBuiltinData ()
+modelDatum (Just TestDatumParameters {..}) =
+  toBuiltinData $ signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (POSIXTime timeStamp)) signedByPrivK
   where
     signedByPrivK :: PrivateKey
     signedByPrivK = lookupPrivateKey signedByWallet
@@ -229,13 +239,16 @@ hasProperty' RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
 hasProperty' OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
 hasProperty' TransactionNotSignedByOwner = txNotSignedByOwner
 hasProperty' StateTokenNotReturned = stateTokenNotReturned
+hasProperty' HasIncorrectInputDatum = hasIncorrectInputDatum
+hasProperty' HasIncorrectOutputDatum = hasIncorrectOutputDatum
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
 outputDatumTimestampNotInRange :: ModelProperty
 outputDatumTimestampNotInRange TestParameters {..} =
-  let so = stateDatumValue outputParams
-   in timeStamp so < timeRangeLowerBound || timeRangeUpperBound < timeStamp so
+  case stateDatumValue outputParams of
+    Nothing -> True
+    Just so -> timeStamp so < timeRangeLowerBound || timeRangeUpperBound < timeStamp so
 
 rangeNotWithinSizeLimit :: ModelProperty
 rangeNotWithinSizeLimit TestParameters {..} =
@@ -244,8 +257,9 @@ rangeNotWithinSizeLimit TestParameters {..} =
 
 outputDatumNotSignedByOwner :: ModelProperty
 outputDatumNotSignedByOwner TestParameters {..} =
-  let d = stateDatumValue outputParams
-   in signedByWallet d /= ownerWallet
+  case stateDatumValue outputParams of
+    Nothing -> True
+    Just so -> signedByWallet so /= ownerWallet
 
 txNotSignedByOwner :: ModelProperty
 txNotSignedByOwner TestParameters {..} = case transactorParams of
@@ -260,6 +274,18 @@ stateTokenNotReturned TestParameters {..} =
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
       Just 1 -> False
       _ -> True
+
+hasIncorrectInputDatum :: ModelProperty
+hasIncorrectInputDatum TestParameters {..} =
+  case stateDatumValue inputParams of
+    Nothing -> True
+    _ -> False
+
+hasIncorrectOutputDatum :: ModelProperty
+hasIncorrectOutputDatum TestParameters {..} =
+  case stateDatumValue outputParams of
+    Nothing -> True
+    _ -> False
 
 -- Gen TODO move anything that is not model specific to a common lib
 ---------------------------------------------------------------------------------
@@ -398,24 +424,31 @@ genOutputDatumParameters ::
   MonadGen m =>
   Integer ->
   (Integer, Integer) ->
-  ReaderT [Property PriceOracleModel] m TestDatumParameters
+  ReaderT [Property PriceOracleModel] m (Maybe TestDatumParameters)
 genOutputDatumParameters w ts = do
   properties' <- ask
-  walletIdx <-
-    if OutputDatumNotSignedByOwner `elem` properties'
-      then genWalletIdxOtherThan w
-      else pure w
-  t <- genOutputTimeStamp ts
-  pure $ TestDatumParameters walletIdx t
+  if HasIncorrectOutputDatum `elem` properties'
+    then pure Nothing
+    else do
+      walletIdx <-
+        if OutputDatumNotSignedByOwner `elem` properties'
+          then genWalletIdxOtherThan w
+          else pure w
+      t <- genOutputTimeStamp ts
+      pure $ Just $ TestDatumParameters walletIdx t
 
 genInputDatumParameters ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Property PriceOracleModel] m TestDatumParameters
+  ReaderT [Property PriceOracleModel] m (Maybe TestDatumParameters)
 genInputDatumParameters = do
-  walletIdx <- genKnownWalletIdx
-  t <- genInputTimeStamp
-  pure $ TestDatumParameters walletIdx t
+  properties' <- ask
+  if HasIncorrectInputDatum `elem` properties'
+    then pure Nothing
+    else do
+      walletIdx <- genKnownWalletIdx
+      t <- genInputTimeStamp
+      pure $ Just $ TestDatumParameters walletIdx t
 
 genStateTokenCurrencySymbol ::
   forall (m :: Type -> Type).
