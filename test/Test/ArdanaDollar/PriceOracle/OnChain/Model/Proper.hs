@@ -103,10 +103,10 @@ mkTestValidator params =
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ selfTestGroup PriceOracleModel 3
-  void $ checkParallel $ validatorTestGroup PriceOracleModel 1
+  void $ checkParallel $ selfTestGroup Model 3
+  void $ checkParallel $ validatorTestGroup Model 1
 
-data PriceOracleModel = PriceOracleModel deriving (Show)
+data PriceOracleModel = Model deriving (Show)
 
 data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Value
   deriving (Show)
@@ -126,7 +126,7 @@ data TestDatumParameters = TestDatumParameters
 instance IsProperty (Property PriceOracleModel)
 
 instance Proper PriceOracleModel where
-  data Model PriceOracleModel = TestParameters
+  data Model PriceOracleModel = PriceOracleModel
     { stateNFTCurrency :: (CurrencySymbol, TokenName)
     , timeRangeLowerBound :: Integer
     , timeRangeUpperBound :: Integer
@@ -160,7 +160,7 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
-  validator TestParameters {..} = mkTestValidator params
+  validator PriceOracleModel {..} = mkTestValidator params
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
@@ -171,12 +171,12 @@ instance Proper PriceOracleModel where
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
 
-  modelTimeRange TestParameters {..} =
+  modelTimeRange PriceOracleModel {..} =
     Interval
       (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
       (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
 
-  modelTxSignatories TestParameters {..} =
+  modelTxSignatories PriceOracleModel {..} =
     case transactorParams of
       NoSigner -> []
       JustSignedBy signer -> [go signer]
@@ -184,14 +184,14 @@ instance Proper PriceOracleModel where
     where
       go = pubKeyHash . walletPubKey . knownWallet
 
-  modelInputData TestParameters {..} =
+  modelInputData PriceOracleModel {..} =
     [
       ( stateTokenValue inputParams
       , modelDatum' $ stateDatumValue inputParams
       )
     ]
 
-  modelOutputData TestParameters {..} =
+  modelOutputData PriceOracleModel {..} =
     [
       ( stateTokenValue inputParams
       , modelDatum' $ stateDatumValue outputParams
@@ -235,30 +235,30 @@ satisfiesProperty' HasIncorrectOutputDatum = hasIncorrectOutputDatum
 type ModelProperty = Model PriceOracleModel -> Bool
 
 outputDatumTimestampNotInRange :: ModelProperty
-outputDatumTimestampNotInRange TestParameters {..} =
+outputDatumTimestampNotInRange PriceOracleModel {..} =
   case stateDatumValue outputParams of
     Nothing -> True
     Just so -> timeStamp so < timeRangeLowerBound || timeRangeUpperBound < timeStamp so
 
 rangeNotWithinSizeLimit :: ModelProperty
-rangeNotWithinSizeLimit TestParameters {..} =
+rangeNotWithinSizeLimit PriceOracleModel {..} =
   let rangeLen = timeRangeUpperBound - timeRangeLowerBound
    in rangeLen < 0 || 10000 < rangeLen
 
 outputDatumNotSignedByOwner :: ModelProperty
-outputDatumNotSignedByOwner TestParameters {..} =
+outputDatumNotSignedByOwner PriceOracleModel {..} =
   case stateDatumValue outputParams of
     Nothing -> True
     Just so -> signedByWallet so /= ownerWallet
 
 txNotSignedByOwner :: ModelProperty
-txNotSignedByOwner TestParameters {..} = case transactorParams of
+txNotSignedByOwner PriceOracleModel {..} = case transactorParams of
   NoSigner -> True
   JustSignedBy signer -> signer /= ownerWallet
   SignedByWithValue signer _ -> signer /= ownerWallet
 
 stateTokenNotReturned :: ModelProperty
-stateTokenNotReturned TestParameters {..} =
+stateTokenNotReturned PriceOracleModel {..} =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
     Nothing -> True
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
@@ -266,13 +266,13 @@ stateTokenNotReturned TestParameters {..} =
       _ -> True
 
 hasIncorrectInputDatum :: ModelProperty
-hasIncorrectInputDatum TestParameters {..} =
+hasIncorrectInputDatum PriceOracleModel {..} =
   case stateDatumValue inputParams of
     Nothing -> True
     _ -> False
 
 hasIncorrectOutputDatum :: ModelProperty
-hasIncorrectOutputDatum TestParameters {..} =
+hasIncorrectOutputDatum PriceOracleModel {..} =
   case stateDatumValue outputParams of
     Nothing -> True
     _ -> False
@@ -281,13 +281,13 @@ hasIncorrectOutputDatum TestParameters {..} =
 ---------------------------------------------------------------------------------
 
 genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
-genModel' = runReaderT genTestParameters
+genModel' = runReaderT genPriceOracleModel
 
-genTestParameters ::
+genPriceOracleModel ::
   forall (m :: Type -> Type).
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (Model PriceOracleModel)
-genTestParameters = do
+genPriceOracleModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
   sp <- genSpenderParams w
@@ -295,7 +295,7 @@ genTestParameters = do
   op <- genOutputUTXOParams w (tlb, tub)
   pc <- HP.builtinByteString (Range.linear 0 6)
   pure $
-    TestParameters
+    PriceOracleModel
       { stateNFTCurrency = correctNFTCurrency --TODO include in model
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
