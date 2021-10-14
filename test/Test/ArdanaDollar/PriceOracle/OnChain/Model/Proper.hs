@@ -92,15 +92,12 @@ import Prelude (
   uncurry,
   (!!),
   ($),
-  (&&),
   (+),
   (-),
   (.),
   (/=),
-  (<=),
-  (==),
-  (>),
-  (>=),
+  (<),
+  (||),
  )
 
 mkTestValidator :: OracleValidatorParams -> Validator
@@ -137,7 +134,7 @@ data TestDatumParameters = TestDatumParameters
   }
   deriving (Show)
 
-instance IsCheck (Check PriceOracleModel)
+instance IsProperty (Property PriceOracleModel)
 
 instance Proper PriceOracleModel where
   data Model PriceOracleModel = TestParameters
@@ -152,15 +149,15 @@ instance Proper PriceOracleModel where
     }
     deriving (Show)
 
-  data Check PriceOracleModel
-    = OutputDatumTimestampInRange
-    | RangeWithinSizeLimit
-    | OutputDatumSignedByOwner
-    | TransactionSignedByOwner
-    | StateTokenReturned
+  data Property PriceOracleModel
+    = OutputDatumTimestampNotInRange
+    | RangeNotWithinSizeLimit
+    | OutputDatumNotSignedByOwner
+    | TransactionNotSignedByOwner
+    | StateTokenNotReturned
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
-  check = flip doCheck
+  hasProperty = flip doProperty
 
   genModel = genModel'
 
@@ -223,57 +220,57 @@ correctNFTCurrency = (mockCurrencySymbol, "PriceTracking")
 --correctStateTokenValue = uncurry singleton correctNFTCurrency 1
 ---------------------------------------------------------------------------------
 
--- Check
+-- Property
 ---------------------------------------------------------------------------------
 
-doCheck :: Check PriceOracleModel -> Model PriceOracleModel -> Bool
-doCheck OutputDatumTimestampInRange = outputDatumInRange
-doCheck RangeWithinSizeLimit = rangeWithinSizeLimit
-doCheck OutputDatumSignedByOwner = outputDatumSignedByOwner
-doCheck TransactionSignedByOwner = txSignedByOwner
-doCheck StateTokenReturned = stateTokenReturned
+doProperty :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
+doProperty OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
+doProperty RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
+doProperty OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
+doProperty TransactionNotSignedByOwner = txNotSignedByOwner
+doProperty StateTokenNotReturned = stateTokenNotReturned
 
-type ModelCheck = Model PriceOracleModel -> Bool
+type ModelProperty = Model PriceOracleModel -> Bool
 
-outputDatumInRange :: ModelCheck
-outputDatumInRange TestParameters {..} =
+outputDatumTimestampNotInRange :: ModelProperty
+outputDatumTimestampNotInRange TestParameters {..} =
   let so = stateDatumValue outputParams
-   in timeStamp so >= timeRangeLowerBound && timeStamp so <= timeRangeUpperBound
+   in timeStamp so < timeRangeLowerBound || timeRangeUpperBound < timeStamp so
 
-rangeWithinSizeLimit :: ModelCheck
-rangeWithinSizeLimit TestParameters {..} =
+rangeNotWithinSizeLimit :: ModelProperty
+rangeNotWithinSizeLimit TestParameters {..} =
   let rangeLen = timeRangeUpperBound - timeRangeLowerBound
-   in rangeLen > 0 && rangeLen <= 10000
+   in rangeLen < 0 || 10000 < rangeLen
 
-outputDatumSignedByOwner :: ModelCheck
-outputDatumSignedByOwner TestParameters {..} =
+outputDatumNotSignedByOwner :: ModelProperty
+outputDatumNotSignedByOwner TestParameters {..} =
   let d = stateDatumValue outputParams
-   in signedByWallet d == ownerWallet
+   in signedByWallet d /= ownerWallet
 
-txSignedByOwner :: ModelCheck
-txSignedByOwner TestParameters {..} = case transactorParams of
-  NoSigner -> False
-  JustSignedBy signer -> signer == ownerWallet
-  SignedByWithValue signer _ -> signer == ownerWallet
+txNotSignedByOwner :: ModelProperty
+txNotSignedByOwner TestParameters {..} = case transactorParams of
+  NoSigner -> True
+  JustSignedBy signer -> signer /= ownerWallet
+  SignedByWithValue signer _ -> signer /= ownerWallet
 
-stateTokenReturned :: ModelCheck
-stateTokenReturned TestParameters {..} =
+stateTokenNotReturned :: ModelProperty
+stateTokenNotReturned TestParameters {..} =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
-    Nothing -> False
+    Nothing -> True
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
-      Just 1 -> True
-      _ -> False
+      Just 1 -> False
+      _ -> True
 
 -- Gen TODO move anything that is not model specific to a common lib
 ---------------------------------------------------------------------------------
 
-genModel' :: MonadGen m => [Check PriceOracleModel] -> m (Model PriceOracleModel)
+genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' = runReaderT genTestParameters
 
 genTestParameters ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m (Model PriceOracleModel)
+  ReaderT [Property PriceOracleModel] m (Model PriceOracleModel)
 genTestParameters = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
@@ -283,7 +280,7 @@ genTestParameters = do
   pc <- HP.builtinByteString (Range.linear 0 6)
   pure $
     TestParameters
-      { stateNFTCurrency = correctNFTCurrency --TODO generate
+      { stateNFTCurrency = correctNFTCurrency --TODO include in model
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
       , ownerWallet = w
@@ -293,15 +290,16 @@ genTestParameters = do
       , peggedCurrency = pc
       }
 
--- if if if if if lol TODO read some Hedgehog for a nicer generator ideas
+-- TODO read some Hedgehog for a nicer generator ideas
+-- these nested ifs are not great but they do the job
 genSpenderParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
   Integer ->
-  ReaderT [Check PriceOracleModel] m SpenderParams
+  ReaderT [Property PriceOracleModel] m SpenderParams
 genSpenderParams w = do
   violations <- ask
-  if TransactionSignedByOwner `elem` violations
+  if TransactionNotSignedByOwner `elem` violations
     then do
       b <- Gen.bool
       if b
@@ -327,7 +325,7 @@ genSpenderParams w = do
 genInputUTXOParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m StateUTXOParams
+  ReaderT [Property PriceOracleModel] m StateUTXOParams
 genInputUTXOParams = do
   stok <- genStateToken
   d <- genInputDatumParameters
@@ -338,7 +336,7 @@ genOutputUTXOParams ::
   MonadGen m =>
   Integer ->
   (Integer, Integer) ->
-  ReaderT [Check PriceOracleModel] m StateUTXOParams
+  ReaderT [Property PriceOracleModel] m StateUTXOParams
 genOutputUTXOParams w ts = do
   stok <- genStateToken
   d <- genOutputDatumParameters w ts
@@ -361,10 +359,10 @@ genOutputTimeStamp ::
   forall (m :: Type -> Type).
   MonadGen m =>
   (Integer, Integer) ->
-  ReaderT [Check PriceOracleModel] m Integer
+  ReaderT [Property PriceOracleModel] m Integer
 genOutputTimeStamp ts = do
   violations <- ask
-  if OutputDatumTimestampInRange `elem` violations
+  if OutputDatumTimestampNotInRange `elem` violations
     then do
       b <- Gen.bool
       if b
@@ -376,16 +374,16 @@ genOutputTimeStamp ts = do
 genInputTimeStamp ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m Integer
+  ReaderT [Property PriceOracleModel] m Integer
 genInputTimeStamp = Gen.integral (Range.linear 0 100_000)
 
 genTimeRange ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m (Integer, Integer)
+  ReaderT [Property PriceOracleModel] m (Integer, Integer)
 genTimeRange = do
   violations <- ask
-  if RangeWithinSizeLimit `elem` violations
+  if RangeNotWithinSizeLimit `elem` violations
     then do
       t1 <- Gen.integral (Range.linear 1 100_000)
       t2 <- Gen.integral (Range.linear (t1 + 10_1000) (t1 + 200_000))
@@ -400,11 +398,11 @@ genOutputDatumParameters ::
   MonadGen m =>
   Integer ->
   (Integer, Integer) ->
-  ReaderT [Check PriceOracleModel] m TestDatumParameters
+  ReaderT [Property PriceOracleModel] m TestDatumParameters
 genOutputDatumParameters w ts = do
   violations <- ask
   walletIdx <-
-    if OutputDatumSignedByOwner `elem` violations
+    if OutputDatumNotSignedByOwner `elem` violations
       then genWalletIdxOtherThan w
       else pure w
   t <- genOutputTimeStamp ts
@@ -413,7 +411,7 @@ genOutputDatumParameters w ts = do
 genInputDatumParameters ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m TestDatumParameters
+  ReaderT [Property PriceOracleModel] m TestDatumParameters
 genInputDatumParameters = do
   walletIdx <- genKnownWalletIdx
   t <- genInputTimeStamp
@@ -422,30 +420,31 @@ genInputDatumParameters = do
 genStateTokenCurrencySymbol ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m CurrencySymbol
+  ReaderT [Property PriceOracleModel] m CurrencySymbol
 genStateTokenCurrencySymbol = do
   violations <- ask
-  if StateTokenReturned `elem` violations
+  if StateTokenNotReturned `elem` violations
     then HP.currencySymbol
     else pure $ fst correctNFTCurrency
 
 genStateTokenTokenName ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m TokenName
+  ReaderT [Property PriceOracleModel] m TokenName
 genStateTokenTokenName = do
   violations <- ask
-  if StateTokenReturned `elem` violations
+  --TODO disambiguate. StateTokenNotReturned should be distinct from StateTokenCurrencyCorrect
+  if StateTokenNotReturned `elem` violations
     then HP.tokenName
     else pure $ snd correctNFTCurrency
 
 genStateTokenAmount ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m Integer
+  ReaderT [Property PriceOracleModel] m Integer
 genStateTokenAmount = do
   violations <- ask
-  if StateTokenReturned `elem` violations
+  if StateTokenNotReturned `elem` violations
     then do
       b <- Gen.bool
       if b
@@ -456,7 +455,7 @@ genStateTokenAmount = do
 genStateToken ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Check PriceOracleModel] m Value
+  ReaderT [Property PriceOracleModel] m Value
 genStateToken = do
   s <- genStateTokenCurrencySymbol
   n <- genStateTokenTokenName

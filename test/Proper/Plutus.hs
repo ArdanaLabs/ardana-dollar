@@ -3,7 +3,7 @@
 
 module Proper.Plutus (
   Proper (..),
-  IsCheck,
+  IsProperty,
   toTestValidator,
 ) where
 
@@ -19,7 +19,6 @@ import Hedgehog (
   Group (..),
   MonadGen,
   MonadTest,
-  Property,
   failure,
   footnote,
   footnoteShow,
@@ -28,6 +27,7 @@ import Hedgehog (
   success,
   (===),
  )
+import qualified Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Ledger (
   Datum (..),
@@ -102,10 +102,9 @@ import Prelude (
   filter,
   fmap,
   mempty,
-  not,
-  null,
   snd,
   zip,
+  or,
   ($),
   (.),
   (<$>),
@@ -126,24 +125,50 @@ defaultValidator =
       (BuiltinData -> BuiltinData -> BuiltinData -> ())
     go = toTestValidator
 
--- these things combined make a valid Check
-class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsCheck c
+-- these things combined make a valid Property
+-- perhaps this should be relaxed to allow richer property types
+class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsProperty c
+
+data Result = Pass | Fail deriving (Show)
 
 class Proper model where
   -- a model for a validator context
   data Model model :: Type
 
-  -- checks are constraints that must hold in order for the validator to validate
-  data Check model :: Type
+  -- properties are things that may be true of a model
+  data Property model :: Type
 
-  -- a model may either pass or fail a check
-  check :: Model model -> Check model -> Bool
+  -- check whether a property is satisfied
+  hasProperty :: Model model -> Property model -> Bool
 
-  -- a model can be generated that fails specified checks
-  genModel :: MonadGen m => [Check model] -> m (Model model)
+  hasProperties ::
+    IsProperty (Property model) =>
+    Model model ->
+    [Property model]
+  hasProperties x = filter (hasProperty x) [minBound .. maxBound]
 
-  -- to test a validator you must specify how to build one from the model
-  -- a default is provided to enable construction of the model up front before the validator is written
+  -- properties may be in a positive or negative context
+  -- by default all properties are negative and should cause a failure
+  shouldCauseFailure :: Property model -> Bool
+  shouldCauseFailure _ = True
+
+  expect :: [Property model] -> Result
+  expect p = if or (shouldCauseFailure <$> p) then Fail else Pass
+
+  -- generate a model that satisfies specified properties
+  genModel :: MonadGen m => [Property model] -> m (Model model)
+
+  -- genProperties has a sensible default but some properties may be mutually exclusive
+  -- so this can be overridden
+  genProperties ::
+    MonadGen m =>
+    IsProperty (Property model) =>
+    model ->
+    m [Property model]
+  genProperties _ = Gen.subsequence [minBound .. maxBound]
+
+  -- to test a validator specify how to build one from the model
+  -- a default is provided to enable construction of the model before the validator is written
   validator :: Model model -> Validator
   validator _ = defaultValidator
 
@@ -159,99 +184,9 @@ class Proper model where
   --      (BuiltinData -> BuiltinData -> BuiltinData -> ())
   --    go = toTestValidator
 
-  -- to specify a context override the default implementations in the context api to your liking
-  -- (this is below the property tests)
+  -- Context Api
 
-  -- the property tests
-  checkViolations ::
-    IsCheck (Check model) =>
-    Model model ->
-    [Check model]
-  checkViolations x = filter (not . check x) [minBound .. maxBound]
-
-  genChecks ::
-    MonadGen m =>
-    IsCheck (Check model) =>
-    model ->
-    m [Check model]
-  genChecks _ = Gen.subsequence [minBound .. maxBound]
-
-  selfTestAll ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    model ->
-    Property
-  selfTestAll m =
-    property $ do
-      violations <- forAll $ genChecks m
-      model <- forAll $ genModel violations
-      checkViolations model === violations
-
-  selfTestGivenViolations ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    [Check model] ->
-    Property
-  selfTestGivenViolations violations =
-    property $ do
-      model <- forAll $ genModel violations
-      checkViolations model === violations
-
-  selfTestGroup ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    Show model =>
-    model ->
-    Group
-  selfTestGroup model =
-    Group (fromString $ show model) $
-      [ (fromString $ "selfTestAll_" <> show model, selfTestAll model)
-      , (fromString $ "selfTestSuccesses_" <> show model, selfTestGivenViolations ([] :: [Check model]))
-      ]
-        <> [ ( fromString $ "selfTestSingleViolation_" <> show model <> "_" <> show violation
-             , selfTestGivenViolations [violation]
-             )
-           | violation <- ([minBound .. maxBound] :: [Check model])
-           ]
-
-  validatorTestAll ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    model ->
-    Property
-  validatorTestAll m =
-    property $ do
-      violations <- forAll $ genChecks m
-      model <- forAll $ genModel violations
-      reify model
-
-  validatorTestGivenViolations ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    [Check model] ->
-    Property
-  validatorTestGivenViolations violations =
-    property $ do
-      model <- forAll $ genModel violations
-      reify model
-
-  validatorTestGroup ::
-    IsCheck (Check model) =>
-    Show (Model model) =>
-    Show model =>
-    model ->
-    Group
-  validatorTestGroup model =
-    Group (fromString $ show model) $
-      [ (fromString $ "validatorTestAll_" <> show model, validatorTestAll model)
-      , (fromString $ "validatorTestSuccesses_" <> show model, validatorTestGivenViolations ([] :: [Check model]))
-      ]
-        <> [ ( fromString $ "validatorTestSingleViolation_" <> show model <> "_" <> show violation
-             , validatorTestGivenViolations [violation]
-             )
-           | violation <- ([minBound .. maxBound] :: [Check model])
-           ]
-
+  -- to specify a context override the default implementations in the context api
   -- all of this Context generation api could be improved
   -- the idea is to give lots of options for overriding while having some sensible defaults
 
@@ -341,8 +276,8 @@ class Proper model where
       Nothing -> Datum $ toBuiltinData ()
       Just (_, so) -> Datum so
 
-  reify :: Show (Model model) => IsCheck (Check model) => MonadTest t => Model model -> t ()
-  reify model =
+  reifyTest :: Show (Model model) => IsProperty (Property model) => MonadTest t => Model model -> t ()
+  reifyTest model =
     case runScript ctx val dat red of
       Left err -> footnoteShow err >> failure
       Right (_, logs) -> deliverResult model ctx logs
@@ -352,15 +287,17 @@ class Proper model where
       dat = hasDatum model
       red = hasRedeemer model
 
-  deliverResult :: Show (Model model) => IsCheck (Check model) => MonadTest m => Model model -> Context -> [Text] -> m ()
+  deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m => Model model -> Context -> [Text] -> m ()
   deliverResult p ctx logs =
-    let shouldPass = null $ checkViolations p
+    let shouldPass = expect $ hasProperties p
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
-          (False, Just "Pass") -> failWithFootnote unexpectedSuccess
-          (False, Just "Fail") -> success
-          (True, Just "Pass") -> success
-          (True, Just "Fail") -> failWithFootnote unexpectedFailure
+          (Fail, Just "Pass") -> failWithFootnote unexpectedSuccess
+          (Fail, Just "Fail") -> success
+          (Pass, Just "Pass") -> success
+          (Pass, Just "Fail") -> failWithFootnote unexpectedFailure
+          -- TODO perhaps we want to test for parse failures?
+          -- e.g. with a property like HasIncorrectDatum
           (_, Just t) -> case Text.stripPrefix "Parse failed: " t of
             Nothing -> failWithFootnote $ internalError t
             Just t' -> failWithFootnote $ noParse t'
@@ -396,7 +333,8 @@ class Proper model where
           $+$ hang "Context" 4 (ppDoc ctx)
           $+$ hang "Inputs" 4 dumpInputs
           $+$ hang "Logs" 4 dumpLogs
-          $+$ hang "Expected violations" 4 (ppDoc $ checkViolations p)
+          $+$ hang "Expected " 4 (ppDoc $ expect $ hasProperties p)
+          $+$ hang "Properties " 4 (ppDoc $ hasProperties p)
       dumpInputs :: Doc
       dumpInputs =
         "Parameters"
@@ -407,6 +345,90 @@ class Proper model where
       go (ix, line) = (int ix <> colon) <+> (text . show $ line)
       ourStyle :: Style
       ourStyle = style {lineLength = 80}
+
+
+  -- HedgeHog property tests
+  --
+  selfTestAll ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    model ->
+    Hedgehog.Property
+  selfTestAll m =
+    property $ do
+      properties' <- forAll $ genProperties m
+      model <- forAll $ genModel properties'
+      hasProperties model === properties'
+
+  selfTestGivenProperties ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    [Property model] ->
+    Hedgehog.Property
+  selfTestGivenProperties properties' =
+    property $ do
+      model <- forAll $ genModel properties'
+      hasProperties model === properties'
+
+  selfTestGroup ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    Show model =>
+    model ->
+    Group
+  selfTestGroup model =
+    Group (fromString $ show model) $
+      [ (fromString $ "selfTestAll_" <> show model, selfTestAll model)
+      , (fromString $ "selfTestSuccesses_" <> show model, selfTestGivenProperties ([] :: [Property model]))
+      ]
+        <> [ ( fromString $ "selfTestSingleViolation_" <> show model <> "_" <> show property'
+             , selfTestGivenProperties [property']
+             )
+           | property' <- ([minBound .. maxBound] :: [Property model])
+           ]
+
+  validatorTestAll ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    model ->
+    Hedgehog.Property
+  validatorTestAll m =
+    property $ do
+      properties' <- forAll $ genProperties m
+      model <- forAll $ genModel properties'
+      reifyTest model
+
+  validatorTestGivenProperties ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    [Property model] ->
+    Hedgehog.Property
+  validatorTestGivenProperties properties' =
+    property $ do
+      model <- forAll $ genModel properties'
+      reifyTest model
+
+  validatorTestGroup ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    Show model =>
+    model ->
+    Group
+  validatorTestGroup model =
+    Group (fromString $ show model) $
+      [ (fromString $ "validatorTestAll_" <> show model, validatorTestAll model)
+      , (fromString $ "validatorTestSuccesses_" <> show model, validatorTestGivenProperties ([] :: [Property model]))
+      ]
+        <> [ ( fromString $ "validatorTestSingleViolation_" <> show model <> "_" <> show property'
+             , validatorTestGivenProperties [property']
+             )
+           | property' <- ([minBound .. maxBound] :: [Property model])
+           ]
+
+
+
+
+-- helpers
 
 datumWithHash :: BuiltinData -> (DatumHash, Datum)
 datumWithHash dt = (datumHash dt', dt')
