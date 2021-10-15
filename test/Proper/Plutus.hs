@@ -53,7 +53,7 @@ import Ledger (
   Value,
   always,
   datumHash,
-  runScript,
+  evaluateScript,
  )
 import Ledger.Address (scriptHashAddress)
 import Plutus.V1.Ledger.Api (
@@ -69,7 +69,7 @@ import Plutus.V1.Ledger.Contexts (
  )
 import Plutus.V1.Ledger.Scripts (
   Context (..),
-  Validator,
+  Script,
   ValidatorHash,
  )
 import PlutusCore.Evaluation.Machine.ExBudget (ExBudget (..))
@@ -203,10 +203,10 @@ data Result = Pass | Fail deriving (Show)
 --         expect  |                  B                   \ translate
 --                 |                                       \
 --                 v          =                 eval        v
---               Result ------------- Result <----------- PlutusTest
+--               Result ------------- Result <----------- Script
 --
 -- 'A' checks consistency between the model specification and its generator.
--- 'B' (which can be written after 'A' is complete) tests the compiled validator.
+-- 'B' (which can be written after 'A' is complete) tests the compiled script.
 
 class Proper model where
   -- a model encodes the data relevant to a specification
@@ -236,7 +236,7 @@ class Proper model where
     Set (Property model)
   properties x = Set.fromList $ filter (satisfiesProperty x) [minBound .. maxBound]
 
-  -- given a set of properties we expect a validator to pass or fail
+  -- given a set of properties we expect a script to pass or fail
   expect :: Set (Property model) -> Result
   expect p = if or (shouldCauseFailure <$> Set.toList p) then Fail else Pass
 
@@ -253,8 +253,8 @@ class Proper model where
   -- defaults are provided to enable up front construction and testing of a model
   -- these can be overridden to translate a model to a Plutus Context
 
-  validator :: Model model -> Maybe Validator
-  validator _ = Nothing
+  script :: Model model -> Maybe Script
+  script _ = Nothing
 
   modelRedeemer :: Model model -> Redeemer
   modelRedeemer _ = Redeemer $ toBuiltinData ()
@@ -360,23 +360,21 @@ class Proper model where
   -- Plutus compiled code test (eval)
   -----------------------------------
 
-  runValidatorTest ::
+  runScriptTest ::
     Show (Model model) =>
     IsProperty (Property model) =>
     MonadTest t =>
     Model model ->
     t ()
-  runValidatorTest model =
-    case validator model of
-      Nothing -> footnote "validator not defined" >> failure
-      Just val -> do
-        case runScript ctx val dat red of
+  runScriptTest model =
+    case script model of
+      Nothing -> footnote "script not defined" >> failure
+      Just s -> do
+        case evaluateScript s of
           Left err -> footnoteShow err >> failure
           Right res -> deliverResult model ctx res
     where
       ctx = modelCtx model
-      dat = modelDatum model
-      red = modelRedeemer model
 
   deliverResult ::
     Show (Model model) =>
@@ -498,38 +496,38 @@ class Proper model where
         , satisfiesPropLogic logic p
         ]
 
-  validatorTestAll ::
+  scriptTestAll ::
     IsProperty (Property model) =>
     Show (Model model) =>
     model ->
     Hedgehog.Property
-  validatorTestAll m =
+  scriptTestAll m =
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
-      runValidatorTest model
+      runScriptTest model
 
-  validatorTestGivenProperties ::
+  scriptTestGivenProperties ::
     IsProperty (Property model) =>
     Show (Model model) =>
     Set (Property model) ->
     Hedgehog.Property
-  validatorTestGivenProperties properties' =
+  scriptTestGivenProperties properties' =
     property $ do
       model <- forAll $ genModel properties'
-      runValidatorTest model
+      runScriptTest model
 
-  validatorTestGroup ::
+  scriptTestGroup ::
     IsProperty (Property model) =>
     Show (Model model) =>
     Show model =>
     model ->
     Int ->
     Group
-  validatorTestGroup model l =
+  scriptTestGroup model l =
     Group (fromString $ show model) $
-      (fromString "validatorTestRandomProperties", validatorTestAll model) :
-        [ (fromString $ "validatorTestProperties " <> show p, validatorTestGivenProperties p)
+      (fromString "scriptTestRandomProperties", scriptTestAll model) :
+        [ (fromString $ "scriptTestProperties " <> show p, scriptTestGivenProperties p)
         | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
         , satisfiesPropLogic logic p
         ]

@@ -43,8 +43,13 @@ import Ledger.Oracle (
 import Plutus.V1.Ledger.Api (getValue)
 import Plutus.V1.Ledger.Contexts (ScriptContext (..))
 import Plutus.V1.Ledger.Scripts (
+  Script,
   Validator,
+  Datum,
+  Redeemer,
+  Context,
   mkValidatorScript,
+  applyValidator,
  )
 import Plutus.V1.Ledger.Value (singleton)
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
@@ -102,10 +107,13 @@ mkTestValidator params =
       (BuiltinData -> BuiltinData -> BuiltinData -> ())
     go = toTestValidator
 
+mkTestValidatorScript :: OracleValidatorParams -> Datum -> Redeemer -> Context -> Script
+mkTestValidatorScript params d r c = applyValidator c (mkTestValidator params) d r
+
 priceOracleTest :: IO ()
 priceOracleTest = do
   void $ checkParallel $ selfTestGroup Model 1
-  void $ checkParallel $ validatorTestGroup Model 1
+  void $ checkParallel $ scriptTestGroup Model 1
 
 data PriceOracleModel = Model deriving (Show)
 
@@ -158,7 +166,7 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
-  validator PriceOracleModel {..} = Just $ mkTestValidator params
+  script m@PriceOracleModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
