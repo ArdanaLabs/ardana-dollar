@@ -82,6 +82,22 @@ In the common case, there will be another parameter `Z` for controlling
 how many slots can pass before a certain token has expired. This parameter
 can also be a part of the state itself.
 
+### Clean-up
+
+Each UTXO needs a minimum amount of Ada, which would be a substantial extra
+fee if users make UTXOs that can never be cleaned-up.
+To prevent this, each UTXO with the validator for certification tokens
+will have an `Address` in the datum. The consuming transaction
+**must** have an output that sends the Ada in the UTXO to this `Address`.
+
+In addition, if **and only if** the consuming input has a redeemer
+which can be decoded as the state the token represents, then there
+are no restrictions on how many continuing UTXOs there must be
+**if the token has expired**.
+
+This means that after the token has expired, you can retrieve the Ada
+locked by the validator without creating more UTXOs with more locked Ada.
+
 ### Off-chain usage
 
 In the off-chain code, when we need to supply a token certifying

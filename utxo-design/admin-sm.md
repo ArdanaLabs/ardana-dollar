@@ -77,6 +77,7 @@ Purpose: allows a trusted automated bot to refresh the admin state without updat
 ### InitiateUpgradeAct
 
 FIXME: Is this needed when we have `UpdateAdminStateAct`?
+FIXME: Will likely need to change.
 
 Purpose: Triggers Upgrade procedure by securely sending an UpgradeContractToken to the Treasury.
 
