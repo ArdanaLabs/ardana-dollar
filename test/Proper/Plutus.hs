@@ -1,6 +1,7 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies    #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Proper.Plutus (
   Proper (..),
   IsProperty,
@@ -56,9 +57,10 @@ import Ledger (
  )
 import Ledger.Address (scriptHashAddress)
 import Plutus.V1.Ledger.Api (
+  DCert,
   FromData (fromBuiltinData),
   POSIXTimeRange,
-  DCert,
+  StakingCredential,
  )
 import Plutus.V1.Ledger.Contexts (
   ScriptContext (..),
@@ -71,6 +73,8 @@ import Plutus.V1.Ledger.Scripts (
   ValidatorHash,
   mkValidatorScript,
  )
+import PlutusCore.Evaluation.Machine.ExBudget (ExBudget (..))
+import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
 import PlutusTx (
   applyCode,
   compile,
@@ -107,6 +111,7 @@ import Prelude (
   Enum,
   Eq,
   Int,
+  Integer,
   Maybe (..),
   Ord,
   Show (..),
@@ -133,8 +138,6 @@ import Prelude (
   (>>=),
   (||),
  )
-import PlutusCore.Evaluation.Machine.ExBudget ( ExBudget (..) )
-import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
 
 --------------------------------------------------------------------------------
 -- Proper.Plutus encourages you to define a model before writing any Plutus
@@ -143,15 +146,15 @@ import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
 -- this is a validator that always fails
 defaultValidator :: Validator
 defaultValidator =
-    mkValidatorScript $
-      $$(compile [||go||])
-        `applyCode` $$(compile [||\_ _ _ -> False||])
-    where
-      {-# INLINEABLE go #-}
-      go ::
-        (() -> () -> ScriptContext -> Bool) ->
-        (BuiltinData -> BuiltinData -> BuiltinData -> ())
-      go = toTestValidator
+  mkValidatorScript $
+    $$(compile [||go||])
+      `applyCode` $$(compile [||\_ _ _ -> False||])
+  where
+    {-# INLINEABLE go #-}
+    go ::
+      (() -> () -> ScriptContext -> Bool) ->
+      (BuiltinData -> BuiltinData -> BuiltinData -> ())
+    go = toTestValidator
 
 --------------------------------------------------------------------------------
 -- Propositional logic over model properties defines valid property sets.
@@ -204,7 +207,6 @@ satisfiesPropLogic l = runReader $ go l
       ib <- go b
       pure $ (not ia && not ib) || (ia && ib)
 
-
 data Result = Pass | Fail deriving (Show)
 
 -- Proper is a type family over a Model and its Properties
@@ -213,10 +215,10 @@ data Result = Pass | Fail deriving (Show)
 -- PropLogic (Property model)        Set (Property model)
 --            \                    /       ^
 --             \                  /         \
---              \ gen          = /           \ satisfies
+--              \ genP         = /           \ satisfies
 --               \              /      A      \
 --                \            /               \
---                 v          /      gen        \
+--                 v          /      genM       \
 --          Set (Property model) -------------> Model model
 --                 |                                    \
 --                 |                                     \
@@ -229,7 +231,6 @@ data Result = Pass | Fail deriving (Show)
 -- 'B' (which can be written after 'A' is complete) tests the compiled validator.
 
 class Proper model where
-
   -- a model encodes the data relevant to a specification
   data Model model :: Type
 
@@ -261,7 +262,7 @@ class Proper model where
   expect :: Set (Property model) -> Result
   expect p = if or (shouldCauseFailure <$> Set.toList p) then Fail else Pass
 
-  -- generates a set of properties
+  -- generates a set of properties (gen)
   genProperties ::
     MonadGen m =>
     GenBase m ~ Identity =>
@@ -270,7 +271,7 @@ class Proper model where
     m (Set (Property model))
   genProperties _ = genGivenPropLogic logic
 
-  -- Context Api
+  -- Context Api (translate)
   -- defaults are provided to enable up front construction and testing of a model
   -- these can be overridden to translate a model to a Plutus Context
 
@@ -291,10 +292,7 @@ class Proper model where
     where
       context :: ScriptContext
       context =
-        ScriptContext go
-          . Spending
-          . TxOutRef (modelTxId model)
-          $ 0
+        ScriptContext go (modelScriptPurpose model)
       go :: TxInfo
       go =
         let baseInfo = modelBaseTxInfo model
@@ -305,54 +303,63 @@ class Proper model where
               , txInfoData = inData <> txInfoData baseInfo
               }
 
+  modelScriptPurpose :: Model model -> ScriptPurpose
+  modelScriptPurpose model = Spending . TxOutRef (modelTxId model) $ 0
+
   modelBaseTxInfo :: Model model -> TxInfo
   modelBaseTxInfo model =
     TxInfo
-      { txInfoInputs = modelScriptTxInInfo model <> modelSpenderTxInInfo model
-      , txInfoOutputs = modelTxOuts model
-      , txInfoFee = modelFee model
-      , txInfoMint = mempty
-      , txInfoDCert = modelTxInfoDCert model
-      , txInfoWdrl = []
-      , txInfoValidRange = modelTimeRange model
+      { txInfoInputs = modelTxInputs model
+      , txInfoOutputs = modelTxOutputs model
+      , txInfoFee = modelTxFee model
+      , txInfoMint = modelTxMint model
+      , txInfoDCert = modelTxDCert model
+      , txInfoWdrl = modelTxWdrl model
+      , txInfoValidRange = modelTxValidRange model
       , txInfoSignatories = modelTxSignatories model
-      , txInfoData = datumWithHash <$> (snd <$> modelInputData model) <> (snd <$> modelOutputData model)
-      , txInfoId = modelTxInfoId model
+      , txInfoData = modelTxData model
+      , txInfoId = modelTxId model
       }
 
+  modelTxInputs :: Model model -> [TxInInfo]
+  modelTxInputs model = modelScriptTxInInfo model <> modelSpenderTxInInfo model
+
+  modelTxOutputs :: Model model -> [TxOut]
+  modelTxOutputs model =
+    (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
+
+  modelTxFee :: Model model -> Value
+  modelTxFee _ = mempty
+
+  modelTxMint :: Model model -> Value
+  modelTxMint _ = mempty
+
+  modelTxDCert :: Model model -> [DCert]
+  modelTxDCert _ = []
+
+  modelTxWdrl :: Model model -> [(StakingCredential, Integer)]
+  modelTxWdrl _ = []
+
+  modelTxValidRange :: Model model -> POSIXTimeRange
+  modelTxValidRange _ = always
+
+  modelTxSignatories :: Model model -> [PubKeyHash]
+  modelTxSignatories _ = []
+
+  modelTxData :: Model model -> [(DatumHash, Datum)]
+  modelTxData model = datumWithHash <$> (snd <$> modelInputData model) <> (snd <$> modelOutputData model)
+
   modelTxId :: Model model -> TxId
-  modelTxId _ = "abcd"
+  modelTxId _ = TxId "testTx"
 
   modelValidatorHash :: Model model -> ValidatorHash
   modelValidatorHash _ = "90ab"
-
-  modelSpendingValue :: Model model -> Value
-  modelSpendingValue _ = mempty
-
-  modelTxInfoId :: Model model -> TxId
-  modelTxInfoId _ = TxId "testTx"
-
-  modelFee :: Model model -> Value
-  modelFee _ = mempty
 
   modelInputData :: Model model -> [(Value, BuiltinData)]
   modelInputData _ = []
 
   modelOutputData :: Model model -> [(Value, BuiltinData)]
   modelOutputData _ = []
-
-  modelTxSignatories :: Model model -> [PubKeyHash]
-  modelTxSignatories _ = []
-
-  modelTimeRange :: Model model -> POSIXTimeRange
-  modelTimeRange _ = always
-
-  modelTxInfoDCert :: Model model -> [DCert]
-  modelTxInfoDCert _ = []
-
-  modelTxOuts :: Model model -> [TxOut]
-  modelTxOuts model =
-    (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
 
   modelSpenderTxInInfo :: Model model -> [TxInInfo]
   modelSpenderTxInInfo _ = []
@@ -372,23 +379,34 @@ class Proper model where
   modelMemoryBudget :: Model model -> ExMemory
   modelMemoryBudget _ = ExMemory maxBound
 
-  runValidatorTest :: Show (Model model)
-                 => IsProperty (Property model)
-                 =>  MonadTest t
-                 => Model model -> t ()
+  -- Plutus compiled code test (eval)
+  -----------------------------------
+
+  runValidatorTest ::
+    Show (Model model) =>
+    IsProperty (Property model) =>
+    MonadTest t =>
+    Model model ->
+    t ()
   runValidatorTest model =
     case runScript ctx val dat red of
       Left err -> footnoteShow err >> failure
       Right res -> deliverResult model ctx res
-   where
+    where
       val = validator model
       ctx = modelCtx model
       dat = modelDatum model
       red = modelRedeemer model
 
-  deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m
-                => Model model -> Context -> (ExBudget,[Text]) -> m ()
-  deliverResult model ctx (cost,logs) =
+  deliverResult ::
+    Show (Model model) =>
+    IsProperty (Property model) =>
+    MonadTest m =>
+    Model model ->
+    Context ->
+    (ExBudget, [Text]) ->
+    m ()
+  deliverResult model ctx (cost, logs) =
     let shouldPass = expect $ properties model
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
@@ -410,8 +428,8 @@ class Proper model where
       successWithBudgetCheck :: MonadTest m => ExBudget -> m ()
       successWithBudgetCheck (ExBudget cpu mem) =
         if cpu <= modelCPUBudget model && mem <= modelMemoryBudget model
-           then success
-           else failWithFootnote budgetCheckFailure
+          then success
+          else failWithFootnote budgetCheckFailure
       failWithFootnote :: MonadTest m => String -> m ()
       failWithFootnote s = footnote s >> failure
       budgetCheckFailure :: String
@@ -462,8 +480,7 @@ class Proper model where
       ourStyle :: Style
       ourStyle = style {lineLength = 80}
 
-  -- HedgeHog property tests
-  -- these are defaults which can be overridden
+  -- HedgeHog properties and property groups
 
   selfTestAll ::
     IsProperty (Property model) =>

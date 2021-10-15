@@ -47,6 +47,7 @@ import Plutus.V1.Ledger.Scripts (
   mkValidatorScript,
  )
 import Plutus.V1.Ledger.Value (singleton)
+import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
 import PlutusTx (
   applyCode,
   compile,
@@ -88,7 +89,6 @@ import Prelude (
   (<),
   (||),
  )
-import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -175,7 +175,7 @@ instance Proper PriceOracleModel where
   modelCPUBudget _ = ExCPU 1_000_000_000
   modelMemoryBudget _ = ExMemory 1_000_000_000
 
-  modelTimeRange PriceOracleModel {..} =
+  modelTxValidRange PriceOracleModel {..} =
     Interval
       (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
       (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
