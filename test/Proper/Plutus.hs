@@ -6,6 +6,8 @@ module Proper.Plutus (
   Proper (..),
   IsProperty,
   toTestValidator,
+  toTestMintingPolicy,
+  toTestStakeValidator,
   PropLogic (..),
   (\/),
   (/\),
@@ -562,6 +564,30 @@ toTestValidator f d r p = case fromBuiltinData d of
         if f d' r' p'
           then reportPass
           else reportFail
+
+{-# INLINEABLE toTestMintingPolicy #-}
+toTestMintingPolicy ::
+  forall (redeemer :: Type).
+  (FromData redeemer) =>
+  (redeemer -> ScriptContext -> Bool) ->
+  (BuiltinData -> BuiltinData -> ())
+toTestMintingPolicy f r p = case fromBuiltinData r of
+  Nothing -> reportParseFailed "Redeemer"
+  Just r' -> case fromBuiltinData p of
+    Nothing -> reportParseFailed "ScriptContext"
+    Just p' ->
+      if f r' p'
+        then reportPass
+        else reportFail
+
+{-# INLINEABLE toTestStakeValidator #-}
+toTestStakeValidator ::
+  forall (redeemer :: Type).
+  (FromData redeemer) =>
+  (redeemer -> ScriptContext -> Bool) ->
+  (BuiltinData -> BuiltinData -> ())
+toTestStakeValidator = toTestMintingPolicy
+
 
 {-# INLINEABLE reportParseFailed #-}
 reportParseFailed :: BuiltinString -> ()

@@ -45,11 +45,15 @@ import Plutus.V1.Ledger.Contexts (ScriptContext (..))
 import Plutus.V1.Ledger.Scripts (
   Script,
   Validator,
+  ValidatorHash,
+  MintingPolicy,
   Datum,
   Redeemer,
   Context,
   mkValidatorScript,
+  mkMintingPolicyScript,
   applyValidator,
+  applyMintingPolicyScript,
  )
 import Plutus.V1.Ledger.Value (singleton)
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
@@ -109,6 +113,21 @@ mkTestValidator params =
 
 mkTestValidatorScript :: OracleValidatorParams -> Datum -> Redeemer -> Context -> Script
 mkTestValidatorScript params d r c = applyValidator c (mkTestValidator params) d r
+
+mkTestMintingPolicy :: ValidatorHash -> OracleMintingParams -> MintingPolicy
+mkTestMintingPolicy oracle params =
+  mkMintingPolicyScript $
+    $$(compile [||go||])
+    `applyCode` oracleCompiledTypedMintingPolicy oracle params
+  where
+    {-# INLINEABLE go #-}
+    go ::
+      (() -> ScriptContext -> Bool) ->
+      (BuiltinData -> BuiltinData -> ())
+    go = toTestMintingPolicy
+
+mkTestMintingPolicyScript :: ValidatorHash -> OracleMintingParams -> Redeemer -> Context -> Script
+mkTestMintingPolicyScript oracle params r c = applyMintingPolicyScript c (mkTestMintingPolicy oracle params) r
 
 priceOracleTest :: IO ()
 priceOracleTest = do
