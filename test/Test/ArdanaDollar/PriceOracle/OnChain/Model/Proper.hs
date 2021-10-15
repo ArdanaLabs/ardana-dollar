@@ -151,13 +151,10 @@ instance Proper PriceOracleModel where
 
   satisfiesProperty = flip satisfiesProperty'
 
-  logic =
-    Neg (Prop HasIncorrectOutputDatum)
-      \/ ( Prop HasIncorrectOutputDatum
+  logic = Prop HasIncorrectOutputDatum
             --> ( Prop OutputDatumTimestampNotInRange
                     /\ Prop OutputDatumNotSignedByOwner
                 )
-         )
 
   genModel = genModel' . Set.toList
 
