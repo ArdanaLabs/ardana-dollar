@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies    #-}
 {-# LANGUAGE RecordWildCards #-}
-
 module Proper.Plutus (
   Proper (..),
   IsProperty,
@@ -59,6 +58,7 @@ import Ledger.Address (scriptHashAddress)
 import Plutus.V1.Ledger.Api (
   FromData (fromBuiltinData),
   POSIXTimeRange,
+  DCert,
  )
 import Plutus.V1.Ledger.Contexts (
   ScriptContext (..),
@@ -136,7 +136,28 @@ import Prelude (
 import PlutusCore.Evaluation.Machine.ExBudget ( ExBudget (..) )
 import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
 
+--------------------------------------------------------------------------------
+-- Proper.Plutus encourages you to define a model before writing any Plutus
+--------------------------------------------------------------------------------
 
+-- this is a validator that always fails
+defaultValidator :: Validator
+defaultValidator =
+    mkValidatorScript $
+      $$(compile [||go||])
+        `applyCode` $$(compile [||\_ _ _ -> False||])
+    where
+      {-# INLINEABLE go #-}
+      go ::
+        (() -> () -> ScriptContext -> Bool) ->
+        (BuiltinData -> BuiltinData -> BuiltinData -> ())
+      go = toTestValidator
+
+--------------------------------------------------------------------------------
+-- Propositional logic over model properties defines valid property sets.
+--------------------------------------------------------------------------------
+
+class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsProperty c
 
 data PropLogic a
   = Atom Bool
@@ -183,51 +204,64 @@ satisfiesPropLogic l = runReader $ go l
       ib <- go b
       pure $ (not ia && not ib) || (ia && ib)
 
-defaultValidator :: Validator
-defaultValidator =
-  mkValidatorScript $
-    $$(compile [||go||])
-      `applyCode` $$(compile [||\_ _ _ -> False||])
-  where
-    {-# INLINEABLE go #-}
-    go ::
-      (() -> () -> ScriptContext -> Bool) ->
-      (BuiltinData -> BuiltinData -> BuiltinData -> ())
-    go = toTestValidator
-
--- these things combined make a valid Property
--- perhaps this should be relaxed to allow richer property types
-class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsProperty c
 
 data Result = Pass | Fail deriving (Show)
 
+-- Proper is a type family over a Model and its Properties
+-- It encapsulates the model checking pattern shown in this diagram
+--
+-- PropLogic (Property model)        Set (Property model)
+--            \                    /       ^
+--             \                  /         \
+--              \ gen          = /           \ satisfies
+--               \              /      A      \
+--                \            /               \
+--                 v          /      gen        \
+--          Set (Property model) -------------> Model model
+--                 |                                    \
+--                 |                                     \
+--         expect  |                  B                   \ translate
+--                 |                                       \
+--                 v          =                 eval        v
+--               Result ------------- Result <----------- PlutusTest
+--
+-- 'A' checks consistency between the model specification and its generator.
+-- 'B' (which can be written after 'A' is complete) tests the compiled validator.
+
 class Proper model where
-  -- a model for a validator context
+
+  -- a model encodes the data relevant to a specification
   data Model model :: Type
 
   -- properties are things that may be true of a model
   data Property model :: Type
 
+  -- propositional logic over model properties defines sets of properties valid in conjunction
+  logic :: PropLogic (Property model)
+  logic = Atom True
+
   -- check whether a property is satisfied
   satisfiesProperty :: Model model -> Property model -> Bool
 
+  -- properties may be in a positive or negative context
+  shouldCauseFailure :: Property model -> Bool
+  shouldCauseFailure _ = True
+
+  -- generates a model that satisfies a set of properties
+  genModel :: MonadGen m => Set (Property model) -> m (Model model)
+
+  -- compute the properties of a model
   properties ::
     IsProperty (Property model) =>
     Model model ->
     Set (Property model)
   properties x = Set.fromList $ filter (satisfiesProperty x) [minBound .. maxBound]
 
-  -- properties may be in a positive or negative context
-  -- by default all properties are negative and should cause a failure
-  shouldCauseFailure :: Property model -> Bool
-  shouldCauseFailure _ = True
-
+  -- given a set of properties we expect a validator to pass or fail
   expect :: Set (Property model) -> Result
   expect p = if or (shouldCauseFailure <$> Set.toList p) then Fail else Pass
 
-  -- generate a model that satisfies specified properties
-  genModel :: MonadGen m => Set (Property model) -> m (Model model)
-
+  -- generates a set of properties
   genProperties ::
     MonadGen m =>
     GenBase m ~ Identity =>
@@ -236,32 +270,55 @@ class Proper model where
     m (Set (Property model))
   genProperties _ = genGivenPropLogic logic
 
-  -- some properties imply others
-  logic :: PropLogic (Property model)
-  logic = Atom True
+  -- Context Api
+  -- defaults are provided to enable up front construction and testing of a model
+  -- these can be overridden to translate a model to a Plutus Context
 
-  -- to test a validator specify how to build one from the model
-  -- a default is provided to enable construction of the model before the validator is written
   validator :: Model model -> Validator
   validator _ = defaultValidator
 
-  --e.g.
-  --validator model@MyModel{..} =
-  --  mkValidatorScript $
-  --    $$(compile [||go||])
-  --      `applyCode` myValidator (buildParams model)
-  --  where
-  --    {-# INLINEABLE go #-}
-  --    go ::
-  --      (MyDatum -> MyRedeemer -> ScriptContext -> Bool) ->
-  --      (BuiltinData -> BuiltinData -> BuiltinData -> ())
-  --    go = toTestValidator
+  modelRedeemer :: Model model -> Redeemer
+  modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  -- Context Api
+  modelDatum :: Model model -> Datum
+  modelDatum model =
+    case headMay (modelInputData model) of
+      Nothing -> Datum $ toBuiltinData ()
+      Just (_, so) -> Datum so
 
-  -- to specify a context override the default implementations in the context api
-  -- all of this Context generation api could be improved
-  -- the idea is to give lots of options for overriding while having some sensible defaults
+  modelCtx :: Model model -> Context
+  modelCtx model = Context . toBuiltinData $ context
+    where
+      context :: ScriptContext
+      context =
+        ScriptContext go
+          . Spending
+          . TxOutRef (modelTxId model)
+          $ 0
+      go :: TxInfo
+      go =
+        let baseInfo = modelBaseTxInfo model
+            inInfo = modelScriptTxInInfo model
+            inData = datumWithHash . snd <$> modelInputData model
+         in baseInfo
+              { txInfoInputs = inInfo <> txInfoInputs baseInfo
+              , txInfoData = inData <> txInfoData baseInfo
+              }
+
+  modelBaseTxInfo :: Model model -> TxInfo
+  modelBaseTxInfo model =
+    TxInfo
+      { txInfoInputs = modelScriptTxInInfo model <> modelSpenderTxInInfo model
+      , txInfoOutputs = modelTxOuts model
+      , txInfoFee = modelFee model
+      , txInfoMint = mempty
+      , txInfoDCert = modelTxInfoDCert model
+      , txInfoWdrl = []
+      , txInfoValidRange = modelTimeRange model
+      , txInfoSignatories = modelTxSignatories model
+      , txInfoData = datumWithHash <$> (snd <$> modelInputData model) <> (snd <$> modelOutputData model)
+      , txInfoId = modelTxInfoId model
+      }
 
   modelTxId :: Model model -> TxId
   modelTxId _ = "abcd"
@@ -290,20 +347,8 @@ class Proper model where
   modelTimeRange :: Model model -> POSIXTimeRange
   modelTimeRange _ = always
 
-  modelBaseTxInfo :: Model model -> TxInfo
-  modelBaseTxInfo model =
-    TxInfo
-      { txInfoInputs = modelScriptTxInInfo model <> modelSpenderTxInInfo model
-      , txInfoOutputs = modelTxOuts model
-      , txInfoFee = modelFee model
-      , txInfoMint = mempty
-      , txInfoDCert = []
-      , txInfoWdrl = []
-      , txInfoValidRange = modelTimeRange model
-      , txInfoSignatories = modelTxSignatories model
-      , txInfoData = datumWithHash <$> (snd <$> modelInputData model) <> (snd <$> modelOutputData model)
-      , txInfoId = modelTxInfoId model
-      }
+  modelTxInfoDCert :: Model model -> [DCert]
+  modelTxInfoDCert _ = []
 
   modelTxOuts :: Model model -> [TxOut]
   modelTxOuts model =
@@ -321,56 +366,25 @@ class Proper model where
         )
           <$> modelInputData model
 
-  modelCtx :: Model model -> Context
-  modelCtx model = Context . toBuiltinData $ context
-    where
-      context :: ScriptContext
-      context =
-        ScriptContext go
-          . Spending
-          . TxOutRef (modelTxId model)
-          $ 0
-      go :: TxInfo
-      go =
-        let baseInfo = modelBaseTxInfo model
-            inInfo = modelScriptTxInInfo model
-            inData = datumWithHash . snd <$> modelInputData model
-         in baseInfo
-              { txInfoInputs = inInfo <> txInfoInputs baseInfo
-              , txInfoData = inData <> txInfoData baseInfo
-              }
-
-  modelRedeemer :: Model model -> Redeemer
-  modelRedeemer _ = Redeemer $ toBuiltinData ()
-
-  modelDatum :: Model model -> Datum
-  modelDatum model =
-    case headMay (modelInputData model) of
-      Nothing -> Datum $ toBuiltinData ()
-      Just (_, so) -> Datum so
-
   modelCPUBudget :: Model model -> ExCPU
   modelCPUBudget _ = ExCPU maxBound
 
   modelMemoryBudget :: Model model -> ExMemory
   modelMemoryBudget _ = ExMemory maxBound
 
-  reifyTest :: Show (Model model) => IsProperty (Property model) => MonadGen m => Model model -> m ReifiedTest
-  reifyTest model = pure $ ReifiedTest ctx val dat red
-    where
+  runValidatorTest :: Show (Model model)
+                 => IsProperty (Property model)
+                 =>  MonadTest t
+                 => Model model -> t ()
+  runValidatorTest model =
+    case runScript ctx val dat red of
+      Left err -> footnoteShow err >> failure
+      Right res -> deliverResult model ctx res
+   where
       val = validator model
       ctx = modelCtx model
       dat = modelDatum model
       red = modelRedeemer model
-
-  runReifiedTest :: Show (Model model)
-                 => IsProperty (Property model)
-                 =>  MonadTest t
-                 => Model model -> ReifiedTest -> t ()
-  runReifiedTest model ReifiedTest { .. } =
-    case runScript contextUnderTest validatorUnderTest datumUnderTest redeemerUnderTest of
-      Left err -> footnoteShow err >> failure
-      Right res -> deliverResult model contextUnderTest res
 
   deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m
                 => Model model -> Context -> (ExBudget,[Text]) -> m ()
@@ -449,7 +463,8 @@ class Proper model where
       ourStyle = style {lineLength = 80}
 
   -- HedgeHog property tests
-  --
+  -- these are defaults which can be overridden
+
   selfTestAll ::
     IsProperty (Property model) =>
     Show (Model model) =>
@@ -495,8 +510,7 @@ class Proper model where
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
-      test  <- forAll $ reifyTest model
-      runReifiedTest model test
+      runValidatorTest model
 
   validatorTestGivenProperties ::
     IsProperty (Property model) =>
@@ -506,8 +520,7 @@ class Proper model where
   validatorTestGivenProperties properties' =
     property $ do
       model <- forAll $ genModel properties'
-      test  <- forAll $ reifyTest model
-      runReifiedTest model test
+      runValidatorTest model
 
   validatorTestGroup ::
     IsProperty (Property model) =>
@@ -523,14 +536,6 @@ class Proper model where
         | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
         , satisfiesPropLogic logic p
         ]
-
-data ReifiedTest =
-  ReifiedTest {
-    contextUnderTest   :: Context,
-    validatorUnderTest :: Validator,
-    datumUnderTest     :: Datum,
-    redeemerUnderTest  :: Redeemer
-  } deriving (Show)
 
 -- helpers
 
