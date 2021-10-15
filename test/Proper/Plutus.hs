@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Proper.Plutus (
   Proper (..),
@@ -132,6 +133,10 @@ import Prelude (
   (>>=),
   (||),
  )
+import PlutusCore.Evaluation.Machine.ExBudget ( ExBudget (..) )
+import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
+
+
 
 data PropLogic a
   = Atom Bool
@@ -344,24 +349,37 @@ class Proper model where
       Nothing -> Datum $ toBuiltinData ()
       Just (_, so) -> Datum so
 
-  reifyTest :: Show (Model model) => IsProperty (Property model) => MonadTest t => Model model -> t ()
-  reifyTest model =
-    case runScript ctx val dat red of
-      Left err -> footnoteShow err >> failure
-      Right (_, logs) -> deliverResult model ctx logs
+  modelCPUBudget :: Model model -> ExCPU
+  modelCPUBudget _ = ExCPU maxBound
+
+  modelMemoryBudget :: Model model -> ExMemory
+  modelMemoryBudget _ = ExMemory maxBound
+
+  reifyTest :: Show (Model model) => IsProperty (Property model) => MonadGen m => Model model -> m ReifiedTest
+  reifyTest model = pure $ ReifiedTest ctx val dat red
     where
       val = validator model
       ctx = modelCtx model
       dat = modelDatum model
       red = modelRedeemer model
 
-  deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m => Model model -> Context -> [Text] -> m ()
-  deliverResult p ctx logs =
-    let shouldPass = expect $ properties p
+  runReifiedTest :: Show (Model model)
+                 => IsProperty (Property model)
+                 =>  MonadTest t
+                 => Model model -> ReifiedTest -> t ()
+  runReifiedTest model ReifiedTest { .. } =
+    case runScript contextUnderTest validatorUnderTest datumUnderTest redeemerUnderTest of
+      Left err -> footnoteShow err >> failure
+      Right res -> deliverResult model contextUnderTest res
+
+  deliverResult :: Show (Model model) => IsProperty (Property model) => MonadTest m
+                => Model model -> Context -> (ExBudget,[Text]) -> m ()
+  deliverResult model ctx (cost,logs) =
+    let shouldPass = expect $ properties model
      in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
           (_, Nothing) -> failWithFootnote noOutcome
-          (Fail, Just "Fail") -> success
-          (Pass, Just "Pass") -> success
+          (Fail, Just "Fail") -> successWithBudgetCheck cost
+          (Pass, Just "Pass") -> successWithBudgetCheck cost
           (Pass, Just t) ->
             if t == "Fail"
               then failWithFootnote unexpectedFailure
@@ -373,10 +391,21 @@ class Proper model where
               then failWithFootnote unexpectedSuccess
               else case Text.stripPrefix "Parse failed: " t of
                 Nothing -> failWithFootnote $ internalError t
-                Just _ -> success
+                Just _ -> successWithBudgetCheck cost
     where
+      successWithBudgetCheck :: MonadTest m => ExBudget -> m ()
+      successWithBudgetCheck (ExBudget cpu mem) =
+        if cpu <= modelCPUBudget model && mem <= modelMemoryBudget model
+           then success
+           else failWithFootnote budgetCheckFailure
       failWithFootnote :: MonadTest m => String -> m ()
       failWithFootnote s = footnote s >> failure
+      budgetCheckFailure :: String
+      budgetCheckFailure =
+        renderStyle ourStyle $
+          "Success! But at what cost?"
+            $+$ hang "Budget" 4 (ppDoc (ExBudget (modelCPUBudget model) (modelMemoryBudget model)))
+            $+$ hang "Cost" 4 (ppDoc cost)
       noOutcome :: String
       noOutcome =
         renderStyle ourStyle $
@@ -406,12 +435,12 @@ class Proper model where
           $+$ hang "Context" 4 (ppDoc ctx)
           $+$ hang "Inputs" 4 dumpInputs
           $+$ hang "Logs" 4 dumpLogs
-          $+$ hang "Expected " 4 (ppDoc $ expect $ properties p)
-          $+$ hang "Properties " 4 (ppDoc $ properties p)
+          $+$ hang "Expected " 4 (ppDoc $ expect $ properties model)
+          $+$ hang "Properties " 4 (ppDoc $ properties model)
       dumpInputs :: Doc
       dumpInputs =
         "Parameters"
-          $+$ ppDoc p
+          $+$ ppDoc model
       dumpLogs :: Doc
       dumpLogs = vcat . fmap go . zip [1 ..] $ logs
       go :: (Int, Text) -> Doc
@@ -466,7 +495,8 @@ class Proper model where
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
-      reifyTest model
+      test  <- forAll $ reifyTest model
+      runReifiedTest model test
 
   validatorTestGivenProperties ::
     IsProperty (Property model) =>
@@ -476,7 +506,8 @@ class Proper model where
   validatorTestGivenProperties properties' =
     property $ do
       model <- forAll $ genModel properties'
-      reifyTest model
+      test  <- forAll $ reifyTest model
+      runReifiedTest model test
 
   validatorTestGroup ::
     IsProperty (Property model) =>
@@ -492,6 +523,14 @@ class Proper model where
         | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
         , satisfiesPropLogic logic p
         ]
+
+data ReifiedTest =
+  ReifiedTest {
+    contextUnderTest   :: Context,
+    validatorUnderTest :: Validator,
+    datumUnderTest     :: Datum,
+    redeemerUnderTest  :: Redeemer
+  } deriving (Show)
 
 -- helpers
 

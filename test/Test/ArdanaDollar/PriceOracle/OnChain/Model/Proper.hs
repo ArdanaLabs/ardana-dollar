@@ -88,6 +88,7 @@ import Prelude (
   (<),
   (||),
  )
+import PlutusCore.Evaluation.Machine.ExMemory ( ExCPU (..), ExMemory (..) )
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -103,7 +104,7 @@ mkTestValidator params =
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ selfTestGroup Model 3
+  void $ checkParallel $ selfTestGroup Model 1
   void $ checkParallel $ validatorTestGroup Model 1
 
 data PriceOracleModel = Model deriving (Show)
@@ -170,6 +171,9 @@ instance Proper PriceOracleModel where
 
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
+
+  modelCPUBudget _ = ExCPU 1_000_000_000
+  modelMemoryBudget _ = ExMemory 1_000_000_000
 
   modelTimeRange PriceOracleModel {..} =
     Interval
