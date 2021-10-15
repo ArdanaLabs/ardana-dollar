@@ -161,7 +161,7 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
-  validator PriceOracleModel {..} = mkTestValidator params
+  validator PriceOracleModel {..} = Just $ mkTestValidator params
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)

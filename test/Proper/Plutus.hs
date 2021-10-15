@@ -1,7 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
-
+{-# LANGUAGE TypeFamilies    #-}
+--------------------------------------------------------------------------------
+-- Proper.Plutus encourages you to define a model before writing any Plutus
+--------------------------------------------------------------------------------
 module Proper.Plutus (
   Proper (..),
   IsProperty,
@@ -71,15 +71,10 @@ import Plutus.V1.Ledger.Scripts (
   Context (..),
   Validator,
   ValidatorHash,
-  mkValidatorScript,
  )
 import PlutusCore.Evaluation.Machine.ExBudget (ExBudget (..))
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
-import PlutusTx (
-  applyCode,
-  compile,
-  toBuiltinData,
- )
+import PlutusTx (toBuiltinData)
 import PlutusTx.Builtins (
   BuiltinData,
   BuiltinString,
@@ -138,23 +133,6 @@ import Prelude (
   (>>=),
   (||),
  )
-
---------------------------------------------------------------------------------
--- Proper.Plutus encourages you to define a model before writing any Plutus
---------------------------------------------------------------------------------
-
--- this is a validator that always fails
-defaultValidator :: Validator
-defaultValidator =
-  mkValidatorScript $
-    $$(compile [||go||])
-      `applyCode` $$(compile [||\_ _ _ -> False||])
-  where
-    {-# INLINEABLE go #-}
-    go ::
-      (() -> () -> ScriptContext -> Bool) ->
-      (BuiltinData -> BuiltinData -> BuiltinData -> ())
-    go = toTestValidator
 
 --------------------------------------------------------------------------------
 -- Propositional logic over model properties defines valid property sets.
@@ -275,8 +253,8 @@ class Proper model where
   -- defaults are provided to enable up front construction and testing of a model
   -- these can be overridden to translate a model to a Plutus Context
 
-  validator :: Model model -> Validator
-  validator _ = defaultValidator
+  validator :: Model model -> Maybe Validator
+  validator _ = Nothing
 
   modelRedeemer :: Model model -> Redeemer
   modelRedeemer _ = Redeemer $ toBuiltinData ()
@@ -389,11 +367,13 @@ class Proper model where
     Model model ->
     t ()
   runValidatorTest model =
-    case runScript ctx val dat red of
-      Left err -> footnoteShow err >> failure
-      Right res -> deliverResult model ctx res
+    case validator model of
+      Nothing -> footnote "validator not defined" >> failure
+      Just val -> do
+        case runScript ctx val dat red of
+          Left err -> footnoteShow err >> failure
+          Right res -> deliverResult model ctx res
     where
-      val = validator model
       ctx = modelCtx model
       dat = modelDatum model
       red = modelRedeemer model
