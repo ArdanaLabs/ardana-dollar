@@ -9,8 +9,6 @@ data AdminParams = AdminParams
   , collateralCurrency :: AssetClass
   , treasuryAddress :: ValidatorHash
   , treasuryStateTokenSymbol :: CurrencySymbol
-  , adminStateCurrencySymbol :: CurrencySymbol
-  , adminOperator :: PubKey
   , ownerAddress :: PubKey
   , oneShotUtxo :: TxOutRef
   }
@@ -68,11 +66,6 @@ AdminState
 Purpose: Allows `ownerAddress` to do anything.
 
 - Transaction must be signed by `ownerAddress`.
-
-### RefreshAdminStateAct
-Purpose: allows a trusted automated bot to refresh the admin state without updating it so it does not go stale without the `ownerAddress`
-
-- Must be signed by the `adminOperator`.
 
 ### InitiateUpgradeAct
 
