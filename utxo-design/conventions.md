@@ -2,6 +2,24 @@
 
 (incomplete)
 
+## Optional datums
+
+See section 3.1 of https://hydra.iohk.io/build/7940505/download/1/alonzo-changes.pdf
+
+Specifically, the corresponding datums for some datum hashes
+are not included in the transaction body, meaning that validation
+can possibly fail in such a case.
+
+Concretely, this means that it will be missing from `txInfoData`.
+
+This is often relevant for state machines that inspect the
+datum of the continuing output.
+
+When such an "optional datum" is required for a validator to
+function, it will be explicitly noted.
+
+Relevant: https://github.com/input-output-hk/cardano-node/issues/2919
+
 ## Fees
 
 Handling of fees is implicit, as it's often not important.
