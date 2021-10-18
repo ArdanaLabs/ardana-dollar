@@ -17,7 +17,7 @@ module ArdanaDollar.PriceOracle.OnChain (
   PriceTracking (..),
 ) where
 
-import ArdanaDollar.Utils (getScriptOutputsWithDatum, getScriptOutputsWithDatum')
+import ArdanaDollar.Utils (getAllScriptOutputsWithDatum, getContinuingScriptOutputsWithDatum)
 import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger qualified
@@ -129,7 +129,7 @@ mkOracleMintingPolicy
         traceIfFalse
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getScriptOutputsWithDatum' @(Oracle.SignedMessage PriceTracking) sc of
+      priceMessageToOracle = case getAllScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput
             op
@@ -196,7 +196,7 @@ mkOracleValidator
       expectedOutVal = stateTokenValue curSymbol
       txSignedByOperator :: Bool
       txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+      priceMessageToOracle = case getContinuingScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput
             op

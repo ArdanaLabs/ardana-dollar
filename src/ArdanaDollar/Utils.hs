@@ -17,8 +17,8 @@ module ArdanaDollar.Utils (
   safeRemainder,
   safeDivMod,
   getAllOutputsWithDatum,
-  getScriptOutputsWithDatum,
-  getScriptOutputsWithDatum',
+  getContinuingScriptOutputsWithDatum,
+  getAllScriptOutputsWithDatum,
 ) where
 
 import Control.Monad ((>=>))
@@ -314,39 +314,33 @@ getAllOutputsWithDatum
   Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs txInfo)
 
-{-# INLINEABLE getScriptOutputsWithDatum #-}
+{-# INLINEABLE getContinuingScriptOutputsWithDatum #-}
 
 {- | Get a list of pairs (utxo, datum) consisting of outputs
      whose datums succeded to parse as the passed `datum`
      type and those datums themselves
-     that go to the script address
+     that go to the script address of the current script
 -}
-getScriptOutputsWithDatum ::
+getContinuingScriptOutputsWithDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
   Contexts.ScriptContext ->
   [(Contexts.TxOut, datum)]
-getScriptOutputsWithDatum
+getContinuingScriptOutputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.getContinuingOutputs sc)
 
--- NOTE: wondering if this is the implementation we really want for the above
--- getContinuingOutputs filters the outputs that are directed to the current script
--- if we are in a Minter and sending output to an external script then this won't work
--- we will be hit with the scary looking error
--- >     EvaluationError [ "Lf" ] "CekEvaluationFailure"
--- if the script does not spend an output back to itself...
+{-# INLINEABLE getAllScriptOutputsWithDatum #-}
 
 {- | Get a list of pairs (utxo, datum) consisting of outputs
      whose datums succeded to parse as the passed `datum`
      type and those datums themselves
-     that go to the script address
 -}
-getScriptOutputsWithDatum' ::
+getAllScriptOutputsWithDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
   Contexts.ScriptContext ->
   [(Contexts.TxOut, datum)]
-getScriptOutputsWithDatum'
+getAllScriptOutputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs $ Contexts.scriptContextTxInfo sc)
