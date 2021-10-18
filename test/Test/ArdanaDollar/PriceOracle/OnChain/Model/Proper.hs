@@ -146,7 +146,7 @@ priceOracleTest = do
 
 data PriceOracleModel = Model deriving (Show)
 
-data SpenderParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Value
+data TransactorParams = NoSigner | JustSignedBy Integer | SignedByWithValue Integer Value
   deriving (Show)
 
 data StateUTXOParams = StateUTXOParams
@@ -170,19 +170,23 @@ instance Proper PriceOracleModel where
         , timeRangeLowerBound :: Integer
         , timeRangeUpperBound :: Integer
         , ownerWallet :: Integer
-        , transactorParams :: SpenderParams
+        , transactorParams :: TransactorParams
         , inputParams :: StateUTXOParams
         , outputParams :: StateUTXOParams
         , peggedCurrency :: BuiltinByteString
         }
     | PriceOracleMinterModel
+        { stateNFTCurrency :: (CurrencySymbol, TokenName)
+        , ownerWallet :: Integer
+        , transactorParams :: TransactorParams
+        , outputParams :: StateUTXOParams
+        }
     deriving (Show)
 
   -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
     = PriceOracleMintingPolicyContext
-    | --TODO minter model
-      PriceOracleValidatorContext
+    | PriceOracleValidatorContext
     | OutputDatumTimestampIsInRange
     | RangeWithinSizeLimit
     | OutputDatumSignedByOwner
@@ -202,8 +206,6 @@ instance Proper PriceOracleModel where
               <$> [ OutputDatumTimestampIsInRange
                   , RangeWithinSizeLimit
                   , OutputDatumSignedByOwner
-                  , TransactionSignedByOwner
-                  , StateTokenReturned
                   , InputDatumIsCorrectType
                   , OutputDatumIsCorrectType
                   ]
@@ -231,7 +233,9 @@ instance Proper PriceOracleModel where
       , Prop PriceOracleMintingPolicyContext
           --> allOf
             ( Prop
-                <$> []
+                <$> [ TransactionSignedByOwner
+                    , StateTokenReturned
+                    ]
             )
       ]
 
@@ -241,13 +245,21 @@ instance Proper PriceOracleModel where
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
-
       ownerPubKeyHash :: PubKeyHash
       ownerPubKeyHash = pubKeyHash ownerPubKey
-
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
-  script PriceOracleMinterModel = Nothing
+  script m@PriceOracleMinterModel {..} = Just $ mkTestMintingPolicyScript validatorHash' params (modelRedeemer m) (modelCtx m)
+    where
+      validatorHash' :: ValidatorHash
+      validatorHash' = "09ab"
+      ownerPubKey :: PubKey
+      ownerPubKey = walletPubKey (knownWallet ownerWallet)
+      ownerPubKeyHash :: PubKeyHash
+      ownerPubKeyHash = pubKeyHash ownerPubKey
+      params :: OracleMintingParams
+      params = OracleMintingParams ownerPubKey ownerPubKeyHash
+
 
   modelCPUBudget _ = ExCPU 1_000_000_000
   modelMemoryBudget _ = ExMemory 1_000_000_000
@@ -256,16 +268,15 @@ instance Proper PriceOracleModel where
     Interval
       (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
       (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
-  modelTxValidRange PriceOracleMinterModel = always
+  modelTxValidRange PriceOracleMinterModel {} = always
 
-  modelTxSignatories PriceOracleValidatorModel {..} =
-    case transactorParams of
+  modelTxSignatories model =
+    case transactorParams model of
       NoSigner -> []
       JustSignedBy signer -> [go signer]
       SignedByWithValue signer _ -> [go signer]
     where
       go = pubKeyHash . walletPubKey . knownWallet
-  modelTxSignatories PriceOracleMinterModel = []
 
   modelInputData PriceOracleValidatorModel {..} =
     [
@@ -273,15 +284,14 @@ instance Proper PriceOracleModel where
       , modelDatum' $ stateDatumValue inputParams
       )
     ]
-  modelInputData PriceOracleMinterModel = []
+  modelInputData PriceOracleMinterModel {} = []
 
-  modelOutputData PriceOracleValidatorModel {..} =
+  modelOutputData model =
     [
-      ( stateTokenValue inputParams
-      , modelDatum' $ stateDatumValue outputParams
+      ( stateTokenValue (outputParams model)
+      , modelDatum' $ stateDatumValue $ outputParams model
       )
     ]
-  modelOutputData PriceOracleMinterModel = []
 
 modelDatum' :: Maybe TestDatumParameters -> BuiltinData
 modelDatum' Nothing = toBuiltinData ()
@@ -322,7 +332,7 @@ satisfiesProperty' PriceOracleValidatorContext = isScriptModel
 type ModelProperty = Model PriceOracleModel -> Bool
 
 isMinterModel :: ModelProperty
-isMinterModel PriceOracleMinterModel = True
+isMinterModel PriceOracleMinterModel {} = True
 isMinterModel _ = False
 
 isScriptModel :: ModelProperty
@@ -350,20 +360,19 @@ outputDatumSignedByOwner PriceOracleValidatorModel {..} =
 outputDatumSignedByOwner _ = False
 
 transactionSignedByOwner :: ModelProperty
-transactionSignedByOwner PriceOracleValidatorModel {..} = case transactorParams of
-  NoSigner -> False
-  JustSignedBy signer -> signer == ownerWallet
-  SignedByWithValue signer _ -> signer == ownerWallet
-transactionSignedByOwner _ = False
+transactionSignedByOwner model =
+  case transactorParams model of
+    NoSigner -> False
+    JustSignedBy signer -> signer == ownerWallet model
+    SignedByWithValue signer _ -> signer == ownerWallet model
 
 stateTokenReturned :: ModelProperty
-stateTokenReturned PriceOracleValidatorModel {..} =
-  case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
+stateTokenReturned model =
+  case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue $ outputParams model of
     Nothing -> False
-    Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
+    Just so -> case AssocMap.lookup (snd $ stateNFTCurrency model) so of
       Just 1 -> True
       _ -> False
-stateTokenReturned _ = False
 
 hasIncorrectInputDatum :: ModelProperty
 hasIncorrectInputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue inputParams
@@ -373,14 +382,31 @@ hasIncorrectOutputDatum :: ModelProperty
 hasIncorrectOutputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue outputParams
 hasIncorrectOutputDatum _ = False
 
--- Gen TODO move anything that is not model specific to a common lib
+-- generators
 ---------------------------------------------------------------------------------
 
 genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' props =
   if PriceOracleValidatorContext `elem` props
     then runReaderT genPriceOracleValidatorModel props
-    else pure PriceOracleMinterModel
+    else runReaderT genPriceOracleMinterModel props
+
+genPriceOracleMinterModel ::
+  forall (m :: Type -> Type).
+  MonadGen m =>
+  ReaderT [Property PriceOracleModel] m (Model PriceOracleModel)
+genPriceOracleMinterModel = do
+  (tlb, tub) <- genTimeRange
+  w <- genKnownWalletIdx
+  sp <- genTransactorParams w
+  op <- genOutputUTXOParams w (tlb, tub)
+  pure $
+    PriceOracleMinterModel
+      { stateNFTCurrency = correctNFTCurrency --TODO compute properly
+      , ownerWallet = w
+      , transactorParams = sp
+      , outputParams = op
+      }
 
 genPriceOracleValidatorModel ::
   forall (m :: Type -> Type).
@@ -389,13 +415,13 @@ genPriceOracleValidatorModel ::
 genPriceOracleValidatorModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
-  sp <- genSpenderParams w
+  sp <- genTransactorParams w
   ip <- genInputUTXOParams
   op <- genOutputUTXOParams w (tlb, tub)
   pc <- HP.builtinByteString (Range.linear 0 6)
   pure $
     PriceOracleValidatorModel
-      { stateNFTCurrency = correctNFTCurrency --TODO include in model
+      { stateNFTCurrency = correctNFTCurrency --TODO compute properly
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
       , ownerWallet = w
@@ -407,12 +433,12 @@ genPriceOracleValidatorModel = do
 
 -- TODO read some Hedgehog for a nicer generator ideas
 -- these nested ifs are not great but they do the job
-genSpenderParams ::
+genTransactorParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
   Integer ->
-  ReaderT [Property PriceOracleModel] m SpenderParams
-genSpenderParams w = do
+  ReaderT [Property PriceOracleModel] m TransactorParams
+genTransactorParams w = do
   properties' <- ask
   if TransactionSignedByOwner `elem` properties'
     then do
