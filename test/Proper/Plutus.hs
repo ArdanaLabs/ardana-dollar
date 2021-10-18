@@ -126,7 +126,6 @@ import Prelude (
   length,
   mempty,
   not,
-  or,
   pure,
   snd,
   zip,
@@ -208,8 +207,6 @@ satisfiesPropLogic l = runReader $ go l
       ib <- go b
       pure $ (not ia && not ib) || (ia && ib)
 
-data Result = Pass | Fail deriving (Show)
-
 -- Proper is a type family over a Model and its Properties
 -- It encapsulates the model checking pattern shown in this diagram
 --
@@ -242,14 +239,14 @@ class Proper model where
   logic :: PropLogic (Property model)
   logic = Atom True
 
+  -- given a set of properties we expect a script to pass or fail
+  expect :: PropLogic (Property model)
+  expect = Atom True
+
   -- check whether a property is satisfied
   satisfiesProperty :: Model model -> Property model -> Bool
 
-  -- properties may be in a positive or negative context
-  shouldCauseFailure :: Property model -> Bool
-  shouldCauseFailure _ = True
-
-  -- generates a model that satisfies a set of properties
+-- generates a model that satisfies a set of properties
   genModel :: MonadGen m => Set (Property model) -> m (Model model)
 
   -- compute the properties of a model
@@ -258,10 +255,6 @@ class Proper model where
     Model model ->
     Set (Property model)
   properties x = Set.fromList $ filter (satisfiesProperty x) [minBound .. maxBound]
-
-  -- given a set of properties we expect a script to pass or fail
-  expect :: Set (Property model) -> Result
-  expect p = if or (shouldCauseFailure <$> Set.toList p) then Fail else Pass
 
   -- generates a set of properties (gen)
   genProperties ::
@@ -408,24 +401,25 @@ class Proper model where
     (ExBudget, [Text]) ->
     m ()
   deliverResult model ctx (cost, logs) =
-    let shouldPass = expect $ properties model
-     in case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
-          (_, Nothing) -> failWithFootnote noOutcome
-          (Fail, Just "Fail") -> successWithBudgetCheck cost
-          (Pass, Just "Pass") -> successWithBudgetCheck cost
-          (Pass, Just t) ->
-            if t == "Fail"
-              then failWithFootnote unexpectedFailure
-              else case Text.stripPrefix "Parse failed: " t of
-                Nothing -> failWithFootnote $ internalError t
-                Just t' -> failWithFootnote $ noParse t'
-          (Fail, Just t) ->
-            if t == "Pass"
-              then failWithFootnote unexpectedSuccess
-              else case Text.stripPrefix "Parse failed: " t of
-                Nothing -> failWithFootnote $ internalError t
-                Just _ -> successWithBudgetCheck cost
+    case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
+      (_, Nothing) -> failWithFootnote noOutcome
+      (False, Just "Fail") -> successWithBudgetCheck cost
+      (True, Just "Pass") -> successWithBudgetCheck cost
+      (True, Just t) ->
+        if t == "Fail"
+          then failWithFootnote unexpectedFailure
+          else case Text.stripPrefix "Parse failed: " t of
+            Nothing -> failWithFootnote $ internalError t
+            Just t' -> failWithFootnote $ noParse t'
+      (False, Just t) ->
+        if t == "Pass"
+          then failWithFootnote unexpectedSuccess
+          else case Text.stripPrefix "Parse failed: " t of
+            Nothing -> failWithFootnote $ internalError t
+            Just _ -> successWithBudgetCheck cost
     where
+      shouldPass :: Bool
+      shouldPass = satisfiesPropLogic expect $ properties model
       successWithBudgetCheck :: MonadTest m => ExBudget -> m ()
       successWithBudgetCheck (ExBudget cpu mem) =
         if cpu <= modelCPUBudget model && mem <= modelMemoryBudget model
@@ -468,7 +462,7 @@ class Proper model where
           $+$ hang "Context" 4 (ppDoc ctx)
           $+$ hang "Inputs" 4 dumpInputs
           $+$ hang "Logs" 4 dumpLogs
-          $+$ hang "Expected " 4 (ppDoc $ expect $ properties model)
+          $+$ hang "Expected " 4 (if shouldPass then "Pass" else "Fail")
           $+$ hang "Properties " 4 (ppDoc $ properties model)
       dumpInputs :: Doc
       dumpInputs =

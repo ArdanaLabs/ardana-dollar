@@ -135,9 +135,9 @@ mkTestMintingPolicyScript oracle params r c = applyMintingPolicyScript c (mkTest
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ selfTestGroup Model 4
-  _ <- exitSuccess
-  void $ checkParallel $ scriptTestGroup Model 1
+  void $ checkParallel $ selfTestGroup Model 2
+  void $ checkParallel $ scriptTestGroup Model 2
+  void exitSuccess
 
 data PriceOracleModel = Model deriving (Show)
 
@@ -173,6 +173,7 @@ instance Proper PriceOracleModel where
     | PriceOracleMinterModel
     deriving (Show)
 
+  -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
     = OutputDatumTimestampNotInRange
     | RangeNotWithinSizeLimit
@@ -207,6 +208,18 @@ instance Proper PriceOracleModel where
                   /\ Prop OutputDatumNotSignedByOwner
               )
       ]
+
+  expect = noneOf
+          ( Prop
+              <$> [ OutputDatumTimestampNotInRange
+                  , RangeNotWithinSizeLimit
+                  , OutputDatumNotSignedByOwner
+                  , TransactionNotSignedByOwner
+                  , StateTokenNotReturned
+                  , HasIncorrectInputDatum
+                  , HasIncorrectOutputDatum
+                  ]
+          )
 
   genModel = genModel' . Set.toList
 
