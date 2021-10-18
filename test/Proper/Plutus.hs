@@ -14,6 +14,10 @@ module Proper.Plutus (
   (/\),
   (-->),
   (<->),
+  noneOf,
+  anyOf,
+  allOf,
+  oneOf,
 ) where
 
 import Control.Monad.Reader (
@@ -103,6 +107,7 @@ import Text.PrettyPrint (
  )
 import Text.Show.Pretty (ppDoc)
 import Prelude (
+  Functor,
   Bool (..),
   Bounded (..),
   Either (..),
@@ -124,6 +129,7 @@ import Prelude (
   pure,
   snd,
   zip,
+  foldr,
   ($),
   (&&),
   (.),
@@ -135,6 +141,7 @@ import Prelude (
   (>>),
   (>>=),
   (||),
+  (/=),
  )
 
 --------------------------------------------------------------------------------
@@ -151,6 +158,7 @@ data PropLogic a
   | Disjunction (PropLogic a) (PropLogic a)
   | Implication (PropLogic a) (PropLogic a)
   | IfAndOnlyIf (PropLogic a) (PropLogic a)
+  deriving (Functor)
 
 (/\) :: PropLogic a -> PropLogic a -> PropLogic a
 (/\) = Conjunction
@@ -163,6 +171,18 @@ data PropLogic a
 
 (<->) :: PropLogic a -> PropLogic a -> PropLogic a
 (<->) = IfAndOnlyIf
+
+anyOf :: [PropLogic a] -> PropLogic a
+anyOf = foldr (\/) (Atom False)
+
+allOf :: [PropLogic a] -> PropLogic a
+allOf = foldr (/\) (Atom True)
+
+noneOf :: [PropLogic a] -> PropLogic a
+noneOf ps = allOf (Neg <$> ps)
+
+oneOf :: (Eq a) => [a] -> PropLogic a
+oneOf ps = anyOf (Prop <$> ps) /\ allOf [ Prop p --> noneOf (Prop <$> filter (/=p) ps) | p <- ps]
 
 genGivenPropLogic :: (IsProperty a, MonadGen m, GenBase m ~ Identity) => PropLogic a -> m (Set a)
 genGivenPropLogic f =
