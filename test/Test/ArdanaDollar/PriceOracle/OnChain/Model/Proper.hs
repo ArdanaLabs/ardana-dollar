@@ -165,7 +165,7 @@ instance IsProperty (Property PriceOracleModel)
 
 instance Proper PriceOracleModel where
   data Model PriceOracleModel
-    = PriceOracleScriptModel
+    = PriceOracleValidatorModel
         { stateNFTCurrency :: (CurrencySymbol, TokenName)
         , timeRangeLowerBound :: Integer
         , timeRangeUpperBound :: Integer
@@ -180,9 +180,9 @@ instance Proper PriceOracleModel where
 
   -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
-    = OfMinter
+    = PriceOracleMintingPolicyContext
     | --TODO minter model
-      OfScript
+      PriceOracleValidatorContext
     | OutputDatumTimestampIsInRange
     | RangeWithinSizeLimit
     | OutputDatumSignedByOwner
@@ -196,7 +196,7 @@ instance Proper PriceOracleModel where
 
   logic =
     allOf
-      [ oneOf [OfMinter, OfScript]
+      [ oneOf [PriceOracleMintingPolicyContext, PriceOracleValidatorContext]
       , anyOf
           ( Prop
               <$> [ OutputDatumTimestampIsInRange
@@ -208,7 +208,7 @@ instance Proper PriceOracleModel where
                   , OutputDatumIsCorrectType
                   ]
           )
-          --> Prop OfScript
+          --> Prop PriceOracleValidatorContext
       , -- parsing will fail before we can check the signature hence these implications
         Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
       , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
@@ -216,7 +216,7 @@ instance Proper PriceOracleModel where
 
   expect =
     allOf
-      [ Prop OfScript
+      [ Prop PriceOracleValidatorContext
           --> allOf
             ( Prop
                 <$> [ OutputDatumTimestampIsInRange
@@ -228,7 +228,7 @@ instance Proper PriceOracleModel where
                     , OutputDatumIsCorrectType
                     ]
             )
-      , Prop OfMinter
+      , Prop PriceOracleMintingPolicyContext
           --> allOf
             ( Prop
                 <$> []
@@ -237,7 +237,7 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
-  script m@PriceOracleScriptModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
+  script m@PriceOracleValidatorModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
@@ -252,13 +252,13 @@ instance Proper PriceOracleModel where
   modelCPUBudget _ = ExCPU 1_000_000_000
   modelMemoryBudget _ = ExMemory 1_000_000_000
 
-  modelTxValidRange PriceOracleScriptModel {..} =
+  modelTxValidRange PriceOracleValidatorModel {..} =
     Interval
       (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
       (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
   modelTxValidRange PriceOracleMinterModel = always
 
-  modelTxSignatories PriceOracleScriptModel {..} =
+  modelTxSignatories PriceOracleValidatorModel {..} =
     case transactorParams of
       NoSigner -> []
       JustSignedBy signer -> [go signer]
@@ -267,7 +267,7 @@ instance Proper PriceOracleModel where
       go = pubKeyHash . walletPubKey . knownWallet
   modelTxSignatories PriceOracleMinterModel = []
 
-  modelInputData PriceOracleScriptModel {..} =
+  modelInputData PriceOracleValidatorModel {..} =
     [
       ( stateTokenValue inputParams
       , modelDatum' $ stateDatumValue inputParams
@@ -275,7 +275,7 @@ instance Proper PriceOracleModel where
     ]
   modelInputData PriceOracleMinterModel = []
 
-  modelOutputData PriceOracleScriptModel {..} =
+  modelOutputData PriceOracleValidatorModel {..} =
     [
       ( stateTokenValue inputParams
       , modelDatum' $ stateDatumValue outputParams
@@ -316,8 +316,8 @@ satisfiesProperty' TransactionSignedByOwner = transactionSignedByOwner
 satisfiesProperty' StateTokenReturned = stateTokenReturned
 satisfiesProperty' InputDatumIsCorrectType = hasIncorrectInputDatum
 satisfiesProperty' OutputDatumIsCorrectType = hasIncorrectOutputDatum
-satisfiesProperty' OfMinter = isMinterModel
-satisfiesProperty' OfScript = isScriptModel
+satisfiesProperty' PriceOracleMintingPolicyContext = isMinterModel
+satisfiesProperty' PriceOracleValidatorContext = isScriptModel
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
@@ -326,38 +326,38 @@ isMinterModel PriceOracleMinterModel = True
 isMinterModel _ = False
 
 isScriptModel :: ModelProperty
-isScriptModel PriceOracleScriptModel {} = True
+isScriptModel PriceOracleValidatorModel {} = True
 isScriptModel _ = False
 
 outputDatumTimestampIsInRange :: ModelProperty
-outputDatumTimestampIsInRange PriceOracleScriptModel {..} =
+outputDatumTimestampIsInRange PriceOracleValidatorModel {..} =
   case stateDatumValue outputParams of
     Nothing -> False
     Just so -> timeRangeLowerBound <= timeStamp so && timeStamp so <= timeRangeUpperBound
 outputDatumTimestampIsInRange _ = False
 
 rangeWithinSizeLimit :: ModelProperty
-rangeWithinSizeLimit PriceOracleScriptModel {..} =
+rangeWithinSizeLimit PriceOracleValidatorModel {..} =
   let rangeLen = timeRangeUpperBound - timeRangeLowerBound
    in 0 < rangeLen && rangeLen <= 10000
 rangeWithinSizeLimit _ = False
 
 outputDatumSignedByOwner :: ModelProperty
-outputDatumSignedByOwner PriceOracleScriptModel {..} =
+outputDatumSignedByOwner PriceOracleValidatorModel {..} =
   case stateDatumValue outputParams of
     Nothing -> False
     Just so -> signedByWallet so == ownerWallet
 outputDatumSignedByOwner _ = False
 
 transactionSignedByOwner :: ModelProperty
-transactionSignedByOwner PriceOracleScriptModel {..} = case transactorParams of
+transactionSignedByOwner PriceOracleValidatorModel {..} = case transactorParams of
   NoSigner -> False
   JustSignedBy signer -> signer == ownerWallet
   SignedByWithValue signer _ -> signer == ownerWallet
 transactionSignedByOwner _ = False
 
 stateTokenReturned :: ModelProperty
-stateTokenReturned PriceOracleScriptModel {..} =
+stateTokenReturned PriceOracleValidatorModel {..} =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
     Nothing -> False
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
@@ -366,11 +366,11 @@ stateTokenReturned PriceOracleScriptModel {..} =
 stateTokenReturned _ = False
 
 hasIncorrectInputDatum :: ModelProperty
-hasIncorrectInputDatum PriceOracleScriptModel {..} = isJust $ stateDatumValue inputParams
+hasIncorrectInputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue inputParams
 hasIncorrectInputDatum _ = False
 
 hasIncorrectOutputDatum :: ModelProperty
-hasIncorrectOutputDatum PriceOracleScriptModel {..} = isJust $ stateDatumValue outputParams
+hasIncorrectOutputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue outputParams
 hasIncorrectOutputDatum _ = False
 
 -- Gen TODO move anything that is not model specific to a common lib
@@ -378,15 +378,15 @@ hasIncorrectOutputDatum _ = False
 
 genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' props =
-  if OfScript `elem` props
-    then runReaderT genPriceOracleScriptModel props
+  if PriceOracleValidatorContext `elem` props
+    then runReaderT genPriceOracleValidatorModel props
     else pure PriceOracleMinterModel
 
-genPriceOracleScriptModel ::
+genPriceOracleValidatorModel ::
   forall (m :: Type -> Type).
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (Model PriceOracleModel)
-genPriceOracleScriptModel = do
+genPriceOracleValidatorModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
   sp <- genSpenderParams w
@@ -394,7 +394,7 @@ genPriceOracleScriptModel = do
   op <- genOutputUTXOParams w (tlb, tub)
   pc <- HP.builtinByteString (Range.linear 0 6)
   pure $
-    PriceOracleScriptModel
+    PriceOracleValidatorModel
       { stateNFTCurrency = correctNFTCurrency --TODO include in model
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
