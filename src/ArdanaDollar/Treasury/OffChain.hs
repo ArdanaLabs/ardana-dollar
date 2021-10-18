@@ -182,11 +182,14 @@ depositFundsWithCostCenter treasury params = do
 
 spendFromCostCenter ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
-  TreasurySpendParams ->
+  -- (AsContractError e) =>
+  TreasurySpendEndpointParams ->
   Contract w s e ()
-spendFromCostCenter params = do
-  logInfo @String "called spendFromCostCenter"
-  logInfo (show params)
+spendFromCostCenter params = case prepareTreasurySpendParams params of
+  Left err -> logError err
+  Right tsp -> do
+    logInfo @String "called spendFromCostCenter"
+    logInfo (show tsp)
 
 queryCostCenters ::
   forall (s :: Row Type) (e :: Type).

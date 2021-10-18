@@ -35,6 +35,7 @@ import Data.Vector (Vector)
 --------------------------------------------------------------------------------
 
 import Ledger qualified
+import Ledger.Crypto qualified as Crypto
 import Playground.Contract (FormSchema, FunctionSchema)
 import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
@@ -53,7 +54,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
-import Wallet.Emulator.Wallet (knownWallet)
+import Wallet.Emulator.Wallet (knownWallet, walletPubKey)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -61,7 +62,11 @@ import Wallet.Emulator.Wallet qualified as Wallet
 import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.MockAdmin (startAdmin)
 import ArdanaDollar.Treasury.Endpoints
-import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams (..))
+import ArdanaDollar.Treasury.Types (
+  Treasury,
+  TreasuryDepositParams (..),
+  TreasurySpendEndpointParams (..),
+ )
 import ArdanaDollar.Vault
 
 import Plutus.PAB.OutputBus
@@ -152,6 +157,26 @@ pabSimulation = do
   logBlueString $ "Deposited currently: " <> show queriedCosts
   logCurrentBalances_
   Simulator.waitNSlots 20
+
+  logBlueString "Spend funds in cost centers"
+  _ <-
+    Simulator.callEndpointOnInstance cTreasuryUserId "spendFromCostCenter" $
+      TreasurySpendEndpointParams
+        { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
+        , treasurySpendEndpoint'costCenter = "TestCostCenter1"
+        , treasurySpendEndpoint'pubKey = Nothing
+        , treasurySpendEndpoint'validator = Just adminValidatorHash
+        }
+  _ <- Simulator.waitNSlots 10
+  _ <-
+    Simulator.callEndpointOnInstance cTreasuryUserId "spendFromCostCenter" $
+      TreasurySpendEndpointParams
+        { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
+        , treasurySpendEndpoint'costCenter = "TestCostCenter1"
+        , treasurySpendEndpoint'pubKey = Just . Crypto.pubKeyHash . walletPubKey $ knownWallet 1
+        , treasurySpendEndpoint'validator = Nothing
+        }
+  _ <- Simulator.waitNSlots 10
 
   -- Start buffer
   logBlueString "Start buffer contract"

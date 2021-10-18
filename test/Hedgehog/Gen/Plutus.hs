@@ -1,4 +1,5 @@
 module Hedgehog.Gen.Plutus (
+  address,
   assetClass,
   builtinByteString,
   currencySymbol,
@@ -23,6 +24,7 @@ import Prelude
 import Ledger qualified
 import Ledger.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
+import Plutus.V1.Ledger.Address (pubKeyHashAddress, scriptHashAddress)
 import Plutus.V1.Ledger.Bytes (LedgerBytes (..))
 import Plutus.V1.Ledger.Crypto (PubKey (..), PubKeyHash (..))
 import Plutus.V1.Ledger.Tx (TxOutRef (..))
@@ -35,6 +37,13 @@ builtinByteString ::
   Range.Range Int ->
   m BuiltinByteString
 builtinByteString range = BuiltinByteString <$> Gen.utf8 range Gen.unicodeAll
+
+address :: forall (m :: Type -> Type). MonadGen m => m Ledger.Address
+address =
+  Gen.choice
+    [ pubKeyHashAddress <$> pubKeyHash
+    , scriptHashAddress <$> validatorHash
+    ]
 
 assetClass :: forall (m :: Type -> Type). MonadGen m => m Value.AssetClass
 assetClass = Value.assetClass <$> currencySymbol <*> tokenName

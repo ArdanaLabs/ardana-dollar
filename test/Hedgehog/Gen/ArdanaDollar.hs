@@ -41,6 +41,7 @@ import Hedgehog.Range qualified as Range
 import Prelude
 
 import Hedgehog.Gen.Plutus (
+  address,
   assetClass,
   builtinByteString,
   currencySymbol,
@@ -200,7 +201,7 @@ treasuryAction =
   Gen.choice
     [ pure Treasury.BorrowForAuction
     , Treasury.DepositFundsWithCostCenter <$> treasuryDepositParams
-    , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
+    , Treasury.SpendFundsFromCostCenter <$> treasurySpendParams
     , pure Treasury.AllowMint
     , pure Treasury.AllowBurn
     , Treasury.InitiateUpgrade <$> newContract
@@ -228,7 +229,10 @@ treasuryDepositParams =
 
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
-  Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
+  Treasury.TreasurySpendParams
+    <$> value
+    <*> builtinByteString (Range.constant 0 128)
+    <*> address
 
 onchainMapMapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
 onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass

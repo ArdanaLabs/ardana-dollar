@@ -24,13 +24,13 @@ import ArdanaDollar.Treasury.Types (
   NewContract,
   Treasury,
   TreasuryDepositParams,
-  TreasurySpendParams,
+  TreasurySpendEndpointParams,
  )
 import Plutus.PAB.OutputBus
 
 type TreasurySchema =
   Endpoint "depositFundsWithCostCenter" TreasuryDepositParams
-    .\/ Endpoint "spendFromCostCenter" TreasurySpendParams
+    .\/ Endpoint "spendFromCostCenter" TreasurySpendEndpointParams
     .\/ Endpoint "queryCostCenters" ()
     .\/ Endpoint "initUpgrade" NewContract
 
