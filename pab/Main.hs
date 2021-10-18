@@ -165,7 +165,7 @@ pabSimulation = do
         { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
         , treasurySpendEndpoint'costCenter = "TestCostCenter1"
         , treasurySpendEndpoint'pubKey = Nothing
-        , treasurySpendEndpoint'validator = Just adminValidatorHash
+        , treasurySpendEndpoint'validator = Just (adminValidatorHash, ())
         }
   _ <- Simulator.waitNSlots 10
   _ <-
@@ -174,7 +174,7 @@ pabSimulation = do
         { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
         , treasurySpendEndpoint'costCenter = "TestCostCenter1"
         , treasurySpendEndpoint'pubKey = Just . Crypto.pubKeyHash . walletPubKey $ knownWallet 1
-        , treasurySpendEndpoint'validator = Nothing
+        , treasurySpendEndpoint'validator = Nothing :: Maybe (Ledger.ValidatorHash, ())
         }
   _ <- Simulator.waitNSlots 10
 
@@ -236,7 +236,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
     MockAdmin _ -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryStart _ -> Builtin.endpointsToSchemas @EmptySchema
-    TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
+    TreasuryContract _ -> Builtin.endpointsToSchemas @(TreasurySchema ())
     BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
 
@@ -245,7 +245,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> SomeBuiltin vaultContract
     MockAdmin i -> SomeBuiltin (startAdmin @() @ContractError i)
     TreasuryStart vh -> SomeBuiltin (treasuryStartContract (vh, "USD"))
-    TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
+    TreasuryContract t -> SomeBuiltin (treasuryContract @() @ContractError t)
     BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 

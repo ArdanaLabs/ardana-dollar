@@ -29,6 +29,7 @@ import Prelude (Semigroup (..), String, show)
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Crypto qualified as Crypto
+import Ledger.Extra (OnChainAddress (..))
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
@@ -185,30 +186,56 @@ depositFundsWithCostCenter treasury params = do
       logInfo @String $ printf "User %s has deposited:\n%s" (show pkh) (show depositValue)
 
 spendFromCostCenter ::
-  forall (w :: Type) (s :: Row Type) (e :: Type).
-  (AsContractError e) =>
+  forall (d :: Type) (w :: Type) (s :: Row Type) (e :: Type).
+  (AsContractError e, PlutusTx.ToData d) =>
   Treasury ->
-  TreasurySpendEndpointParams ->
+  TreasurySpendEndpointParams d ->
   Contract w s e ()
 spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
   Left err -> logError err
   Right tsp -> do
     logInfo @String ("called spendFromCostCenter: " <> show tsp)
+    -- TODO: Debug ad-hoc mint of CanSpend
+    pkh <- Crypto.pubKeyHash <$> ownPubKey
+    canSpendValue <- debugMintCanSpend pkh treasury
+    let centerName = treasurySpend'costCenter tsp
+        spendValue = treasurySpend'value tsp
+        beneficiary = treasurySpend'beneficiary tsp
     findTreasury treasury >>= \case
       Nothing -> logError @String "no treasury utxo at the script address"
-      Just (_oref, _o, _td) -> do
-        -- TODO: Debug ad-hoc mint of CanSpend
-        pkh <- Crypto.pubKeyHash <$> ownPubKey
-        _ <- debugMintCanSpend pkh treasury
-        pure ()
+      Just (oref, o, td) -> do
+        let td' =
+              td
+                { costCenters =
+                    UniqueMap.alter
+                      centerName
+                      (Just (inv spendValue) <>)
+                      (costCenters td)
+                }
 
--- let centerName = treasurySpend'costCenter tsp
---     spendValue = treasurySpend'value tsp
---     beneficiary = treasurySpend'beneficiary tsp
---     td' = td {costCenters = UniqueMap.alter centerName (Just (inv spendValue) <>) (costCenters td)}
+            treasuryValue = (o ^. Ledger.ciTxOutValue) <> inv spendValue
 
---     treasuryValue = (o ^. Ledger.ciTxOutValue) <> inv spendValue
---     beneficiaryValue = spendValue
+            beneficiaryTx = case beneficiary of
+              OnChainPubKey pkh' -> Constraints.mustPayToPubKey pkh' spendValue
+              OnChainValidatorHash vh d -> Constraints.mustPayToOtherScript vh d spendValue
+
+            lookups =
+              Constraints.typedValidatorLookups (treasuryInst treasury)
+                <> Constraints.otherScript (treasuryValidator treasury)
+                <> Constraints.unspentOutputs (Map.singleton oref o)
+            tx =
+              Constraints.mustPayToTheScript td' treasuryValue
+                <> Constraints.mustSpendScriptOutput oref (toRedeemer @Treasuring $ SpendFundsFromCostCenter tsp)
+                <> Constraints.mustPayToPubKey pkh canSpendValue
+                <> beneficiaryTx
+        ledgerTx <- submitTxConstraintsWith lookups tx
+        awaitTxConfirmed $ Ledger.txId ledgerTx
+        logInfo @String $
+          printf
+            "Spent %s from %s, sent it to %s"
+            (show spendValue)
+            (show centerName)
+            (show beneficiary)
 
 -- TODO: Debug ad-hoc mint of CanSpend
 debugMintCanSpend ::
@@ -216,10 +243,10 @@ debugMintCanSpend ::
   (AsContractError e) =>
   Crypto.PubKeyHash ->
   Treasury ->
-  Contract w s e ()
+  Contract w s e Value.Value
 debugMintCanSpend pkh treasury =
   findTreasury treasury >>= \case
-    Nothing -> logError @String "no treasury utxo at the script address"
+    Nothing -> logError @String "no treasury utxo at the script address" >> return mempty
     Just (oref, o, td) -> do
       let (canSpendLookup, canSpendTx, canSpendValue) = canSpendTokenMintingConstraints treasury
           mintLookups =
@@ -235,6 +262,7 @@ debugMintCanSpend pkh treasury =
                 (toRedeemer @Treasuring $ AllowMint (canSpendTokenAssetClass treasury))
       mintLedgerTx <- submitTxConstraintsWith mintLookups mintTx
       void $ awaitTxConfirmed $ Ledger.txId mintLedgerTx
+      return canSpendValue
 
 queryCostCenters ::
   forall (s :: Row Type) (e :: Type).

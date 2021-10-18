@@ -39,6 +39,7 @@ mkTreasuryValidator treasury td redeemer ctx =
         validateAuctionDanaAmountUnchanged td ctx
           && validateCostCentersUnchanged td ctx
           && validateUpgrade nc treasury td ownOutput ctx
+      SpendFundsFromCostCenter _ -> True
       AllowMint ac ->
         any (hasToken ac) (Ledger.txInfoOutputs . Contexts.scriptContextTxInfo $ ctx)
       _ -> False -- TODO: rest of the validators

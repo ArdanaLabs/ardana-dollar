@@ -7,6 +7,7 @@ module ArdanaDollar.Treasury.Endpoints (
 --------------------------------------------------------------------------------
 
 import Control.Monad (forever, (>=>))
+import Data.Aeson (FromJSON)
 import Data.Kind (Type)
 import Data.Vector (Vector)
 
@@ -15,6 +16,7 @@ import Data.Vector (Vector)
 import Ledger qualified
 import Ledger.Value qualified as Value
 import Plutus.Contract
+import PlutusTx (ToData)
 import PlutusTx.Prelude
 
 --------------------------------------------------------------------------------
@@ -28,9 +30,9 @@ import ArdanaDollar.Treasury.Types (
  )
 import Plutus.PAB.OutputBus
 
-type TreasurySchema =
+type TreasurySchema d =
   Endpoint "depositFundsWithCostCenter" TreasuryDepositParams
-    .\/ Endpoint "spendFromCostCenter" TreasurySpendEndpointParams
+    .\/ Endpoint "spendFromCostCenter" (TreasurySpendEndpointParams d)
     .\/ Endpoint "queryCostCenters" ()
     .\/ Endpoint "initUpgrade" NewContract
 
@@ -40,10 +42,10 @@ treasuryStartContract ::
 treasuryStartContract = uncurry startTreasury >=> maybe (return ()) sendBus
 
 treasuryContract ::
-  forall (e :: Type).
-  (AsContractError e) =>
+  forall (d :: Type) (e :: Type).
+  (AsContractError e, FromJSON d, ToData d) =>
   Treasury ->
-  Contract (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema e ()
+  Contract (OutputBus (Vector (BuiltinByteString, Value.Value))) (TreasurySchema d) e ()
 treasuryContract treasury =
   forever $
     selectList

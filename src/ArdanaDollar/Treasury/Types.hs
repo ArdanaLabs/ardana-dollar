@@ -26,6 +26,7 @@ module ArdanaDollar.Treasury.Types (
 --------------------------------------------------------------------------------
 
 import Data.Functor ((<&>))
+import Data.Kind (Type)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Prelude qualified
@@ -105,16 +106,15 @@ data TreasurySpendParams = TreasurySpendParams
 -- TODO: For now, there is no `ToSchema` instance for coproduct
 -- so to make the endpoint usable we use two Maybes instead of
 -- a single Either-like type
-data TreasurySpendEndpointParams = TreasurySpendEndpointParams
+data TreasurySpendEndpointParams d = TreasurySpendEndpointParams
   { treasurySpendEndpoint'value :: !Value.Value
   , treasurySpendEndpoint'costCenter :: !BuiltinByteString
   , treasurySpendEndpoint'pubKey :: !(Maybe Ledger.PubKeyHash)
-  , treasurySpendEndpoint'validator :: !(Maybe Ledger.ValidatorHash)
+  , treasurySpendEndpoint'validator :: !(Maybe (Ledger.ValidatorHash, d))
   }
   deriving stock (Generic)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
--- TODO: Should the Redeemer give more information?
 data TreasuryAction
   = BorrowForAuction
   | DepositFundsWithCostCenter !TreasuryDepositParams
@@ -136,25 +136,38 @@ instance Eq TreasuryDatum where
 
 -- helper functions
 prepareTreasurySpendParams ::
-  TreasurySpendEndpointParams -> Either Text TreasurySpendParams
+  forall (d :: Type) (i :: Type) (o :: Type).
+  (PlutusTx.ToData d) =>
+  TreasurySpendEndpointParams d ->
+  Either Text (TreasurySpendParams, Value.Value -> TxConstraints i o)
 prepareTreasurySpendParams params =
-  onChainAddress <&> \oca ->
-    TreasurySpendParams
-      { treasurySpend'value = treasurySpendEndpoint'value params
-      , treasurySpend'costCenter = treasurySpendEndpoint'costCenter params
-      , treasurySpend'beneficiary = oca
-      }
+  onChainAddress <&> \(oca, d) ->
+    ( TreasurySpendParams
+        { treasurySpend'value = treasurySpendEndpoint'value params
+        , treasurySpend'costCenter = treasurySpendEndpoint'costCenter params
+        , treasurySpend'beneficiary = oca
+        }
+    , d
+    )
   where
     pubKey :: Maybe Ledger.PubKeyHash
     pubKey = treasurySpendEndpoint'pubKey params
 
-    validatorHash :: Maybe Ledger.ValidatorHash
+    validatorHash :: Maybe (Ledger.ValidatorHash, d)
     validatorHash = treasurySpendEndpoint'validator params
 
-    onChainAddress :: Either Text Ledger.Address
+    onChainAddress ::
+      Either Text (Ledger.Address, Value.Value -> TxConstraints i o)
     onChainAddress = case (pubKey, validatorHash) of
-      (Just pk, Nothing) -> Right $ pubKeyHashAddress pk
-      (Nothing, Just vh) -> Right $ scriptHashAddress vh
+      (Just pk, Nothing) ->
+        Right (pubKeyHashAddress pk, Constraints.mustPayToPubKey pk)
+      (Nothing, Just (vh, d)) ->
+        Right
+          ( scriptHashAddress vh
+          , Constraints.mustPayToOtherScript
+              vh
+              (Ledger.Datum $ PlutusTx.toBuiltinData d)
+          )
       (Just _, Just _) -> Left "two beneficiary addresses supplied"
       (Nothing, Nothing) -> Left "no beneficiary address supplied"
 
