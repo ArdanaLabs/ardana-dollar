@@ -41,6 +41,10 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.MockAdmin (adminValidator, findAdmin)
+import ArdanaDollar.Treasury.CanSpendToken (
+  canSpendTokenAssetClass,
+  canSpendTokenMintingConstraints,
+ )
 import ArdanaDollar.Treasury.OnChain (mkTreasuryValidator)
 import ArdanaDollar.Treasury.StateToken (
   treasuryStateTokenAssetClass,
@@ -182,14 +186,55 @@ depositFundsWithCostCenter treasury params = do
 
 spendFromCostCenter ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
-  -- (AsContractError e) =>
+  (AsContractError e) =>
+  Treasury ->
   TreasurySpendEndpointParams ->
   Contract w s e ()
-spendFromCostCenter params = case prepareTreasurySpendParams params of
+spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
   Left err -> logError err
   Right tsp -> do
-    logInfo @String "called spendFromCostCenter"
-    logInfo (show tsp)
+    logInfo @String ("called spendFromCostCenter: " <> show tsp)
+    findTreasury treasury >>= \case
+      Nothing -> logError @String "no treasury utxo at the script address"
+      Just (_oref, _o, _td) -> do
+        -- TODO: Debug ad-hoc mint of CanSpend
+        pkh <- Crypto.pubKeyHash <$> ownPubKey
+        _ <- debugMintCanSpend pkh treasury
+        pure ()
+
+-- let centerName = treasurySpend'costCenter tsp
+--     spendValue = treasurySpend'value tsp
+--     beneficiary = treasurySpend'beneficiary tsp
+--     td' = td {costCenters = UniqueMap.alter centerName (Just (inv spendValue) <>) (costCenters td)}
+
+--     treasuryValue = (o ^. Ledger.ciTxOutValue) <> inv spendValue
+--     beneficiaryValue = spendValue
+
+-- TODO: Debug ad-hoc mint of CanSpend
+debugMintCanSpend ::
+  forall (w :: Type) (s :: Row Type) (e :: Type).
+  (AsContractError e) =>
+  Crypto.PubKeyHash ->
+  Treasury ->
+  Contract w s e ()
+debugMintCanSpend pkh treasury =
+  findTreasury treasury >>= \case
+    Nothing -> logError @String "no treasury utxo at the script address"
+    Just (oref, o, td) -> do
+      let (canSpendLookup, canSpendTx, canSpendValue) = canSpendTokenMintingConstraints treasury
+          mintLookups =
+            canSpendLookup <> Constraints.typedValidatorLookups (treasuryInst treasury)
+              <> Constraints.otherScript (treasuryValidator treasury)
+              <> Constraints.unspentOutputs (Map.singleton oref o)
+          mintTx =
+            canSpendTx
+              <> Constraints.mustPayToPubKey pkh canSpendValue
+              <> Constraints.mustPayToTheScript td (o ^. Ledger.ciTxOutValue)
+              <> Constraints.mustSpendScriptOutput
+                oref
+                (toRedeemer @Treasuring $ AllowMint (canSpendTokenAssetClass treasury))
+      mintLedgerTx <- submitTxConstraintsWith mintLookups mintTx
+      void $ awaitTxConfirmed $ Ledger.txId mintLedgerTx
 
 queryCostCenters ::
   forall (s :: Row Type) (e :: Type).

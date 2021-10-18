@@ -48,7 +48,7 @@ treasuryContract treasury =
   forever $
     selectList
       [ endpoint @"depositFundsWithCostCenter" (depositFundsWithCostCenter treasury)
-      , endpoint @"spendFromCostCenter" spendFromCostCenter
+      , endpoint @"spendFromCostCenter" (spendFromCostCenter treasury)
       , endpoint @"queryCostCenters" (const $ queryCostCenters treasury)
       , endpoint @"initUpgrade" (initiateUpgrade treasury)
       ]

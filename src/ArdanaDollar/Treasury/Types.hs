@@ -119,7 +119,7 @@ data TreasuryAction
   = BorrowForAuction
   | DepositFundsWithCostCenter !TreasuryDepositParams
   | SpendFundsFromCostCenter !TreasurySpendParams
-  | AllowMint
+  | AllowMint !Value.AssetClass
   | AllowBurn
   | InitiateUpgrade !NewContract
   deriving stock (Prelude.Eq, Prelude.Show)

@@ -202,7 +202,7 @@ treasuryAction =
     [ pure Treasury.BorrowForAuction
     , Treasury.DepositFundsWithCostCenter <$> treasuryDepositParams
     , Treasury.SpendFundsFromCostCenter <$> treasurySpendParams
-    , pure Treasury.AllowMint
+    , Treasury.AllowMint <$> assetClass
     , pure Treasury.AllowBurn
     , Treasury.InitiateUpgrade <$> newContract
     ]
