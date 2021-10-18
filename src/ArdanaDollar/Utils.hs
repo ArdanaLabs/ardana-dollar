@@ -336,6 +336,7 @@ getScriptOutputsWithDatum
 -- we will be hit with the scary looking error
 -- >     EvaluationError [ "Lf" ] "CekEvaluationFailure"
 -- if the script does not spend an output back to itself...
+
 {- | Get a list of pairs (utxo, datum) consisting of outputs
      whose datums succeded to parse as the passed `datum`
      type and those datums themselves

@@ -5,7 +5,7 @@
 {-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.PriceOracle.OnChain (
---  getScriptOutputsWithDatum,
+  --  getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
   mkOracleValidator,
   oracleCompiledTypedValidator,
