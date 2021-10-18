@@ -65,10 +65,10 @@ import PlutusTx (
  )
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins (BuiltinData)
-import PlutusTx.Prelude
-  ( BuiltinByteString,
-    isJust,
-  )
+import PlutusTx.Prelude (
+  BuiltinByteString,
+  isJust,
+ )
 import PlutusTx.UniqueMap qualified as UniqueMap
 import Proper.Plutus
 import Wallet.Emulator.Wallet (
@@ -95,14 +95,14 @@ import Prelude (
   uncurry,
   (!!),
   ($),
+  (&&),
   (+),
   (-),
   (.),
   (/=),
   (<),
-  (<=),
   (<$>),
-  (&&),
+  (<=),
   (==),
  )
 
@@ -181,8 +181,8 @@ instance Proper PriceOracleModel where
   -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
     = OfMinter
-    --TODO minter model
-    | OfScript
+    | --TODO minter model
+      OfScript
     | OutputDatumTimestampIsInRange
     | RangeWithinSizeLimit
     | OutputDatumSignedByOwner
@@ -209,29 +209,30 @@ instance Proper PriceOracleModel where
                   ]
           )
           --> Prop OfScript
-
-      -- parsing will fail before we can check the signature hence these implications
-      , Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
+      , -- parsing will fail before we can check the signature hence these implications
+        Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
       , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
       ]
 
   expect =
     allOf
-      [ Prop OfScript --> allOf
-                           ( Prop
-                               <$> [ OutputDatumTimestampIsInRange
-                                   , RangeWithinSizeLimit
-                                   , OutputDatumSignedByOwner
-                                   , TransactionSignedByOwner
-                                   , StateTokenReturned
-                                   , InputDatumIsCorrectType
-                                   , OutputDatumIsCorrectType
-                                   ]
-                           )
-      , Prop OfMinter --> allOf
-                           ( Prop
-                               <$> []
-                           )
+      [ Prop OfScript
+          --> allOf
+            ( Prop
+                <$> [ OutputDatumTimestampIsInRange
+                    , RangeWithinSizeLimit
+                    , OutputDatumSignedByOwner
+                    , TransactionSignedByOwner
+                    , StateTokenReturned
+                    , InputDatumIsCorrectType
+                    , OutputDatumIsCorrectType
+                    ]
+            )
+      , Prop OfMinter
+          --> allOf
+            ( Prop
+                <$> []
+            )
       ]
 
   genModel = genModel' . Set.toList
@@ -436,7 +437,6 @@ genSpenderParams w = do
               v <- HP.value
               pure $ SignedByWithValue w' v
 
-
 genInputUTXOParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
@@ -485,7 +485,6 @@ genOutputTimeStamp ts = do
       if b
         then Gen.integral (Range.linear 0 (fst ts - 1))
         else Gen.integral (Range.linear (snd ts + 1) 300_000)
-
 
 genInputTimeStamp ::
   forall (m :: Type -> Type).
