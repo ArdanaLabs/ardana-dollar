@@ -405,7 +405,7 @@ class Proper model where
   deliverResult model ctx (cost, logs) =
     case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
       (_, Nothing) -> failWithFootnote noOutcome
-      (False, Just "Fail") -> successWithBudgetCheck cost
+      (False, Just "Fail") -> success
       (True, Just "Pass") -> successWithBudgetCheck cost
       (True, Just t) ->
         if t == "Fail"
@@ -418,7 +418,7 @@ class Proper model where
           then failWithFootnote unexpectedSuccess
           else case Text.stripPrefix "Parse failed: " t of
             Nothing -> failWithFootnote $ internalError t
-            Just _ -> successWithBudgetCheck cost
+            Just _ -> success
     where
       shouldPass :: Bool
       shouldPass = satisfiesPropLogic expect $ properties model

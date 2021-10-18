@@ -31,10 +31,9 @@ import Ledger (
   PubKey,
   PubKeyHash,
   TokenName,
+  TxOutRef (..),
   UpperBound (..),
   Value,
-  TxOutRef (..),
-  always,
   knownPrivateKeys,
   pubKeyHash,
  )
@@ -43,14 +42,18 @@ import Ledger.Oracle (
   signMessage,
  )
 import Plutus.V1.Ledger.Api (getValue)
-import Plutus.V1.Ledger.Contexts (ScriptContext (..))
+import Plutus.V1.Ledger.Contexts (
+  ScriptContext (..),
+  ScriptPurpose (..),
+ )
 import Plutus.V1.Ledger.Scripts (
   Context,
   Datum,
   MintingPolicy,
-  Redeemer,
+  Redeemer (..),
   Script,
   Validator,
+  ValidatorHash,
   applyMintingPolicyScript,
   applyValidator,
   mkMintingPolicyScript,
@@ -74,9 +77,6 @@ import Proper.Plutus
 import Wallet.Emulator.Wallet (
   knownWallet,
   walletPubKey,
- )
-import Plutus.V1.Ledger.Contexts (
-  ScriptPurpose (..),
  )
 import Prelude (
   Bool (..),
@@ -135,7 +135,7 @@ mkTestMintingPolicy params =
   where
     {-# INLINEABLE go #-}
     go ::
-      (() -> ScriptContext -> Bool) ->
+      (ValidatorHash -> ScriptContext -> Bool) ->
       (BuiltinData -> BuiltinData -> ())
     go = toTestMintingPolicy
 
@@ -181,13 +181,14 @@ instance Proper PriceOracleModel where
         }
     | PriceOracleMinterModel
         { stateNFTCurrency :: (CurrencySymbol, TokenName)
+        , timeRangeLowerBound :: Integer
+        , timeRangeUpperBound :: Integer
         , ownerWallet :: Integer
         , transactorParams :: TransactorParams
         , outputParams :: StateUTXOParams
         }
     deriving (Show)
 
-  -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
     = PriceOracleMintingPolicyContext
     | PriceOracleValidatorContext
@@ -207,11 +208,7 @@ instance Proper PriceOracleModel where
       [ oneOf [PriceOracleMintingPolicyContext, PriceOracleValidatorContext]
       , anyOf
           ( Prop
-              <$> [ OutputDatumTimestampIsInRange
-                  , RangeWithinSizeLimit
-                  , OutputDatumSignedByOwner
-                  , InputDatumIsCorrectType
-                  , OutputDatumIsCorrectType
+              <$> [ InputDatumIsCorrectType
                   ]
           )
           --> Prop PriceOracleValidatorContext
@@ -237,8 +234,12 @@ instance Proper PriceOracleModel where
       , Prop PriceOracleMintingPolicyContext
           --> allOf
             ( Prop
-                <$> [ TransactionSignedByOwner
+                <$> [ OutputDatumTimestampIsInRange
+                    , RangeWithinSizeLimit
+                    , TransactionSignedByOwner
                     , StateTokenReturned
+                    , OutputDatumIsCorrectType
+                    , OutputDatumSignedByOwner
                     ]
             )
       ]
@@ -254,8 +255,11 @@ instance Proper PriceOracleModel where
 
   modelTxMint PriceOracleMinterModel {..} = singleton c t 1
     where
-      (c,t) = correctNFTCurrency $ oracleMintingParams ownerWallet
+      (c, t) = correctNFTCurrency $ oracleMintingParams ownerWallet
   modelTxMint _ = mempty
+
+  modelRedeemer PriceOracleMinterModel {} = Redeemer $ toBuiltinData ("90ab" :: ValidatorHash)
+  modelRedeemer _ = Redeemer $ toBuiltinData ()
 
   script m@PriceOracleValidatorModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
     where
@@ -272,11 +276,10 @@ instance Proper PriceOracleModel where
   modelCPUBudget _ = ExCPU 1_000_000_000
   modelMemoryBudget _ = ExMemory 1_000_000_000
 
-  modelTxValidRange PriceOracleValidatorModel {..} =
+  modelTxValidRange model =
     Interval
-      (LowerBound (Finite (POSIXTime timeRangeLowerBound)) True)
-      (UpperBound (Finite (POSIXTime timeRangeUpperBound)) True)
-  modelTxValidRange PriceOracleMinterModel {} = always
+      (LowerBound (Finite (POSIXTime (timeRangeLowerBound model))) True)
+      (UpperBound (Finite (POSIXTime (timeRangeUpperBound model))) True)
 
   modelTxSignatories model =
     case transactorParams model of
@@ -310,7 +313,6 @@ modelDatum' (Just TestDatumParameters {..}) =
     signedByPrivK = lookupPrivateKey signedByWallet
     lookupPrivateKey :: Integer -> PrivateKey
     lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
-
 
 --helpers
 --
@@ -351,24 +353,21 @@ isScriptModel PriceOracleValidatorModel {} = True
 isScriptModel _ = False
 
 outputDatumTimestampIsInRange :: ModelProperty
-outputDatumTimestampIsInRange PriceOracleValidatorModel {..} =
-  case stateDatumValue outputParams of
+outputDatumTimestampIsInRange model =
+  case stateDatumValue $ outputParams model of
     Nothing -> False
-    Just so -> timeRangeLowerBound <= timeStamp so && timeStamp so <= timeRangeUpperBound
-outputDatumTimestampIsInRange _ = False
+    Just so -> timeRangeLowerBound model <= timeStamp so && timeStamp so <= timeRangeUpperBound model
 
 rangeWithinSizeLimit :: ModelProperty
-rangeWithinSizeLimit PriceOracleValidatorModel {..} =
-  let rangeLen = timeRangeUpperBound - timeRangeLowerBound
+rangeWithinSizeLimit model =
+  let rangeLen = timeRangeUpperBound model - timeRangeLowerBound model
    in 0 < rangeLen && rangeLen <= 10000
-rangeWithinSizeLimit _ = False
 
 outputDatumSignedByOwner :: ModelProperty
-outputDatumSignedByOwner PriceOracleValidatorModel {..} =
-  case stateDatumValue outputParams of
+outputDatumSignedByOwner model =
+  case stateDatumValue $ outputParams model of
     Nothing -> False
-    Just so -> signedByWallet so == ownerWallet
-outputDatumSignedByOwner _ = False
+    Just so -> signedByWallet so == ownerWallet model
 
 transactionSignedByOwner :: ModelProperty
 transactionSignedByOwner model =
@@ -380,19 +379,18 @@ transactionSignedByOwner model =
 stateTokenReturned :: ModelProperty
 stateTokenReturned model =
   let c = fst $ correctNFTCurrency $ oracleMintingParams $ ownerWallet model
-  in case AssocMap.lookup c $ getValue $ stateTokenValue $ outputParams model of
-       Nothing -> False
-       Just so -> case AssocMap.lookup (snd $ stateNFTCurrency model) so of
-         Just 1 -> True
-         _ -> False
+   in case AssocMap.lookup c $ getValue $ stateTokenValue $ outputParams model of
+        Nothing -> False
+        Just so -> case AssocMap.lookup (snd $ stateNFTCurrency model) so of
+          Just 1 -> True
+          _ -> False
 
 hasIncorrectInputDatum :: ModelProperty
 hasIncorrectInputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue inputParams
 hasIncorrectInputDatum _ = False
 
 hasIncorrectOutputDatum :: ModelProperty
-hasIncorrectOutputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue outputParams
-hasIncorrectOutputDatum _ = False
+hasIncorrectOutputDatum model = isJust $ stateDatumValue $ outputParams model
 
 -- generators
 ---------------------------------------------------------------------------------
@@ -416,6 +414,8 @@ genPriceOracleMinterModel = do
   pure $
     PriceOracleMinterModel
       { stateNFTCurrency = correctNFTCurrency $ oracleMintingParams w
+      , timeRangeLowerBound = tlb
+      , timeRangeUpperBound = tub
       , ownerWallet = w
       , transactorParams = sp
       , outputParams = op

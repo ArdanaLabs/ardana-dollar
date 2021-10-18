@@ -104,19 +104,19 @@ stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy ::
   OracleMintingParams ->
-  () ->
+  Ledger.ValidatorHash ->
   Ledger.ScriptContext ->
   Bool
 mkOracleMintingPolicy
-  (OracleMintingParams _ opPkh)
-  _
+  (OracleMintingParams op opPkh)
+  oracle
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && txSignedByOperator -- && priceMessageToOracle
+    narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
     where
---      range :: Ledger.POSIXTimeRange
---      range = Ledger.txInfoValidRange txInfo
+      range :: Ledger.POSIXTimeRange
+      range = Ledger.txInfoValidRange txInfo
       narrowInterval :: Bool
-      narrowInterval = withinInterval 10000 txInfo
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       expected :: Ledger.Value
@@ -129,31 +129,31 @@ mkOracleMintingPolicy
         traceIfFalse
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
---      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
---        [(output, dat)] ->
---          checkMessageOutput
---            op
---            oracle
---            range
---            expected
---            output
---            dat
---            && traceIfFalse
---              "no PriceTracking datum"
---              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
---                  Nothing ->
---                    False
---                  Just (PriceTracking fiatFeed cryptoFeed _) ->
---                    UniqueMap.null fiatFeed
---                      && UniqueMap.null cryptoFeed
---              )
---        _ ->
---          traceIfFalse "no unique PriceTracking carrying UTXO found" False
+      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+        [(output, dat)] ->
+          checkMessageOutput
+            op
+            oracle
+            range
+            expected
+            output
+            dat
+            && traceIfFalse
+              "no PriceTracking datum"
+              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
+                  Nothing ->
+                    False
+                  Just (PriceTracking fiatFeed cryptoFeed _) ->
+                    UniqueMap.null fiatFeed
+                      && UniqueMap.null cryptoFeed
+              )
+        _ ->
+          traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 {-# INLINEABLE oracleCompiledTypedMintingPolicy #-}
 oracleCompiledTypedMintingPolicy ::
   OracleMintingParams ->
-  PlutusTx.CompiledCode (() -> Ledger.ScriptContext -> Bool)
+  PlutusTx.CompiledCode (Ledger.ValidatorHash -> Ledger.ScriptContext -> Bool)
 oracleCompiledTypedMintingPolicy params =
   $$(PlutusTx.compile [||mkOracleMintingPolicy||])
     `PlutusTx.applyCode` PlutusTx.liftCode params
