@@ -33,6 +33,7 @@ import Ledger (
   TokenName,
   UpperBound (..),
   Value,
+  TxOutRef (..),
   always,
   knownPrivateKeys,
   pubKeyHash,
@@ -50,7 +51,6 @@ import Plutus.V1.Ledger.Scripts (
   Redeemer,
   Script,
   Validator,
-  ValidatorHash,
   applyMintingPolicyScript,
   applyValidator,
   mkMintingPolicyScript,
@@ -75,6 +75,9 @@ import Wallet.Emulator.Wallet (
   knownWallet,
   walletPubKey,
  )
+import Plutus.V1.Ledger.Contexts (
+  ScriptPurpose (..),
+ )
 import Prelude (
   Bool (..),
   Bounded (..),
@@ -83,6 +86,7 @@ import Prelude (
   IO,
   Integer,
   Maybe (..),
+  Monoid (..),
   Ord,
   Show,
   elem,
@@ -123,11 +127,11 @@ mkTestValidator params =
 mkTestValidatorScript :: OracleValidatorParams -> Datum -> Redeemer -> Context -> Script
 mkTestValidatorScript params d r c = applyValidator c (mkTestValidator params) d r
 
-mkTestMintingPolicy :: ValidatorHash -> OracleMintingParams -> MintingPolicy
-mkTestMintingPolicy oracle params =
+mkTestMintingPolicy :: OracleMintingParams -> MintingPolicy
+mkTestMintingPolicy params =
   mkMintingPolicyScript $
     $$(compile [||go||])
-      `applyCode` oracleCompiledTypedMintingPolicy oracle params
+      `applyCode` oracleCompiledTypedMintingPolicy params
   where
     {-# INLINEABLE go #-}
     go ::
@@ -135,8 +139,8 @@ mkTestMintingPolicy oracle params =
       (BuiltinData -> BuiltinData -> ())
     go = toTestMintingPolicy
 
-mkTestMintingPolicyScript :: ValidatorHash -> OracleMintingParams -> Redeemer -> Context -> Script
-mkTestMintingPolicyScript oracle params r c = applyMintingPolicyScript c (mkTestMintingPolicy oracle params) r
+mkTestMintingPolicyScript :: OracleMintingParams -> Redeemer -> Context -> Script
+mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMintingPolicy params) r
 
 priceOracleTest :: IO ()
 priceOracleTest = do
@@ -241,6 +245,18 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
+  -- Here we are lying about the minting scripts hash due to how the script is wrapped for testing
+  -- perhaps we shouldn't wrap scripts in this way
+  modelScriptPurpose PriceOracleMinterModel {..} = Minting $ fst $ correctNFTCurrency params
+    where
+      params = oracleMintingParams ownerWallet
+  modelScriptPurpose model = Spending . TxOutRef (modelTxId model) $ 0
+
+  modelTxMint PriceOracleMinterModel {..} = singleton c t 1
+    where
+      (c,t) = correctNFTCurrency $ oracleMintingParams ownerWallet
+  modelTxMint _ = mempty
+
   script m@PriceOracleValidatorModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
     where
       ownerPubKey :: PubKey
@@ -249,17 +265,9 @@ instance Proper PriceOracleModel where
       ownerPubKeyHash = pubKeyHash ownerPubKey
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
-  script m@PriceOracleMinterModel {..} = Just $ mkTestMintingPolicyScript validatorHash' params (modelRedeemer m) (modelCtx m)
+  script m@PriceOracleMinterModel {..} = Just $ mkTestMintingPolicyScript params (modelRedeemer m) (modelCtx m)
     where
-      validatorHash' :: ValidatorHash
-      validatorHash' = "09ab"
-      ownerPubKey :: PubKey
-      ownerPubKey = walletPubKey (knownWallet ownerWallet)
-      ownerPubKeyHash :: PubKeyHash
-      ownerPubKeyHash = pubKeyHash ownerPubKey
-      params :: OracleMintingParams
-      params = OracleMintingParams ownerPubKey ownerPubKeyHash
-
+      params = oracleMintingParams ownerWallet
 
   modelCPUBudget _ = ExCPU 1_000_000_000
   modelMemoryBudget _ = ExMemory 1_000_000_000
@@ -303,17 +311,20 @@ modelDatum' (Just TestDatumParameters {..}) =
     lookupPrivateKey :: Integer -> PrivateKey
     lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
 
----------------------------------------------------------------------------------
--- TODO use the real currency symbol
-mockCurrencySymbol :: CurrencySymbol
-mockCurrencySymbol = "123456789012345678901234567890ef"
 
-correctNFTCurrency :: (CurrencySymbol, TokenName)
-correctNFTCurrency = (mockCurrencySymbol, "PriceTracking")
+--helpers
+--
 
---correctStateTokenValue :: Value
---correctStateTokenValue = uncurry singleton correctNFTCurrency 1
----------------------------------------------------------------------------------
+oracleMintingParams :: Integer -> OracleMintingParams
+oracleMintingParams walletIdx = OracleMintingParams ownerPubKey ownerPubKeyHash
+  where
+    ownerPubKey :: PubKey
+    ownerPubKey = walletPubKey $ knownWallet walletIdx
+    ownerPubKeyHash :: PubKeyHash
+    ownerPubKeyHash = pubKeyHash ownerPubKey
+
+correctNFTCurrency :: OracleMintingParams -> (CurrencySymbol, TokenName)
+correctNFTCurrency params = (oracleCurrencySymbol params, "PriceTracking")
 
 -- Property
 ---------------------------------------------------------------------------------
@@ -368,11 +379,12 @@ transactionSignedByOwner model =
 
 stateTokenReturned :: ModelProperty
 stateTokenReturned model =
-  case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue $ outputParams model of
-    Nothing -> False
-    Just so -> case AssocMap.lookup (snd $ stateNFTCurrency model) so of
-      Just 1 -> True
-      _ -> False
+  let c = fst $ correctNFTCurrency $ oracleMintingParams $ ownerWallet model
+  in case AssocMap.lookup c $ getValue $ stateTokenValue $ outputParams model of
+       Nothing -> False
+       Just so -> case AssocMap.lookup (snd $ stateNFTCurrency model) so of
+         Just 1 -> True
+         _ -> False
 
 hasIncorrectInputDatum :: ModelProperty
 hasIncorrectInputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue inputParams
@@ -398,11 +410,12 @@ genPriceOracleMinterModel ::
 genPriceOracleMinterModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
+  let mint = oracleMintingParams w
   sp <- genTransactorParams w
-  op <- genOutputUTXOParams w (tlb, tub)
+  op <- genOutputUTXOParams mint w (tlb, tub)
   pure $
     PriceOracleMinterModel
-      { stateNFTCurrency = correctNFTCurrency --TODO compute properly
+      { stateNFTCurrency = correctNFTCurrency $ oracleMintingParams w
       , ownerWallet = w
       , transactorParams = sp
       , outputParams = op
@@ -415,13 +428,14 @@ genPriceOracleValidatorModel ::
 genPriceOracleValidatorModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
+  let mint = oracleMintingParams w
   sp <- genTransactorParams w
-  ip <- genInputUTXOParams
-  op <- genOutputUTXOParams w (tlb, tub)
+  ip <- genInputUTXOParams mint
+  op <- genOutputUTXOParams mint w (tlb, tub)
   pc <- HP.builtinByteString (Range.linear 0 6)
   pure $
     PriceOracleValidatorModel
-      { stateNFTCurrency = correctNFTCurrency --TODO compute properly
+      { stateNFTCurrency = correctNFTCurrency mint
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
       , ownerWallet = w
@@ -466,20 +480,22 @@ genTransactorParams w = do
 genInputUTXOParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
+  OracleMintingParams ->
   ReaderT [Property PriceOracleModel] m StateUTXOParams
-genInputUTXOParams = do
-  stok <- genStateToken
+genInputUTXOParams mint = do
+  stok <- genStateToken mint
   d <- genInputDatumParameters
   pure $ StateUTXOParams stok d
 
 genOutputUTXOParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
+  OracleMintingParams ->
   Integer ->
   (Integer, Integer) ->
   ReaderT [Property PriceOracleModel] m StateUTXOParams
-genOutputUTXOParams w ts = do
-  stok <- genStateToken
+genOutputUTXOParams mint w ts = do
+  stok <- genStateToken mint
   d <- genOutputDatumParameters w ts
   pure $ StateUTXOParams stok d
 
@@ -568,22 +584,24 @@ genInputDatumParameters = do
 genStateTokenCurrencySymbol ::
   forall (m :: Type -> Type).
   MonadGen m =>
+  OracleMintingParams ->
   ReaderT [Property PriceOracleModel] m CurrencySymbol
-genStateTokenCurrencySymbol = do
+genStateTokenCurrencySymbol mint = do
   properties' <- ask
   if StateTokenReturned `elem` properties'
-    then pure $ fst correctNFTCurrency
+    then pure $ fst $ correctNFTCurrency mint
     else HP.currencySymbol
 
 genStateTokenTokenName ::
   forall (m :: Type -> Type).
   MonadGen m =>
+  OracleMintingParams ->
   ReaderT [Property PriceOracleModel] m TokenName
-genStateTokenTokenName = do
+genStateTokenTokenName mint = do
   properties' <- ask
   --TODO disambiguate. StateTokenReturned should be distinct from StateTokenCurrencyCorrect
   if StateTokenReturned `elem` properties'
-    then pure $ snd correctNFTCurrency
+    then pure $ snd $ correctNFTCurrency mint
     else HP.tokenName
 
 genStateTokenAmount ::
@@ -603,9 +621,10 @@ genStateTokenAmount = do
 genStateToken ::
   forall (m :: Type -> Type).
   MonadGen m =>
+  OracleMintingParams ->
   ReaderT [Property PriceOracleModel] m Value
-genStateToken = do
-  s <- genStateTokenCurrencySymbol
-  n <- genStateTokenTokenName
+genStateToken mint = do
+  s <- genStateTokenCurrencySymbol mint
+  n <- genStateTokenTokenName mint
   v <- genStateTokenAmount
   pure $ singleton s n v

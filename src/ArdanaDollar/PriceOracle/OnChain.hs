@@ -12,6 +12,7 @@ module ArdanaDollar.PriceOracle.OnChain (
   oracleCompiledTypedMintingPolicy,
   OracleMintingParams (..),
   oracleMintingPolicy,
+  oracleCurrencySymbol,
   OracleValidatorParams (..),
   PriceTracking (..),
 ) where
@@ -102,20 +103,18 @@ stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   () ->
   Ledger.ScriptContext ->
   Bool
 mkOracleMintingPolicy
-  oracle
-  (OracleMintingParams op opPkh)
+  (OracleMintingParams _ opPkh)
   _
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
+    narrowInterval && correctMinting && txSignedByOperator -- && priceMessageToOracle
     where
-      range :: Ledger.POSIXTimeRange
-      range = Ledger.txInfoValidRange txInfo
+--      range :: Ledger.POSIXTimeRange
+--      range = Ledger.txInfoValidRange txInfo
       narrowInterval :: Bool
       narrowInterval = withinInterval 10000 txInfo
       minted :: Ledger.Value
@@ -130,61 +129,52 @@ mkOracleMintingPolicy
         traceIfFalse
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
-          checkMessageOutput
-            op
-            oracle
-            range
-            expected
-            output
-            dat
-            && traceIfFalse
-              "no PriceTracking datum"
-              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
-                  Nothing ->
-                    False
-                  Just (PriceTracking fiatFeed cryptoFeed _) ->
-                    UniqueMap.null fiatFeed
-                      && UniqueMap.null cryptoFeed
-              )
-        _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found" False
+--      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+--        [(output, dat)] ->
+--          checkMessageOutput
+--            op
+--            oracle
+--            range
+--            expected
+--            output
+--            dat
+--            && traceIfFalse
+--              "no PriceTracking datum"
+--              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
+--                  Nothing ->
+--                    False
+--                  Just (PriceTracking fiatFeed cryptoFeed _) ->
+--                    UniqueMap.null fiatFeed
+--                      && UniqueMap.null cryptoFeed
+--              )
+--        _ ->
+--          traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
 {-# INLINEABLE oracleCompiledTypedMintingPolicy #-}
 oracleCompiledTypedMintingPolicy ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   PlutusTx.CompiledCode (() -> Ledger.ScriptContext -> Bool)
-oracleCompiledTypedMintingPolicy oracle params =
+oracleCompiledTypedMintingPolicy params =
   $$(PlutusTx.compile [||mkOracleMintingPolicy||])
-    `PlutusTx.applyCode` PlutusTx.liftCode oracle
     `PlutusTx.applyCode` PlutusTx.liftCode params
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   Ledger.MintingPolicy
-oracleMintingPolicy oracle params =
+oracleMintingPolicy params =
   Ledger.mkMintingPolicyScript $
     $$( PlutusTx.compile
-          [||
-          \o p ->
-            Scripts.wrapMintingPolicy
-              (mkOracleMintingPolicy o p)
-          ||]
+          [||Scripts.wrapMintingPolicy . mkOracleMintingPolicy||]
       )
-      `PlutusTx.applyCode` PlutusTx.liftCode oracle
       `PlutusTx.applyCode` PlutusTx.liftCode params
 
 {-# INLINEABLE oracleCurrencySymbol #-}
 oracleCurrencySymbol ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   Value.CurrencySymbol
-oracleCurrencySymbol oracle params =
-  Ledger.scriptCurrencySymbol (oracleMintingPolicy oracle params)
+oracleCurrencySymbol params =
+  Ledger.scriptCurrencySymbol (oracleMintingPolicy params)
 
 {-# INLINEABLE mkOracleValidator #-}
 mkOracleValidator ::
