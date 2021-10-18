@@ -246,7 +246,7 @@ class Proper model where
   -- check whether a property is satisfied
   satisfiesProperty :: Model model -> Property model -> Bool
 
--- generates a model that satisfies a set of properties
+  -- generates a model that satisfies a set of properties
   genModel :: MonadGen m => Set (Property model) -> m (Model model)
 
   -- compute the properties of a model

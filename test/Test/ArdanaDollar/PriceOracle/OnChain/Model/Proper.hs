@@ -209,17 +209,18 @@ instance Proper PriceOracleModel where
               )
       ]
 
-  expect = noneOf
-          ( Prop
-              <$> [ OutputDatumTimestampNotInRange
-                  , RangeNotWithinSizeLimit
-                  , OutputDatumNotSignedByOwner
-                  , TransactionNotSignedByOwner
-                  , StateTokenNotReturned
-                  , HasIncorrectInputDatum
-                  , HasIncorrectOutputDatum
-                  ]
-          )
+  expect =
+    noneOf
+      ( Prop
+          <$> [ OutputDatumTimestampNotInRange
+              , RangeNotWithinSizeLimit
+              , OutputDatumNotSignedByOwner
+              , TransactionNotSignedByOwner
+              , StateTokenNotReturned
+              , HasIncorrectInputDatum
+              , HasIncorrectOutputDatum
+              ]
+      )
 
   genModel = genModel' . Set.toList
 
