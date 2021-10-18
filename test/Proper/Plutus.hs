@@ -107,12 +107,12 @@ import Text.PrettyPrint (
  )
 import Text.Show.Pretty (ppDoc)
 import Prelude (
-  Functor,
   Bool (..),
   Bounded (..),
   Either (..),
   Enum,
   Eq,
+  Functor,
   Int,
   Integer,
   Maybe (..),
@@ -122,6 +122,7 @@ import Prelude (
   elem,
   filter,
   fmap,
+  foldr,
   length,
   mempty,
   not,
@@ -129,10 +130,10 @@ import Prelude (
   pure,
   snd,
   zip,
-  foldr,
   ($),
   (&&),
   (.),
+  (/=),
   (<$>),
   (<*>),
   (<=),
@@ -141,7 +142,6 @@ import Prelude (
   (>>),
   (>>=),
   (||),
-  (/=),
  )
 
 --------------------------------------------------------------------------------
@@ -182,7 +182,7 @@ noneOf :: [PropLogic a] -> PropLogic a
 noneOf ps = allOf (Neg <$> ps)
 
 oneOf :: (Eq a) => [a] -> PropLogic a
-oneOf ps = anyOf (Prop <$> ps) /\ allOf [ Prop p --> noneOf (Prop <$> filter (/=p) ps) | p <- ps]
+oneOf ps = anyOf (Prop <$> ps) /\ allOf [Prop p --> noneOf (Prop <$> filter (/= p) ps) | p <- ps]
 
 genGivenPropLogic :: (IsProperty a, MonadGen m, GenBase m ~ Identity) => PropLogic a -> m (Set a)
 genGivenPropLogic f =

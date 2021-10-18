@@ -33,9 +33,9 @@ import Ledger (
   TokenName,
   UpperBound (..),
   Value,
+  always,
   knownPrivateKeys,
   pubKeyHash,
-  always,
  )
 import Ledger.Oracle (
   SignedMessage,
@@ -97,8 +97,8 @@ import Prelude (
   (.),
   (/=),
   (<),
-  (||),
   (<$>),
+  (||),
  )
 
 import System.Exit (exitSuccess)
@@ -159,16 +159,18 @@ data TestDatumParameters = TestDatumParameters
 instance IsProperty (Property PriceOracleModel)
 
 instance Proper PriceOracleModel where
-  data Model PriceOracleModel = PriceOracleScriptModel
-    { stateNFTCurrency :: (CurrencySymbol, TokenName)
-    , timeRangeLowerBound :: Integer
-    , timeRangeUpperBound :: Integer
-    , ownerWallet :: Integer
-    , transactorParams :: SpenderParams
-    , inputParams :: StateUTXOParams
-    , outputParams :: StateUTXOParams
-    , peggedCurrency :: BuiltinByteString
-    } | PriceOracleMinterModel
+  data Model PriceOracleModel
+    = PriceOracleScriptModel
+        { stateNFTCurrency :: (CurrencySymbol, TokenName)
+        , timeRangeLowerBound :: Integer
+        , timeRangeUpperBound :: Integer
+        , ownerWallet :: Integer
+        , transactorParams :: SpenderParams
+        , inputParams :: StateUTXOParams
+        , outputParams :: StateUTXOParams
+        , peggedCurrency :: BuiltinByteString
+        }
+    | PriceOracleMinterModel
     deriving (Show)
 
   data Property PriceOracleModel
@@ -186,22 +188,25 @@ instance Proper PriceOracleModel where
   satisfiesProperty = flip satisfiesProperty'
 
   logic =
-    allOf [ oneOf [OfMinter,OfScript]
-          ,
-          anyOf (Prop <$> [ OutputDatumTimestampNotInRange
-                           , RangeNotWithinSizeLimit
-                           , OutputDatumNotSignedByOwner
-                           , TransactionNotSignedByOwner
-                           , StateTokenNotReturned
-                           , HasIncorrectInputDatum
-                           , HasIncorrectOutputDatum
-                           ]) --> Prop OfScript
-          ,
-          Prop HasIncorrectOutputDatum
-            --> ( Prop OutputDatumTimestampNotInRange
-                    /\ Prop OutputDatumNotSignedByOwner
-                )
-          ]
+    allOf
+      [ oneOf [OfMinter, OfScript]
+      , anyOf
+          ( Prop
+              <$> [ OutputDatumTimestampNotInRange
+                  , RangeNotWithinSizeLimit
+                  , OutputDatumNotSignedByOwner
+                  , TransactionNotSignedByOwner
+                  , StateTokenNotReturned
+                  , HasIncorrectInputDatum
+                  , HasIncorrectOutputDatum
+                  ]
+          )
+          --> Prop OfScript
+      , Prop HasIncorrectOutputDatum
+          --> ( Prop OutputDatumTimestampNotInRange
+                  /\ Prop OutputDatumNotSignedByOwner
+              )
+      ]
 
   genModel = genModel' . Set.toList
 
@@ -340,7 +345,6 @@ hasIncorrectInputDatum PriceOracleScriptModel {..} =
     _ -> False
 hasIncorrectInputDatum _ = False
 
-
 hasIncorrectOutputDatum :: ModelProperty
 hasIncorrectOutputDatum PriceOracleScriptModel {..} =
   case stateDatumValue outputParams of
@@ -354,8 +358,8 @@ hasIncorrectOutputDatum _ = False
 genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' props =
   if OfScript `elem` props
-     then runReaderT genPriceOracleScriptModel props
-     else pure PriceOracleMinterModel
+    then runReaderT genPriceOracleScriptModel props
+    else pure PriceOracleMinterModel
 
 genPriceOracleScriptModel ::
   forall (m :: Type -> Type).
