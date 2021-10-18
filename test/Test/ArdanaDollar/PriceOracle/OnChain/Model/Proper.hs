@@ -65,7 +65,10 @@ import PlutusTx (
  )
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins (BuiltinData)
-import PlutusTx.Prelude (BuiltinByteString)
+import PlutusTx.Prelude
+  ( BuiltinByteString,
+    isJust,
+  )
 import PlutusTx.UniqueMap qualified as UniqueMap
 import Proper.Plutus
 import Wallet.Emulator.Wallet (
@@ -97,8 +100,10 @@ import Prelude (
   (.),
   (/=),
   (<),
+  (<=),
   (<$>),
-  (||),
+  (&&),
+  (==),
  )
 
 import System.Exit (exitSuccess)
@@ -175,15 +180,16 @@ instance Proper PriceOracleModel where
 
   -- TODO this would be nicer if the properties were in a positive context
   data Property PriceOracleModel
-    = OutputDatumTimestampNotInRange
-    | RangeNotWithinSizeLimit
-    | OutputDatumNotSignedByOwner
-    | TransactionNotSignedByOwner
-    | StateTokenNotReturned
-    | HasIncorrectInputDatum
-    | HasIncorrectOutputDatum
-    | OfMinter
+    = OfMinter
+    --TODO minter model
     | OfScript
+    | OutputDatumTimestampIsInRange
+    | RangeWithinSizeLimit
+    | OutputDatumSignedByOwner
+    | TransactionSignedByOwner
+    | StateTokenReturned
+    | InputDatumIsCorrectType
+    | OutputDatumIsCorrectType
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
   satisfiesProperty = flip satisfiesProperty'
@@ -193,34 +199,40 @@ instance Proper PriceOracleModel where
       [ oneOf [OfMinter, OfScript]
       , anyOf
           ( Prop
-              <$> [ OutputDatumTimestampNotInRange
-                  , RangeNotWithinSizeLimit
-                  , OutputDatumNotSignedByOwner
-                  , TransactionNotSignedByOwner
-                  , StateTokenNotReturned
-                  , HasIncorrectInputDatum
-                  , HasIncorrectOutputDatum
+              <$> [ OutputDatumTimestampIsInRange
+                  , RangeWithinSizeLimit
+                  , OutputDatumSignedByOwner
+                  , TransactionSignedByOwner
+                  , StateTokenReturned
+                  , InputDatumIsCorrectType
+                  , OutputDatumIsCorrectType
                   ]
           )
           --> Prop OfScript
-      , Prop HasIncorrectOutputDatum
-          --> ( Prop OutputDatumTimestampNotInRange
-                  /\ Prop OutputDatumNotSignedByOwner
-              )
+
+      -- parsing will fail before we can check the signature hence these implications
+      , Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
+      , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
       ]
 
   expect =
-    noneOf
-      ( Prop
-          <$> [ OutputDatumTimestampNotInRange
-              , RangeNotWithinSizeLimit
-              , OutputDatumNotSignedByOwner
-              , TransactionNotSignedByOwner
-              , StateTokenNotReturned
-              , HasIncorrectInputDatum
-              , HasIncorrectOutputDatum
-              ]
-      )
+    allOf
+      [ Prop OfScript --> allOf
+                           ( Prop
+                               <$> [ OutputDatumTimestampIsInRange
+                                   , RangeWithinSizeLimit
+                                   , OutputDatumSignedByOwner
+                                   , TransactionSignedByOwner
+                                   , StateTokenReturned
+                                   , InputDatumIsCorrectType
+                                   , OutputDatumIsCorrectType
+                                   ]
+                           )
+      , Prop OfMinter --> allOf
+                           ( Prop
+                               <$> []
+                           )
+      ]
 
   genModel = genModel' . Set.toList
 
@@ -296,13 +308,13 @@ correctNFTCurrency = (mockCurrencySymbol, "PriceTracking")
 ---------------------------------------------------------------------------------
 
 satisfiesProperty' :: Property PriceOracleModel -> Model PriceOracleModel -> Bool
-satisfiesProperty' OutputDatumTimestampNotInRange = outputDatumTimestampNotInRange
-satisfiesProperty' RangeNotWithinSizeLimit = rangeNotWithinSizeLimit
-satisfiesProperty' OutputDatumNotSignedByOwner = outputDatumNotSignedByOwner
-satisfiesProperty' TransactionNotSignedByOwner = txNotSignedByOwner
-satisfiesProperty' StateTokenNotReturned = stateTokenNotReturned
-satisfiesProperty' HasIncorrectInputDatum = hasIncorrectInputDatum
-satisfiesProperty' HasIncorrectOutputDatum = hasIncorrectOutputDatum
+satisfiesProperty' OutputDatumTimestampIsInRange = outputDatumTimestampIsInRange
+satisfiesProperty' RangeWithinSizeLimit = rangeWithinSizeLimit
+satisfiesProperty' OutputDatumSignedByOwner = outputDatumSignedByOwner
+satisfiesProperty' TransactionSignedByOwner = transactionSignedByOwner
+satisfiesProperty' StateTokenReturned = stateTokenReturned
+satisfiesProperty' InputDatumIsCorrectType = hasIncorrectInputDatum
+satisfiesProperty' OutputDatumIsCorrectType = hasIncorrectOutputDatum
 satisfiesProperty' OfMinter = isMinterModel
 satisfiesProperty' OfScript = isScriptModel
 
@@ -316,54 +328,48 @@ isScriptModel :: ModelProperty
 isScriptModel PriceOracleScriptModel {} = True
 isScriptModel _ = False
 
-outputDatumTimestampNotInRange :: ModelProperty
-outputDatumTimestampNotInRange PriceOracleScriptModel {..} =
+outputDatumTimestampIsInRange :: ModelProperty
+outputDatumTimestampIsInRange PriceOracleScriptModel {..} =
   case stateDatumValue outputParams of
-    Nothing -> True
-    Just so -> timeStamp so < timeRangeLowerBound || timeRangeUpperBound < timeStamp so
-outputDatumTimestampNotInRange _ = False
+    Nothing -> False
+    Just so -> timeRangeLowerBound <= timeStamp so && timeStamp so <= timeRangeUpperBound
+outputDatumTimestampIsInRange _ = False
 
-rangeNotWithinSizeLimit :: ModelProperty
-rangeNotWithinSizeLimit PriceOracleScriptModel {..} =
+rangeWithinSizeLimit :: ModelProperty
+rangeWithinSizeLimit PriceOracleScriptModel {..} =
   let rangeLen = timeRangeUpperBound - timeRangeLowerBound
-   in rangeLen < 0 || 10000 < rangeLen
-rangeNotWithinSizeLimit _ = False
+   in 0 < rangeLen && rangeLen <= 10000
+rangeWithinSizeLimit _ = False
 
-outputDatumNotSignedByOwner :: ModelProperty
-outputDatumNotSignedByOwner PriceOracleScriptModel {..} =
+outputDatumSignedByOwner :: ModelProperty
+outputDatumSignedByOwner PriceOracleScriptModel {..} =
   case stateDatumValue outputParams of
-    Nothing -> True
-    Just so -> signedByWallet so /= ownerWallet
-outputDatumNotSignedByOwner _ = False
+    Nothing -> False
+    Just so -> signedByWallet so == ownerWallet
+outputDatumSignedByOwner _ = False
 
-txNotSignedByOwner :: ModelProperty
-txNotSignedByOwner PriceOracleScriptModel {..} = case transactorParams of
-  NoSigner -> True
-  JustSignedBy signer -> signer /= ownerWallet
-  SignedByWithValue signer _ -> signer /= ownerWallet
-txNotSignedByOwner _ = False
+transactionSignedByOwner :: ModelProperty
+transactionSignedByOwner PriceOracleScriptModel {..} = case transactorParams of
+  NoSigner -> False
+  JustSignedBy signer -> signer == ownerWallet
+  SignedByWithValue signer _ -> signer == ownerWallet
+transactionSignedByOwner _ = False
 
-stateTokenNotReturned :: ModelProperty
-stateTokenNotReturned PriceOracleScriptModel {..} =
+stateTokenReturned :: ModelProperty
+stateTokenReturned PriceOracleScriptModel {..} =
   case AssocMap.lookup mockCurrencySymbol $ getValue $ stateTokenValue outputParams of
-    Nothing -> True
+    Nothing -> False
     Just so -> case AssocMap.lookup (snd stateNFTCurrency) so of
-      Just 1 -> False
-      _ -> True
-stateTokenNotReturned _ = False
+      Just 1 -> True
+      _ -> False
+stateTokenReturned _ = False
 
 hasIncorrectInputDatum :: ModelProperty
-hasIncorrectInputDatum PriceOracleScriptModel {..} =
-  case stateDatumValue inputParams of
-    Nothing -> True
-    _ -> False
+hasIncorrectInputDatum PriceOracleScriptModel {..} = isJust $ stateDatumValue inputParams
 hasIncorrectInputDatum _ = False
 
 hasIncorrectOutputDatum :: ModelProperty
-hasIncorrectOutputDatum PriceOracleScriptModel {..} =
-  case stateDatumValue outputParams of
-    Nothing -> True
-    _ -> False
+hasIncorrectOutputDatum PriceOracleScriptModel {..} = isJust $ stateDatumValue outputParams
 hasIncorrectOutputDatum _ = False
 
 -- Gen TODO move anything that is not model specific to a common lib
@@ -407,8 +413,15 @@ genSpenderParams ::
   ReaderT [Property PriceOracleModel] m SpenderParams
 genSpenderParams w = do
   properties' <- ask
-  if TransactionNotSignedByOwner `elem` properties'
+  if TransactionSignedByOwner `elem` properties'
     then do
+      b <- Gen.bool
+      if b
+        then pure $ JustSignedBy w
+        else do
+          v <- HP.value
+          pure $ SignedByWithValue w v
+    else do
       b <- Gen.bool
       if b
         then pure NoSigner
@@ -422,13 +435,7 @@ genSpenderParams w = do
               w' <- genWalletIdxOtherThan w
               v <- HP.value
               pure $ SignedByWithValue w' v
-    else do
-      b <- Gen.bool
-      if b
-        then pure $ JustSignedBy w
-        else do
-          v <- HP.value
-          pure $ SignedByWithValue w v
+
 
 genInputUTXOParams ::
   forall (m :: Type -> Type).
@@ -470,14 +477,15 @@ genOutputTimeStamp ::
   ReaderT [Property PriceOracleModel] m Integer
 genOutputTimeStamp ts = do
   properties' <- ask
-  if OutputDatumTimestampNotInRange `elem` properties'
+  if OutputDatumTimestampIsInRange `elem` properties'
     then do
+      Gen.integral (uncurry Range.linear ts)
+    else do
       b <- Gen.bool
       if b
         then Gen.integral (Range.linear 0 (fst ts - 1))
         else Gen.integral (Range.linear (snd ts + 1) 300_000)
-    else do
-      Gen.integral (uncurry Range.linear ts)
+
 
 genInputTimeStamp ::
   forall (m :: Type -> Type).
@@ -491,14 +499,14 @@ genTimeRange ::
   ReaderT [Property PriceOracleModel] m (Integer, Integer)
 genTimeRange = do
   properties' <- ask
-  if RangeNotWithinSizeLimit `elem` properties'
+  if RangeWithinSizeLimit `elem` properties'
     then do
       t1 <- Gen.integral (Range.linear 1 100_000)
-      t2 <- Gen.integral (Range.linear (t1 + 10_1000) (t1 + 200_000))
+      t2 <- Gen.integral (Range.linear (t1 + 1) (t1 + 10_000))
       pure (t1, t2)
     else do
       t1 <- Gen.integral (Range.linear 1 100_000)
-      t2 <- Gen.integral (Range.linear (t1 + 1) (t1 + 10_000))
+      t2 <- Gen.integral (Range.linear (t1 + 10_1000) (t1 + 200_000))
       pure (t1, t2)
 
 genOutputDatumParameters ::
@@ -509,15 +517,15 @@ genOutputDatumParameters ::
   ReaderT [Property PriceOracleModel] m (Maybe TestDatumParameters)
 genOutputDatumParameters w ts = do
   properties' <- ask
-  if HasIncorrectOutputDatum `elem` properties'
-    then pure Nothing
-    else do
+  if OutputDatumIsCorrectType `elem` properties'
+    then do
       walletIdx <-
-        if OutputDatumNotSignedByOwner `elem` properties'
-          then genWalletIdxOtherThan w
-          else pure w
+        if OutputDatumSignedByOwner `elem` properties'
+          then pure w
+          else genWalletIdxOtherThan w
       t <- genOutputTimeStamp ts
       pure $ Just $ TestDatumParameters walletIdx t
+    else pure Nothing
 
 genInputDatumParameters ::
   forall (m :: Type -> Type).
@@ -525,12 +533,12 @@ genInputDatumParameters ::
   ReaderT [Property PriceOracleModel] m (Maybe TestDatumParameters)
 genInputDatumParameters = do
   properties' <- ask
-  if HasIncorrectInputDatum `elem` properties'
-    then pure Nothing
-    else do
+  if InputDatumIsCorrectType `elem` properties'
+    then do
       walletIdx <- genKnownWalletIdx
       t <- genInputTimeStamp
       pure $ Just $ TestDatumParameters walletIdx t
+    else pure Nothing
 
 genStateTokenCurrencySymbol ::
   forall (m :: Type -> Type).
@@ -538,9 +546,9 @@ genStateTokenCurrencySymbol ::
   ReaderT [Property PriceOracleModel] m CurrencySymbol
 genStateTokenCurrencySymbol = do
   properties' <- ask
-  if StateTokenNotReturned `elem` properties'
-    then HP.currencySymbol
-    else pure $ fst correctNFTCurrency
+  if StateTokenReturned `elem` properties'
+    then pure $ fst correctNFTCurrency
+    else HP.currencySymbol
 
 genStateTokenTokenName ::
   forall (m :: Type -> Type).
@@ -548,10 +556,10 @@ genStateTokenTokenName ::
   ReaderT [Property PriceOracleModel] m TokenName
 genStateTokenTokenName = do
   properties' <- ask
-  --TODO disambiguate. StateTokenNotReturned should be distinct from StateTokenCurrencyCorrect
-  if StateTokenNotReturned `elem` properties'
-    then HP.tokenName
-    else pure $ snd correctNFTCurrency
+  --TODO disambiguate. StateTokenReturned should be distinct from StateTokenCurrencyCorrect
+  if StateTokenReturned `elem` properties'
+    then pure $ snd correctNFTCurrency
+    else HP.tokenName
 
 genStateTokenAmount ::
   forall (m :: Type -> Type).
@@ -559,13 +567,13 @@ genStateTokenAmount ::
   ReaderT [Property PriceOracleModel] m Integer
 genStateTokenAmount = do
   properties' <- ask
-  if StateTokenNotReturned `elem` properties'
-    then do
+  if StateTokenReturned `elem` properties'
+    then pure 1
+    else do
       b <- Gen.bool
       if b
         then pure 0
         else Gen.integral (Range.linear 2 5)
-    else pure 1
 
 genStateToken ::
   forall (m :: Type -> Type).

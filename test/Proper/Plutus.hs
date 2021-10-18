@@ -144,7 +144,9 @@ import Prelude (
  )
 
 --------------------------------------------------------------------------------
--- Propositional logic over model properties defines valid property sets.
+-- Propositional logic is used to define two aspects of a model.
+-- The expected outcome of a test and the sets of properties which are valid in
+-- conjunction.
 --------------------------------------------------------------------------------
 
 class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsProperty c
