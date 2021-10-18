@@ -1,4 +1,5 @@
-{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE TypeFamilies #-}
+
 --------------------------------------------------------------------------------
 -- Proper.Plutus encourages you to define a model before writing any Plutus
 --------------------------------------------------------------------------------
@@ -587,7 +588,6 @@ toTestStakeValidator ::
   (redeemer -> ScriptContext -> Bool) ->
   (BuiltinData -> BuiltinData -> ())
 toTestStakeValidator = toTestMintingPolicy
-
 
 {-# INLINEABLE reportParseFailed #-}
 reportParseFailed :: BuiltinString -> ()

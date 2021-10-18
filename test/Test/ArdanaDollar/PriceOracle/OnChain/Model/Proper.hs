@@ -43,17 +43,17 @@ import Ledger.Oracle (
 import Plutus.V1.Ledger.Api (getValue)
 import Plutus.V1.Ledger.Contexts (ScriptContext (..))
 import Plutus.V1.Ledger.Scripts (
+  Context,
+  Datum,
+  MintingPolicy,
+  Redeemer,
   Script,
   Validator,
   ValidatorHash,
-  MintingPolicy,
-  Datum,
-  Redeemer,
-  Context,
-  mkValidatorScript,
-  mkMintingPolicyScript,
-  applyValidator,
   applyMintingPolicyScript,
+  applyValidator,
+  mkMintingPolicyScript,
+  mkValidatorScript,
  )
 import Plutus.V1.Ledger.Value (singleton)
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
@@ -118,7 +118,7 @@ mkTestMintingPolicy :: ValidatorHash -> OracleMintingParams -> MintingPolicy
 mkTestMintingPolicy oracle params =
   mkMintingPolicyScript $
     $$(compile [||go||])
-    `applyCode` oracleCompiledTypedMintingPolicy oracle params
+      `applyCode` oracleCompiledTypedMintingPolicy oracle params
   where
     {-# INLINEABLE go #-}
     go ::
@@ -178,10 +178,11 @@ instance Proper PriceOracleModel where
 
   satisfiesProperty = flip satisfiesProperty'
 
-  logic = Prop HasIncorrectOutputDatum
-            --> ( Prop OutputDatumTimestampNotInRange
-                    /\ Prop OutputDatumNotSignedByOwner
-                )
+  logic =
+    Prop HasIncorrectOutputDatum
+      --> ( Prop OutputDatumTimestampNotInRange
+              /\ Prop OutputDatumNotSignedByOwner
+          )
 
   genModel = genModel' . Set.toList
 

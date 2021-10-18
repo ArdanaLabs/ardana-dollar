@@ -151,7 +151,6 @@ mkOracleMintingPolicy
         _ ->
           traceIfFalse "no unique PriceTracking carrying UTXO found" False
 
-
 {-# INLINEABLE oracleCompiledTypedMintingPolicy #-}
 oracleCompiledTypedMintingPolicy ::
   Ledger.ValidatorHash ->
