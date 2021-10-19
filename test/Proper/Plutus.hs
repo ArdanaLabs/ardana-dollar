@@ -387,7 +387,7 @@ class Proper model where
     t Script
   wrapObjectAsScript model = do
     let ctx = modelCtx model
-        dat = modelDatum model --TODO this should be Maybe Datum since Minting and Staking don't require a datum
+        dat = modelDatum model
         red = modelRedeemer model
     case script model of
       Just (CompiledValidator v) ->
