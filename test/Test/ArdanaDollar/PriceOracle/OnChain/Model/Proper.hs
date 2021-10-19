@@ -7,6 +7,7 @@ module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
 ) where
 
 import ArdanaDollar.PriceOracle.OnChain
+import Control.Monad (join)
 import Control.Monad.Trans.Reader (
   ReaderT (runReaderT),
   ask,
@@ -119,7 +120,6 @@ import Prelude (
   (<=),
   (==),
  )
-import Control.Monad (join)
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -156,12 +156,13 @@ priceOracleTests contractMaxSuccesses =
   let shortTests =
         [ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
         ]
-      longTests = join
-        [ [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
-          , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
+      longTests =
+        join
+          [ [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+            , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
+            ]
+          | 75 <= contractMaxSuccesses
           ]
-        | 75 <= contractMaxSuccesses
-        ]
    in testGroup "PriceOracle" $ fromGroup <$> (shortTests <> longTests)
 
 data PriceOracleModel = Model deriving (Show)
