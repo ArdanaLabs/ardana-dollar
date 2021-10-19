@@ -119,6 +119,7 @@ import Prelude (
   (<=),
   (==),
  )
+import Control.Monad (join)
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -154,10 +155,11 @@ priceOracleTests :: Int -> TestTree
 priceOracleTests contractMaxSuccesses =
   let shortTests =
         [ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
-        , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
         ]
-      longTests =
-        [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+      longTests = join
+        [ [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+          , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
+          ]
         | 75 <= contractMaxSuccesses
         ]
    in testGroup "PriceOracle" $ fromGroup <$> (shortTests <> longTests)
