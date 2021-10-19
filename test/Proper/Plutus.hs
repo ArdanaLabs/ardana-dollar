@@ -9,6 +9,7 @@ module Proper.Plutus (
   toTestValidator,
   toTestMintingPolicy,
   toTestStakeValidator,
+  justDatumHash,
   PropLogic (..),
   (\/),
   (/\),
@@ -363,11 +364,11 @@ class Proper model where
   modelScriptTxInInfo :: Model model -> [TxInInfo]
   modelScriptTxInInfo model =
     let sha = scriptHashAddress $ modelValidatorHash model
-     in ( \(v, d) ->
-            TxInInfo (TxOutRef (modelTxId model) 0) $
+     in ( \((v, d),i) ->
+            TxInInfo (TxOutRef (modelTxId model) i) $
               TxOut sha v $ justDatumHash d
         )
-          <$> modelInputData model
+          <$> zip (modelInputData model) [0..]
 
   modelCPUBudget :: Model model -> ExCPU
   modelCPUBudget _ = ExCPU maxBound

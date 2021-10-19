@@ -35,14 +35,20 @@ import Ledger (
   TxOutRef (..),
   UpperBound (..),
   Value,
+  Address,
   knownPrivateKeys,
   pubKeyHash,
+  pubKeyHashAddress,
+  scriptHashAddress
  )
 import Ledger.Oracle (
   SignedMessage,
   signMessage,
  )
-import Plutus.V1.Ledger.Api (getValue)
+import Plutus.V1.Ledger.Api
+ ( getValue,
+   TxOut (..),
+ )
 import Plutus.V1.Ledger.Contexts (
   ScriptContext (..),
   ScriptPurpose (..),
@@ -88,6 +94,7 @@ import Prelude (
   Integer,
   Maybe (..),
   Monoid (..),
+  Semigroup (..),
   Ord,
   Show,
   elem,
@@ -111,7 +118,7 @@ import Prelude (
   (==),
  )
 
-import System.Exit (exitSuccess)
+--import System.Exit (exitSuccess)
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -148,9 +155,9 @@ priceOracleTest = do
   void $ checkParallel $ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect validate" modelTestGivenProperties expect
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect validate" plutusTestGivenProperties expect
-  void exitSuccess
-  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect fail to validate" modelTestGivenProperties (Neg expect)
-  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect fail to validate" plutusTestGivenProperties (Neg expect)
+--  void exitSuccess
+--  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect fail to validate" modelTestGivenProperties (Neg expect)
+--  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect fail to validate" plutusTestGivenProperties (Neg expect)
 
 data PriceOracleModel = Model deriving (Show)
 
@@ -173,7 +180,7 @@ instance IsProperty (Property PriceOracleModel)
 
 instance Proper PriceOracleModel where
   data Model PriceOracleModel
-    = PriceOracleValidatorModel
+    = PriceOracleStateMachineModel
         { stateNFTCurrency :: (CurrencySymbol, TokenName)
         , timeRangeLowerBound :: Integer
         , timeRangeUpperBound :: Integer
@@ -182,6 +189,7 @@ instance Proper PriceOracleModel where
         , inputParams :: StateUTXOParams
         , outputParams :: StateUTXOParams
         , peggedCurrency :: BuiltinByteString
+        , valueRetrieved :: Maybe ([Value],Address)
         }
     | PriceOracleMinterModel
         { stateNFTCurrency :: (CurrencySymbol, TokenName)
@@ -195,7 +203,7 @@ instance Proper PriceOracleModel where
 
   data Property PriceOracleModel
     = PriceOracleMintingPolicyContext
-    | PriceOracleValidatorContext
+    | PriceOracleStateMachineContext
     | OutputDatumTimestampIsInRange
     | RangeWithinSizeLimit
     | OutputDatumSignedByOwner
@@ -203,19 +211,21 @@ instance Proper PriceOracleModel where
     | StateTokenReturned
     | InputDatumIsCorrectType
     | OutputDatumIsCorrectType
+    | OwnerIsRetrievingValue
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
   satisfiesProperty = flip satisfiesProperty'
 
   logic =
     allOf
-      [ oneOf [PriceOracleMintingPolicyContext, PriceOracleValidatorContext]
+      [ oneOf [PriceOracleMintingPolicyContext, PriceOracleStateMachineContext]
       , anyOf
           ( Prop
               <$> [ InputDatumIsCorrectType
+                  , OwnerIsRetrievingValue
                   ]
           )
-          --> Prop PriceOracleValidatorContext
+          --> Prop PriceOracleStateMachineContext
       , -- parsing will fail before we can check the signature hence these implications
         Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
       , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
@@ -223,7 +233,7 @@ instance Proper PriceOracleModel where
 
   expect =
     allOf
-      [ Prop PriceOracleValidatorContext
+      [ Prop PriceOracleStateMachineContext
           --> allOf
             ( Prop
                 <$> [ OutputDatumTimestampIsInRange
@@ -252,6 +262,8 @@ instance Proper PriceOracleModel where
 
   -- Here we are lying about the minting scripts hash due to how the script is wrapped for testing
   -- perhaps we shouldn't wrap scripts in this way, perhaps this is fine, I'm undecided
+  -- I think we can rewrite the runner so that we can test exactly the compiled script we will deploy
+  -- which would I think be better than testing a wrapped version.
   modelScriptPurpose PriceOracleMinterModel {..} = Minting $ fst $ correctNFTCurrency params
     where
       params = oracleMintingParams ownerWallet
@@ -265,7 +277,7 @@ instance Proper PriceOracleModel where
   modelRedeemer PriceOracleMinterModel {} = Redeemer $ toBuiltinData ("90ab" :: ValidatorHash)
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  script m@PriceOracleValidatorModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
+  script m@PriceOracleStateMachineModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
@@ -277,8 +289,9 @@ instance Proper PriceOracleModel where
     where
       params = oracleMintingParams ownerWallet
 
-  modelCPUBudget _ = ExCPU 750_000_000
-  modelMemoryBudget _ = ExMemory 2_000_000
+  -- we could compute these bounds from the model
+  modelCPUBudget _ = ExCPU 3_000_000_000
+  modelMemoryBudget _ = ExMemory 30_000_000
 
   modelTxValidRange model =
     Interval
@@ -293,13 +306,23 @@ instance Proper PriceOracleModel where
     where
       go = pubKeyHash . walletPubKey . knownWallet
 
-  modelInputData PriceOracleValidatorModel {..} =
-    [
+  modelInputData PriceOracleStateMachineModel {..} =
       ( stateTokenValue inputParams
       , modelDatum' $ stateDatumValue inputParams
-      )
-    ]
+      ):(case valueRetrieved of
+           Nothing -> []
+           Just so -> (\v -> (v, toBuiltinData ())) <$> fst so)
   modelInputData PriceOracleMinterModel {} = []
+
+  modelTxOutputs model@PriceOracleStateMachineModel {..} | isJust valueRetrieved =
+    let stateReturn = (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
+     in case valueRetrieved of
+          Nothing -> stateReturn
+          Just so ->
+            let valueRetrieval = [TxOut (snd so) (mconcat (fst so)) (justDatumHash $ toBuiltinData ())]
+             in stateReturn <> valueRetrieval
+  modelTxOutputs  model =
+    (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
 
   modelOutputData model =
     [
@@ -344,7 +367,8 @@ satisfiesProperty' StateTokenReturned = stateTokenReturned
 satisfiesProperty' InputDatumIsCorrectType = hasIncorrectInputDatum
 satisfiesProperty' OutputDatumIsCorrectType = hasIncorrectOutputDatum
 satisfiesProperty' PriceOracleMintingPolicyContext = isMinterModel
-satisfiesProperty' PriceOracleValidatorContext = isScriptModel
+satisfiesProperty' PriceOracleStateMachineContext = isScriptModel
+satisfiesProperty' OwnerIsRetrievingValue = ownerIsRetrievingValue
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
@@ -353,7 +377,7 @@ isMinterModel PriceOracleMinterModel {} = True
 isMinterModel _ = False
 
 isScriptModel :: ModelProperty
-isScriptModel PriceOracleValidatorModel {} = True
+isScriptModel PriceOracleStateMachineModel {} = True
 isScriptModel _ = False
 
 outputDatumTimestampIsInRange :: ModelProperty
@@ -390,30 +414,24 @@ stateTokenReturned model =
           _ -> False
 
 hasIncorrectInputDatum :: ModelProperty
-hasIncorrectInputDatum PriceOracleValidatorModel {..} = isJust $ stateDatumValue inputParams
+hasIncorrectInputDatum PriceOracleStateMachineModel {..} = isJust $ stateDatumValue inputParams
 hasIncorrectInputDatum _ = False
 
 hasIncorrectOutputDatum :: ModelProperty
 hasIncorrectOutputDatum model = isJust $ stateDatumValue $ outputParams model
+
+ownerIsRetrievingValue :: ModelProperty
+ownerIsRetrievingValue PriceOracleStateMachineModel {..} = isJust valueRetrieved
+ownerIsRetrievingValue _ = False
 
 -- generators
 ---------------------------------------------------------------------------------
 
 genModel' :: MonadGen m => [Property PriceOracleModel] -> m (Model PriceOracleModel)
 genModel' props =
-  if PriceOracleValidatorContext `elem` props
-    then runReaderT genPriceOracleValidatorModel props
+  if PriceOracleStateMachineContext `elem` props
+    then runReaderT genPriceOracleStateMachineModel props
     else runReaderT genPriceOracleMinterModel props
-
--- TODO?
---type ModelGen = MonadGen m => ReaderT (Set (Property model)) m
---
---given :: Property a -> ModelGen b -> ModelGen b -> ModelGen b
---given prop whenPropSat whenPropUnsat = do
---  trueProps <- ask
---  if prop `elem` trueProps
---     then whenPropSat
---     else whenPropUnsat
 
 genPriceOracleMinterModel ::
   forall (m :: Type -> Type).
@@ -435,11 +453,11 @@ genPriceOracleMinterModel = do
       , outputParams = op
       }
 
-genPriceOracleValidatorModel ::
+genPriceOracleStateMachineModel ::
   forall (m :: Type -> Type).
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (Model PriceOracleModel)
-genPriceOracleValidatorModel = do
+genPriceOracleStateMachineModel = do
   (tlb, tub) <- genTimeRange
   w <- genKnownWalletIdx
   let mint = oracleMintingParams w
@@ -447,8 +465,9 @@ genPriceOracleValidatorModel = do
   ip <- genInputUTXOParams mint
   op <- genOutputUTXOParams mint w (tlb, tub)
   pc <- HP.builtinByteString (Range.linear 0 6)
+  vr <- genValueRetrieved
   pure $
-    PriceOracleValidatorModel
+    PriceOracleStateMachineModel
       { stateNFTCurrency = correctNFTCurrency mint
       , timeRangeLowerBound = tlb
       , timeRangeUpperBound = tub
@@ -457,10 +476,9 @@ genPriceOracleValidatorModel = do
       , inputParams = ip
       , outputParams = op
       , peggedCurrency = pc
+      , valueRetrieved = vr
       }
 
--- TODO read some Hedgehog for a nicer generator ideas
--- these nested ifs are not great but they do the job
 genTransactorParams ::
   forall (m :: Type -> Type).
   MonadGen m =>
@@ -613,7 +631,6 @@ genStateTokenTokenName ::
   ReaderT [Property PriceOracleModel] m TokenName
 genStateTokenTokenName mint = do
   properties' <- ask
-  --TODO disambiguate. StateTokenReturned should be distinct from StateTokenCurrencyCorrect
   if StateTokenReturned `elem` properties'
     then pure $ snd $ correctNFTCurrency mint
     else HP.tokenName
@@ -642,3 +659,17 @@ genStateToken mint = do
   n <- genStateTokenTokenName mint
   v <- genStateTokenAmount
   pure $ singleton s n v
+
+genValueRetrieved ::
+  forall (m :: Type -> Type).
+  MonadGen m =>
+  ReaderT [Property PriceOracleModel] m (Maybe ([Value],Address))
+genValueRetrieved = do
+  properties' <- ask
+  if OwnerIsRetrievingValue `elem` properties'
+     then do
+       a <- HP.pubKeyHash
+       vals <- Gen.list (Range.linear 1 4) HP.singletonValue
+       pure $ Just (vals,pubKeyHashAddress a)
+     else pure Nothing
+
