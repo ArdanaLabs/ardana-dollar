@@ -15,8 +15,8 @@ import Control.Monad.Trans.Reader (
 import Data.Kind (Type)
 import Data.Set qualified as Set
 import Hedgehog (
-  MonadGen,
   Group (..),
+  MonadGen,
   checkParallel,
  )
 import Hedgehog.Gen qualified as Gen
@@ -145,7 +145,7 @@ mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMinting
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ Group "Price Oracle quick check" [("model",quickCheckModelTest Model),("plutus",quickCheckPlutusTest Model)]
+  void $ checkParallel $ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect validate" modelTestGivenProperties expect
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect validate" plutusTestGivenProperties expect
   void exitSuccess
@@ -414,7 +414,6 @@ genModel' props =
 --  if prop `elem` trueProps
 --     then whenPropSat
 --     else whenPropUnsat
-
 
 genPriceOracleMinterModel ::
   forall (m :: Type -> Type).

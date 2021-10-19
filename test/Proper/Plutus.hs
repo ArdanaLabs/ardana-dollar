@@ -533,10 +533,10 @@ class Proper model where
   testEnumeratedScenarios _ groupname test cond =
     let allProps = ([minBound .. maxBound] :: [Property model])
      in Group (fromString groupname) $
-         [ (fromString $ show $ Set.toList p, test p)
-         | p <- Set.fromList <$> combinationsUpToLength (length allProps) allProps
-         , satisfiesPropLogic (logic /\ cond) p
-         ]
+          [ (fromString $ show $ Set.toList p, test p)
+          | p <- Set.fromList <$> combinationsUpToLength (length allProps) allProps
+          , satisfiesPropLogic (logic /\ cond) p
+          ]
 
 -- helpers
 
