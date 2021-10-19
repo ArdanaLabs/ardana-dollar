@@ -42,7 +42,6 @@ import Ledger (
   scriptHashAddress,
  )
 import Ledger.Oracle (
-  SignedMessage,
   signMessage,
  )
 import Plutus.V1.Ledger.Api (
@@ -50,27 +49,15 @@ import Plutus.V1.Ledger.Api (
   getValue,
  )
 import Plutus.V1.Ledger.Contexts (
-  ScriptContext (..),
   ScriptPurpose (..),
  )
 import Plutus.V1.Ledger.Scripts (
-  Context,
-  Datum,
-  MintingPolicy,
   Redeemer (..),
-  Script,
-  Validator,
   ValidatorHash,
-  applyMintingPolicyScript,
-  applyValidator,
-  mkMintingPolicyScript,
-  mkValidatorScript,
  )
 import Plutus.V1.Ledger.Value (singleton)
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
 import PlutusTx (
-  applyCode,
-  compile,
   toBuiltinData,
  )
 import PlutusTx.AssocMap qualified as AssocMap
@@ -121,35 +108,6 @@ import Prelude (
   (==),
  )
 
-mkTestValidator :: OracleValidatorParams -> Validator
-mkTestValidator params =
-  mkValidatorScript $
-    $$(compile [||go||])
-      `applyCode` oracleCompiledTypedValidator params
-  where
-    {-# INLINEABLE go #-}
-    go ::
-      (SignedMessage PriceTracking -> () -> ScriptContext -> Bool) ->
-      (BuiltinData -> BuiltinData -> BuiltinData -> ())
-    go = toTestValidator
-
-mkTestValidatorScript :: OracleValidatorParams -> Datum -> Redeemer -> Context -> Script
-mkTestValidatorScript params d r c = applyValidator c (mkTestValidator params) d r
-
-mkTestMintingPolicy :: OracleMintingParams -> MintingPolicy
-mkTestMintingPolicy params =
-  mkMintingPolicyScript $
-    $$(compile [||go||])
-      `applyCode` oracleCompiledTypedMintingPolicy params
-  where
-    {-# INLINEABLE go #-}
-    go ::
-      (ValidatorHash -> ScriptContext -> Bool) ->
-      (BuiltinData -> BuiltinData -> ())
-    go = toTestMintingPolicy
-
-mkTestMintingPolicyScript :: OracleMintingParams -> Redeemer -> Context -> Script
-mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMintingPolicy params) r
 
 priceOracleTests :: Int -> TestTree
 priceOracleTests contractMaxSuccesses =
@@ -273,10 +231,6 @@ instance Proper PriceOracleModel where
 
   genModel = genModel' . Set.toList
 
-  -- Here we are lying about the minting scripts hash due to how the script is wrapped for testing
-  -- perhaps we shouldn't wrap scripts in this way, perhaps this is fine, I'm undecided
-  -- I think we can rewrite the runner so that we can test exactly the compiled script we will deploy
-  -- which would I think be better than testing a wrapped version.
   modelScriptPurpose PriceOracleMinterModel {..} = Minting $ fst $ correctNFTCurrency params
     where
       params = oracleMintingParams ownerWallet
@@ -290,7 +244,7 @@ instance Proper PriceOracleModel where
   modelRedeemer PriceOracleMinterModel {} = Redeemer $ toBuiltinData ("90ab" :: ValidatorHash)
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  script m@PriceOracleStateMachineModel {..} = Just $ mkTestValidatorScript params (modelDatum m) (modelRedeemer m) (modelCtx m)
+  script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
     where
       ownerPubKey :: PubKey
       ownerPubKey = walletPubKey (knownWallet ownerWallet)
@@ -298,7 +252,7 @@ instance Proper PriceOracleModel where
       ownerPubKeyHash = pubKeyHash ownerPubKey
       params :: OracleValidatorParams
       params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
-  script m@PriceOracleMinterModel {..} = Just $ mkTestMintingPolicyScript params (modelRedeemer m) (modelCtx m)
+  script PriceOracleMinterModel {..} = Just $ CompiledMintingPolicy $ oracleMintingPolicy params
     where
       params = oracleMintingParams ownerWallet
 

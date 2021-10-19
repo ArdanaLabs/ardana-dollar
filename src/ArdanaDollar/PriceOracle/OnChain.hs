@@ -8,10 +8,9 @@ module ArdanaDollar.PriceOracle.OnChain (
   --  getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
   mkOracleValidator,
-  oracleCompiledTypedValidator,
-  oracleCompiledTypedMintingPolicy,
-  OracleMintingParams (..),
+  oracleValidator,
   oracleMintingPolicy,
+  OracleMintingParams (..),
   oracleCurrencySymbol,
   OracleValidatorParams (..),
   PriceTracking (..),
@@ -149,14 +148,6 @@ mkOracleMintingPolicy
               )
         _ ->
           traceIfFalse "no unique PriceTracking carrying UTXO found" False
-
-{-# INLINEABLE oracleCompiledTypedMintingPolicy #-}
-oracleCompiledTypedMintingPolicy ::
-  OracleMintingParams ->
-  PlutusTx.CompiledCode (Ledger.ValidatorHash -> Ledger.ScriptContext -> Bool)
-oracleCompiledTypedMintingPolicy params =
-  $$(PlutusTx.compile [||mkOracleMintingPolicy||])
-    `PlutusTx.applyCode` PlutusTx.liftCode params
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::

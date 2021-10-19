@@ -6,11 +6,9 @@
 module Proper.Plutus (
   Proper (..),
   IsProperty,
-  toTestValidator,
-  toTestMintingPolicy,
-  toTestStakeValidator,
   justDatumHash,
   PropLogic (..),
+  CompiledObject (..),
   (\/),
   (/\),
   (-->),
@@ -33,7 +31,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Text (Text)
-import Data.Text qualified as Text
 import Hedgehog (
   GenBase,
   Group (..),
@@ -50,6 +47,9 @@ import Hedgehog (
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Ledger (
+  Validator,
+  MintingPolicy,
+  StakeValidator,
   Datum (..),
   DatumHash,
   PubKeyHash,
@@ -59,14 +59,17 @@ import Ledger (
   TxOut (..),
   TxOutRef (..),
   Value,
+  ScriptError (..),
   always,
   datumHash,
   evaluateScript,
+  applyValidator,
+  applyMintingPolicyScript,
+  applyStakeValidatorScript,
  )
 import Ledger.Address (scriptHashAddress)
 import Plutus.V1.Ledger.Api (
   DCert,
-  FromData (fromBuiltinData),
   POSIXTimeRange,
   StakingCredential,
  )
@@ -85,13 +88,9 @@ import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (..), ExMemory (..))
 import PlutusTx (toBuiltinData)
 import PlutusTx.Builtins (
   BuiltinData,
-  BuiltinString,
-  appendString,
-  trace,
  )
 import Safe (
   headMay,
-  lastMay,
  )
 import Text.PrettyPrint (
   Doc,
@@ -138,9 +137,7 @@ import Prelude (
   (<*>),
   (<=),
   (<>),
-  (==),
   (>>),
-  (>>=),
   (||),
  )
 
@@ -231,6 +228,10 @@ satisfiesPropLogic l = runReader $ go l
 -- 'A' checks consistency between the model specification and its generator.
 -- 'B' (which can be written after 'A' is complete) tests the compiled script.
 
+data CompiledObject = CompiledValidator Validator
+                    | CompiledMintingPolicy MintingPolicy
+                    | CompiledStakeValidator StakeValidator
+
 class Proper model where
   -- a model encodes the data relevant to a specification
   data Model model :: Type
@@ -272,17 +273,15 @@ class Proper model where
   -- defaults are provided to enable up front construction and testing of a model
   -- these can be overridden to translate a model to a Plutus Context
 
-  script :: Model model -> Maybe Script
+
+  script :: Model model -> Maybe CompiledObject
   script _ = Nothing
 
   modelRedeemer :: Model model -> Redeemer
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  modelDatum :: Model model -> Datum
-  modelDatum model =
-    case headMay (modelInputData model) of
-      Nothing -> Datum $ toBuiltinData ()
-      Just (_, so) -> Datum so
+  modelDatum :: Model model -> Maybe Datum
+  modelDatum model = Datum . snd <$> headMay (modelInputData model) 
 
   modelCtx :: Model model -> Context
   modelCtx model = Context . toBuiltinData $ context
@@ -376,8 +375,31 @@ class Proper model where
   modelMemoryBudget :: Model model -> ExMemory
   modelMemoryBudget _ = ExMemory maxBound
 
+
   -- Plutus compiled code test (eval)
   -----------------------------------
+    --
+
+  wrapObjectAsScript ::
+    Show (Model model) =>
+    IsProperty (Property model) =>
+    MonadTest t =>
+    Model model ->
+    t Script
+  wrapObjectAsScript model = do
+    let ctx = modelCtx model
+        dat = modelDatum model  --TODO this should be Maybe Datum since Minting and Staking don't require a datum
+        red = modelRedeemer model
+    case script model of
+      Just (CompiledValidator v) ->
+        case dat of
+          Nothing -> footnote "modelDatum not defined for CompiledValidator" >> failure
+          Just dat' -> pure $ applyValidator ctx v dat' red
+      Just (CompiledMintingPolicy m) ->
+        pure $ applyMintingPolicyScript ctx m red
+      Just (CompiledStakeValidator s) ->
+        pure $ applyStakeValidatorScript ctx s red
+      _ -> footnote "script not defined" >> failure
 
   runScriptTest ::
     Show (Model model) =>
@@ -385,94 +407,66 @@ class Proper model where
     MonadTest t =>
     Model model ->
     t ()
-  runScriptTest model =
-    case script model of
-      Nothing -> footnote "script not defined" >> failure
-      Just s -> do
-        case evaluateScript s of
-          Left err -> footnoteShow err >> failure
-          Right res -> deliverResult model ctx res
-    where
-      ctx = modelCtx model
+  runScriptTest model = do
+    s <- wrapObjectAsScript model
+    case evaluateScript s of
+      Left (EvaluationError logs err) -> deliverResult model (Left (logs,err))
+      Right res -> deliverResult model (Right res)
+      Left err -> footnoteShow err >> failure
 
   deliverResult ::
     Show (Model model) =>
     IsProperty (Property model) =>
     MonadTest m =>
     Model model ->
-    Context ->
-    (ExBudget, [Text]) ->
+    Either ([Text],String) (ExBudget, [Text]) ->
     m ()
-  deliverResult model ctx (cost, logs) =
-    case (shouldPass, lastMay logs >>= Text.stripPrefix "proper-plutus: ") of
-      (_, Nothing) -> failWithFootnote noOutcome
-      (False, Just "Fail") -> success
-      (True, Just "Pass") -> successWithBudgetCheck cost
-      (True, Just t) ->
-        if t == "Fail"
-          then failWithFootnote unexpectedFailure
-          else case Text.stripPrefix "Parse failed: " t of
-            Nothing -> failWithFootnote $ internalError t
-            Just t' -> failWithFootnote $ noParse t'
-      (False, Just t) ->
-        if t == "Pass"
-          then failWithFootnote unexpectedSuccess
-          else case Text.stripPrefix "Parse failed: " t of
-            Nothing -> failWithFootnote $ internalError t
-            Just _ -> success
+  deliverResult model res =
+    case (shouldPass, res) of
+      (False, Left _) -> success
+      (True, Right (cost,_)) -> successWithBudgetCheck cost
+      (True, Left err) -> failWithFootnote $ unexpectedFailure err
+      (False, Right (_,logs)) -> failWithFootnote $ unexpectedSuccess logs
     where
+      ctx :: Context
+      ctx = modelCtx model
       shouldPass :: Bool
       shouldPass = satisfiesPropLogic expect $ properties model
       successWithBudgetCheck :: MonadTest m => ExBudget -> m ()
-      successWithBudgetCheck (ExBudget cpu mem) =
+      successWithBudgetCheck cost@(ExBudget cpu mem) =
         if cpu <= modelCPUBudget model && mem <= modelMemoryBudget model
           then success
-          else failWithFootnote budgetCheckFailure
+          else failWithFootnote $ budgetCheckFailure cost
       failWithFootnote :: MonadTest m => String -> m ()
       failWithFootnote s = footnote s >> failure
-      budgetCheckFailure :: String
-      budgetCheckFailure =
+      budgetCheckFailure :: ExBudget -> String
+      budgetCheckFailure cost =
         renderStyle ourStyle $
           "Success! But at what cost?"
             $+$ hang "Budget" 4 (ppDoc (ExBudget (modelCPUBudget model) (modelMemoryBudget model)))
             $+$ hang "Cost" 4 (ppDoc cost)
-      noOutcome :: String
-      noOutcome =
+      unexpectedSuccess :: [Text] -> String
+      unexpectedSuccess logs =
         renderStyle ourStyle $
-          "No outcome from run"
-            $+$ dumpState
-            $+$ ""
-            $+$ "Did you forget to use toTestValidator or toTestMintingPolicy?"
-      unexpectedSuccess :: String
-      unexpectedSuccess =
+          "Unexpected success" $+$ dumpState logs
+      unexpectedFailure :: ([Text],String) -> String
+      unexpectedFailure (logs,reason) =
         renderStyle ourStyle $
-          "Unexpected success" $+$ dumpState
-      unexpectedFailure :: String
-      unexpectedFailure =
-        renderStyle ourStyle $
-          "Unexpected failure" $+$ dumpState
-      internalError :: Text -> String
-      internalError msg =
-        renderStyle ourStyle $
-          ("Internal error" <+> (text . show $ msg)) $+$ dumpState
-      noParse :: Text -> String
-      noParse what =
-        renderStyle ourStyle $
-          ((text . show $ what) <+> "did not parse") $+$ dumpState
-      dumpState :: Doc
-      dumpState =
+          text ("Unexpected failure(" <> reason <> ")") $+$ dumpState logs
+      dumpState :: [Text] -> Doc
+      dumpState logs =
         ""
           $+$ hang "Context" 4 (ppDoc ctx)
           $+$ hang "Inputs" 4 dumpInputs
-          $+$ hang "Logs" 4 dumpLogs
+          $+$ hang "Logs" 4 (dumpLogs logs)
           $+$ hang "Expected " 4 (if shouldPass then "Pass" else "Fail")
           $+$ hang "Properties " 4 (ppDoc $ properties model)
       dumpInputs :: Doc
       dumpInputs =
         "Parameters"
           $+$ ppDoc model
-      dumpLogs :: Doc
-      dumpLogs = vcat . fmap go . zip [1 ..] $ logs
+      dumpLogs :: [Text] -> Doc
+      dumpLogs logs = vcat . fmap go . zip [1 ..] $ logs
       go :: (Int, Text) -> Doc
       go (ix, line) = (int ix <> colon) <+> (text . show $ line)
       ourStyle :: Style
@@ -566,58 +560,3 @@ datumWithHash dt = (datumHash dt', dt')
 justDatumHash :: BuiltinData -> Maybe DatumHash
 justDatumHash = Just . datumHash . Datum
 
-{-# INLINEABLE toTestValidator #-}
-toTestValidator ::
-  forall (datum :: Type) (redeemer :: Type).
-  (FromData datum, FromData redeemer) =>
-  (datum -> redeemer -> ScriptContext -> Bool) ->
-  (BuiltinData -> BuiltinData -> BuiltinData -> ())
-toTestValidator f d r p = case fromBuiltinData d of
-  Nothing -> reportParseFailed "Datum"
-  Just d' -> case fromBuiltinData r of
-    Nothing -> reportParseFailed "Redeemer"
-    Just r' -> case fromBuiltinData p of
-      Nothing -> reportParseFailed "ScriptContext"
-      Just p' ->
-        if f d' r' p'
-          then reportPass
-          else reportFail
-
-{-# INLINEABLE toTestMintingPolicy #-}
-toTestMintingPolicy ::
-  forall (redeemer :: Type).
-  (FromData redeemer) =>
-  (redeemer -> ScriptContext -> Bool) ->
-  (BuiltinData -> BuiltinData -> ())
-toTestMintingPolicy f r p = case fromBuiltinData r of
-  Nothing -> reportParseFailed "Redeemer"
-  Just r' -> case fromBuiltinData p of
-    Nothing -> reportParseFailed "ScriptContext"
-    Just p' ->
-      if f r' p'
-        then reportPass
-        else reportFail
-
-{-# INLINEABLE toTestStakeValidator #-}
-toTestStakeValidator ::
-  forall (redeemer :: Type).
-  (FromData redeemer) =>
-  (redeemer -> ScriptContext -> Bool) ->
-  (BuiltinData -> BuiltinData -> ())
-toTestStakeValidator = toTestMintingPolicy
-
-{-# INLINEABLE reportParseFailed #-}
-reportParseFailed :: BuiltinString -> ()
-reportParseFailed what = report ("Parse failed: " `appendString` what)
-
-{-# INLINEABLE reportPass #-}
-reportPass :: ()
-reportPass = report "Pass"
-
-{-# INLINEABLE reportFail #-}
-reportFail :: ()
-reportFail = report "Fail"
-
-{-# INLINEABLE report #-}
-report :: BuiltinString -> ()
-report what = trace ("proper-plutus: " `appendString` what) ()
