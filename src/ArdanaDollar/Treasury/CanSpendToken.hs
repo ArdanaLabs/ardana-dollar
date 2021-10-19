@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Treasury.CanSpendToken (
   canSpendTokenMintingConstraints,

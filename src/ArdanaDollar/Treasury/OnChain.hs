@@ -16,18 +16,19 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Utils (datumForOnchain, validateDatumImmutable)
+import ArdanaDollar.Utils (allNonEmpty, datumForOnchain, validateDatumImmutable)
 
 --------------------------------------------------------------------------------
 
 {-# INLINEABLE mkTreasuryValidator #-}
 mkTreasuryValidator ::
   Treasury ->
+  Value.AssetClass ->
   TreasuryDatum ->
   TreasuryAction ->
   Contexts.ScriptContext ->
   Bool
-mkTreasuryValidator treasury td redeemer ctx =
+mkTreasuryValidator treasury canSpendAC td redeemer ctx =
   traceIfFalse "treasury token missing from input" (hasTreasuryToken ownInput)
     && traceIfFalse "treasury token missing from output" (hasTreasuryToken ownOutput)
     && traceIfFalse "upgrade token missing from input" (hasUpgradeToken ownInput)
@@ -41,7 +42,7 @@ mkTreasuryValidator treasury td redeemer ctx =
       SpendFundsFromCostCenter params ->
         validateAuctionDanaAmountUnchanged td ctx
           && validateCurrentContractUnchanged td ctx
-          && validateSpendFunds td ownInput ownOutput ctx params
+          && validateSpendFunds td ownInput ownOutput canSpendAC ctx params
       InitiateUpgrade nc ->
         validateAuctionDanaAmountUnchanged td ctx
           && validateCostCentersUnchanged td ctx
@@ -130,8 +131,8 @@ isCostCenterChangeListed oldDatum newDatum costCenterName sameCostCenterCheck =
       otherCostCentersImmutable =
         otherCostCenters oldCostCenters == otherCostCenters newCostCenters
       assetValueSameCostCenterChanged = sameCostCenterCheck oldDatumAsset newDatumAsset
-   in traceIfFalse "deposit modifies other cost centers" otherCostCentersImmutable
-        && traceIfFalse "deposit is not listed" assetValueSameCostCenterChanged
+   in traceIfFalse "modifies other cost centers" otherCostCentersImmutable
+        && traceIfFalse "is not listed" assetValueSameCostCenterChanged
   where
     otherCostCenters ::
       UniqueMap.Map BuiltinByteString Value.Value ->
@@ -183,7 +184,7 @@ validateDepositFunds
       outputDatum = datumForOnchain info ownOutput
 
       isDepositPositive :: Bool
-      isDepositPositive = all (\(_, _, i) -> i > 0) (Value.flattenValue deposit)
+      isDepositPositive = allNonEmpty (\(_, _, i) -> i > 0) (Value.flattenValue deposit)
 
       isDeposited :: Bool
       isDeposited = inputValue <> deposit == outputValue
@@ -193,6 +194,7 @@ validateSpendFunds ::
   TreasuryDatum ->
   Ledger.TxOut ->
   Ledger.TxOut ->
+  Value.AssetClass ->
   Contexts.ScriptContext ->
   TreasurySpendParams ->
   Bool
@@ -200,6 +202,7 @@ validateSpendFunds
   td
   ownInput
   ownOutput
+  canSpendAC
   ctx
   TreasurySpendParams
     { treasurySpend'value = spending
@@ -209,6 +212,7 @@ validateSpendFunds
     traceIfFalse "spending is not positive" isSpendingPositive
       && traceIfFalse "spending tries depositing funds" isSpent
       && traceIfFalse "spending is not paying to the beneficiary" isPayingBeneficiary
+      && traceIfFalse "missing CanSpend token from input" (not . null $ canSpendInputs)
       && case outputDatum of
         Nothing -> traceError "cannot find output datum"
         Just td' ->
@@ -230,13 +234,21 @@ validateSpendFunds
       outputDatum :: Maybe TreasuryDatum
       outputDatum = datumForOnchain info ownOutput
 
+      canSpendValue :: Value.Value
+      canSpendValue = Value.assetClassValue canSpendAC 1
+
       beneficiaryOutputs :: [Ledger.TxOut]
       beneficiaryOutputs =
         [ o | o <- Ledger.txInfoOutputs info, Ledger.txOutAddress o == beneficiary
         ]
 
+      canSpendInputs :: [Ledger.TxOut]
+      canSpendInputs =
+        [ o | i <- Ledger.txInfoInputs info, let o = Ledger.txInInfoResolved i, canSpendValue `valueSubsetOf` Ledger.txOutValue o
+        ]
+
       isSpendingPositive :: Bool
-      isSpendingPositive = all (\(_, _, i) -> i > 0) (Value.flattenValue spending)
+      isSpendingPositive = allNonEmpty (\(_, _, i) -> i > 0) (Value.flattenValue spending)
 
       isSpent :: Bool
       isSpent = inputValue == outputValue <> spending

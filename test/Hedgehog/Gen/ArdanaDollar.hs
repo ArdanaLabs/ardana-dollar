@@ -45,6 +45,7 @@ import Hedgehog.Gen.Plutus (
   assetClass,
   builtinByteString,
   currencySymbol,
+  positiveValue,
   pubKeyHash,
   pubKeyWithHash,
   tokenName,
@@ -218,7 +219,7 @@ treasuryUpgradeContractTokenParams =
     <*> txOutRef
 
 treasuryCostCenters :: forall (m :: Type -> Type). MonadGen m => m (UniqueMap.Map P.BuiltinByteString Value.Value)
-treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
+treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) positiveValue
 
 treasuryDatum :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDatum
 treasuryDatum = Treasury.TreasuryDatum <$> integer <*> validatorHash <*> treasuryCostCenters

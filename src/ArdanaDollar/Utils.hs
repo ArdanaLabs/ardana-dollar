@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-specialize #-}
+
 module ArdanaDollar.Utils (
   collaterizationRatio,
   maxDebtAllowed,
@@ -19,6 +21,7 @@ module ArdanaDollar.Utils (
   getAllOutputsWithDatum,
   getContinuingScriptOutputsWithDatum,
   getAllScriptOutputsWithDatum,
+  allNonEmpty,
 ) where
 
 import Control.Monad ((>=>))
@@ -344,3 +347,13 @@ getAllScriptOutputsWithDatum ::
 getAllScriptOutputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs $ Contexts.scriptContextTxInfo sc)
+
+{- | Check if all elements of the list satisfies the predicate. It differs from
+     library's `all` by returning `False` if the list is empty (`Prelude`'s
+     `all` is returning `True` in such case)
+-}
+{-# INLINEABLE allNonEmpty #-}
+allNonEmpty :: forall (a :: Type). (a -> Bool) -> [a] -> Bool
+allNonEmpty p = \case
+  [] -> False
+  l -> all p l

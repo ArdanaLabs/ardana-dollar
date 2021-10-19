@@ -64,6 +64,7 @@ treasuryInst t =
   Scripts.mkTypedValidator @Treasuring
     ( $$(PlutusTx.compile [||mkTreasuryValidator||])
         `PlutusTx.applyCode` PlutusTx.liftCode t
+        `PlutusTx.applyCode` PlutusTx.liftCode (canSpendTokenAssetClass t)
     )
     $$(PlutusTx.compile [||wrap||])
   where
