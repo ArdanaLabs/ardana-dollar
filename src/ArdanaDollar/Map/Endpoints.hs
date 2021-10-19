@@ -30,10 +30,13 @@ import ArdanaDollar.Map.Contracts
 import ArdanaDollar.Map.Types
 import ArdanaDollar.Map.ValidatorsTH
 
+type Key = Integer
+type Value = Integer
+
 type Schema =
-  Endpoint "insert" (Integer, Integer)
-    .\/ Endpoint "remove" Integer
-    .\/ Endpoint "increment" Integer
+  Endpoint "insert" (Key, Value)
+    .\/ Endpoint "remove" Key
+    .\/ Endpoint "increment" Key
 
 type CreateSchema =
   Endpoint "create" ()
