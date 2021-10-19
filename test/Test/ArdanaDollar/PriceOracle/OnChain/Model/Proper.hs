@@ -23,6 +23,8 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Plutus qualified as HP
 import Hedgehog.Range qualified as Range
 import Ledger (
+  Address,
+  AssetClass,
   CurrencySymbol,
   Extended (Finite),
   Interval (..),
@@ -35,20 +37,18 @@ import Ledger (
   TxOutRef (..),
   UpperBound (..),
   Value,
-  Address,
-  AssetClass,
   knownPrivateKeys,
   pubKeyHash,
   pubKeyHashAddress,
-  scriptHashAddress
+  scriptHashAddress,
  )
 import Ledger.Oracle (
   SignedMessage,
   signMessage,
  )
-import Plutus.V1.Ledger.Api
- ( getValue,
-   TxOut (..),
+import Plutus.V1.Ledger.Api (
+  TxOut (..),
+  getValue,
  )
 import Plutus.V1.Ledger.Contexts (
   ScriptContext (..),
@@ -87,6 +87,7 @@ import Wallet.Emulator.Wallet (
   walletPubKey,
  )
 import Prelude (
+  Applicative (..),
   Bool (..),
   Bounded (..),
   Enum,
@@ -95,9 +96,8 @@ import Prelude (
   Integer,
   Maybe (..),
   Monoid (..),
-  Semigroup (..),
-  Applicative (..),
   Ord,
+  Semigroup (..),
   Show,
   elem,
   filter,
@@ -188,7 +188,7 @@ instance Proper PriceOracleModel where
         , inputParams :: StateUTXOParams
         , outputParams :: StateUTXOParams
         , peggedCurrency :: BuiltinByteString
-        , valueRetrieved :: Maybe ([Value],Address)
+        , valueRetrieved :: Maybe ([Value], Address)
         }
     | PriceOracleMinterModel
         { stateNFTCurrency :: (CurrencySymbol, TokenName)
@@ -311,21 +311,24 @@ instance Proper PriceOracleModel where
       go = pubKeyHash . walletPubKey . knownWallet
 
   modelInputData PriceOracleStateMachineModel {..} =
-      ( stateTokenValue inputParams
-      , modelDatum' $ stateDatumValue inputParams
-      ):(case valueRetrieved of
-           Nothing -> []
-           Just so -> (, toBuiltinData ()) <$> fst so)
+    ( stateTokenValue inputParams
+    , modelDatum' $ stateDatumValue inputParams
+    ) :
+    ( case valueRetrieved of
+        Nothing -> []
+        Just so -> (,toBuiltinData ()) <$> fst so
+    )
   modelInputData PriceOracleMinterModel {} = []
 
-  modelTxOutputs model@PriceOracleStateMachineModel {..} | isJust valueRetrieved =
-    let stateReturn = (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
-     in case valueRetrieved of
-          Nothing -> stateReturn
-          Just so ->
-            let valueRetrieval = [TxOut (snd so) (mconcat (fst so)) (justDatumHash $ toBuiltinData ())]
-             in stateReturn <> valueRetrieval
-  modelTxOutputs  model =
+  modelTxOutputs model@PriceOracleStateMachineModel {..}
+    | isJust valueRetrieved =
+      let stateReturn = (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
+       in case valueRetrieved of
+            Nothing -> stateReturn
+            Just so ->
+              let valueRetrieval = [TxOut (snd so) (mconcat (fst so)) (justDatumHash $ toBuiltinData ())]
+               in stateReturn <> valueRetrieval
+  modelTxOutputs model =
     (\(v, d) -> TxOut (scriptHashAddress $ modelValidatorHash model) v (justDatumHash d)) <$> modelOutputData model
 
   modelOutputData model =
@@ -437,7 +440,7 @@ outputPriceTrackingDatumIsEmpty model =
     Just so -> UniqueMap.null (fiatPriceFeedData so) && UniqueMap.null (cryptoPriceFeedData so)
 
 inputPriceTrackingDatumIsEmpty :: ModelProperty
-inputPriceTrackingDatumIsEmpty model@PriceOracleStateMachineModel{} =
+inputPriceTrackingDatumIsEmpty model@PriceOracleStateMachineModel {} =
   case stateDatumValue $ inputParams model of
     Nothing -> False
     Just so -> UniqueMap.null (fiatPriceFeedData so) && UniqueMap.null (cryptoPriceFeedData so)
@@ -616,9 +619,10 @@ genOutputDatumParameters w ts = do
           then pure w
           else genWalletIdxOtherThan w
       t <- genOutputTimeStamp ts
-      (f,c) <- if OutputPriceTrackingDatumIsEmpty `elem` properties'
-                 then pure (UniqueMap.empty,UniqueMap.empty)
-                 else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
+      (f, c) <-
+        if OutputPriceTrackingDatumIsEmpty `elem` properties'
+          then pure (UniqueMap.empty, UniqueMap.empty)
+          else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
       pure $ Just $ TestDatumParameters walletIdx t f c
     else pure Nothing
 
@@ -632,9 +636,10 @@ genInputDatumParameters = do
     then do
       walletIdx <- genKnownWalletIdx
       t <- genInputTimeStamp
-      (f,c) <- if InputPriceTrackingDatumIsEmpty `elem` properties'
-                 then pure (UniqueMap.empty,UniqueMap.empty)
-                 else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
+      (f, c) <-
+        if InputPriceTrackingDatumIsEmpty `elem` properties'
+          then pure (UniqueMap.empty, UniqueMap.empty)
+          else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
       pure $ Just $ TestDatumParameters walletIdx t f c
     else pure Nothing
 
@@ -643,8 +648,12 @@ genFiatPriceFeedMap ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (UniqueMap.Map BuiltinByteString Integer)
 genFiatPriceFeedMap = do
-  vals <- Gen.list (Range.linear 1 4) ((,) <$> HP.builtinByteString (Range.linear 0 10)
-                                           <*> Gen.integral (Range.linear 0 1000))
+  vals <-
+    Gen.list
+      (Range.linear 1 4)
+      ( (,) <$> HP.builtinByteString (Range.linear 0 10)
+          <*> Gen.integral (Range.linear 0 1000)
+      )
   pure $ UniqueMap.fromList vals
 
 genCryptoPriceFeedMap ::
@@ -652,8 +661,12 @@ genCryptoPriceFeedMap ::
   MonadGen m =>
   ReaderT [Property PriceOracleModel] m (UniqueMap.Map AssetClass Integer)
 genCryptoPriceFeedMap = do
-  vals <- Gen.list (Range.linear 1 4) ((,) <$> HP.assetClass
-                                           <*> Gen.integral (Range.linear 0 1000))
+  vals <-
+    Gen.list
+      (Range.linear 1 4)
+      ( (,) <$> HP.assetClass
+          <*> Gen.integral (Range.linear 0 1000)
+      )
   pure $ UniqueMap.fromList vals
 
 genStateTokenCurrencySymbol ::
@@ -706,13 +719,12 @@ genStateToken mint = do
 genValueRetrieved ::
   forall (m :: Type -> Type).
   MonadGen m =>
-  ReaderT [Property PriceOracleModel] m (Maybe ([Value],Address))
+  ReaderT [Property PriceOracleModel] m (Maybe ([Value], Address))
 genValueRetrieved = do
   properties' <- ask
   if OwnerIsRetrievingValue `elem` properties'
-     then do
-       a <- HP.pubKeyHash
-       vals <- Gen.list (Range.linear 1 4) HP.singletonValue
-       pure $ Just (vals,pubKeyHashAddress a)
-     else pure Nothing
-
+    then do
+      a <- HP.pubKeyHash
+      vals <- Gen.list (Range.linear 1 4) HP.singletonValue
+      pure $ Just (vals, pubKeyHashAddress a)
+    else pure Nothing
