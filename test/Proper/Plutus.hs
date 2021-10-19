@@ -47,25 +47,25 @@ import Hedgehog (
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Ledger (
-  Validator,
-  MintingPolicy,
-  StakeValidator,
   Datum (..),
   DatumHash,
+  MintingPolicy,
   PubKeyHash,
   Redeemer (..),
+  ScriptError (..),
+  StakeValidator,
   TxId (..),
   TxInInfo (..),
   TxOut (..),
   TxOutRef (..),
+  Validator,
   Value,
-  ScriptError (..),
   always,
-  datumHash,
-  evaluateScript,
-  applyValidator,
   applyMintingPolicyScript,
   applyStakeValidatorScript,
+  applyValidator,
+  datumHash,
+  evaluateScript,
  )
 import Ledger.Address (scriptHashAddress)
 import Plutus.V1.Ledger.Api (
@@ -228,9 +228,10 @@ satisfiesPropLogic l = runReader $ go l
 -- 'A' checks consistency between the model specification and its generator.
 -- 'B' (which can be written after 'A' is complete) tests the compiled script.
 
-data CompiledObject = CompiledValidator Validator
-                    | CompiledMintingPolicy MintingPolicy
-                    | CompiledStakeValidator StakeValidator
+data CompiledObject
+  = CompiledValidator Validator
+  | CompiledMintingPolicy MintingPolicy
+  | CompiledStakeValidator StakeValidator
 
 class Proper model where
   -- a model encodes the data relevant to a specification
@@ -273,7 +274,6 @@ class Proper model where
   -- defaults are provided to enable up front construction and testing of a model
   -- these can be overridden to translate a model to a Plutus Context
 
-
   script :: Model model -> Maybe CompiledObject
   script _ = Nothing
 
@@ -281,7 +281,7 @@ class Proper model where
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
   modelDatum :: Model model -> Maybe Datum
-  modelDatum model = Datum . snd <$> headMay (modelInputData model) 
+  modelDatum model = Datum . snd <$> headMay (modelInputData model)
 
   modelCtx :: Model model -> Context
   modelCtx model = Context . toBuiltinData $ context
@@ -375,10 +375,9 @@ class Proper model where
   modelMemoryBudget :: Model model -> ExMemory
   modelMemoryBudget _ = ExMemory maxBound
 
-
   -- Plutus compiled code test (eval)
   -----------------------------------
-    --
+  --
 
   wrapObjectAsScript ::
     Show (Model model) =>
@@ -388,7 +387,7 @@ class Proper model where
     t Script
   wrapObjectAsScript model = do
     let ctx = modelCtx model
-        dat = modelDatum model  --TODO this should be Maybe Datum since Minting and Staking don't require a datum
+        dat = modelDatum model --TODO this should be Maybe Datum since Minting and Staking don't require a datum
         red = modelRedeemer model
     case script model of
       Just (CompiledValidator v) ->
@@ -410,7 +409,7 @@ class Proper model where
   runScriptTest model = do
     s <- wrapObjectAsScript model
     case evaluateScript s of
-      Left (EvaluationError logs err) -> deliverResult model (Left (logs,err))
+      Left (EvaluationError logs err) -> deliverResult model (Left (logs, err))
       Right res -> deliverResult model (Right res)
       Left err -> footnoteShow err >> failure
 
@@ -419,14 +418,14 @@ class Proper model where
     IsProperty (Property model) =>
     MonadTest m =>
     Model model ->
-    Either ([Text],String) (ExBudget, [Text]) ->
+    Either ([Text], String) (ExBudget, [Text]) ->
     m ()
   deliverResult model res =
     case (shouldPass, res) of
       (False, Left _) -> success
-      (True, Right (cost,_)) -> successWithBudgetCheck cost
+      (True, Right (cost, _)) -> successWithBudgetCheck cost
       (True, Left err) -> failWithFootnote $ unexpectedFailure err
-      (False, Right (_,logs)) -> failWithFootnote $ unexpectedSuccess logs
+      (False, Right (_, logs)) -> failWithFootnote $ unexpectedSuccess logs
     where
       ctx :: Context
       ctx = modelCtx model
@@ -449,8 +448,8 @@ class Proper model where
       unexpectedSuccess logs =
         renderStyle ourStyle $
           "Unexpected success" $+$ dumpState logs
-      unexpectedFailure :: ([Text],String) -> String
-      unexpectedFailure (logs,reason) =
+      unexpectedFailure :: ([Text], String) -> String
+      unexpectedFailure (logs, reason) =
         renderStyle ourStyle $
           text ("Unexpected failure(" <> reason <> ")") $+$ dumpState logs
       dumpState :: [Text] -> Doc
@@ -559,4 +558,3 @@ datumWithHash dt = (datumHash dt', dt')
 
 justDatumHash :: BuiltinData -> Maybe DatumHash
 justDatumHash = Just . datumHash . Datum
-

@@ -1,5 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
@@ -107,7 +106,6 @@ import Prelude (
   (<=),
   (==),
  )
-
 
 priceOracleTests :: Int -> TestTree
 priceOracleTests contractMaxSuccesses =
