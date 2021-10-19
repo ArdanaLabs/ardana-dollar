@@ -14,6 +14,8 @@ Concretely, this means that it will be missing from `txInfoData`.
 
 This is often relevant for state machines that inspect the
 datum of the continuing output.
+**However**, it is **not** required, if rather than inspecting it,
+you check whether the hash matches the hash of another datum.
 
 When such an "optional datum" is required for a validator to
 function, it will be explicitly noted.
@@ -42,12 +44,16 @@ preserve the state machine by containing a UTXO with the
 updated datum and same validator.
 This is assumed to be the default.
 
-State machines will often have *state tokens* that certify
-the correctness of a state machine instance.
-Specifically, the minting policy for such a token
-will only allow minting if a state machine instance
-with the correct initial state is made.
+State machines will have *state tokens* that certify
+the correctness of a state machine instance, unless otherwise noted.
+Specifically, the minting policy for such a token will only allow minting if a
+state machine instance with the correct initial state is made.
 Otherwise, you could construct the instance with arbitrary state.
+
+It is important to note that it should be possible to construct
+multiple instances in the same transaction. Concretely, this means that
+the minting policy should check that each UTXO with the token satisfies the
+constraints separately, taking the context into account.
 
 The token can also be non-fungible, meaning that only one
 instance can ever exist.
@@ -56,9 +62,15 @@ instance can ever exist.
 
 Datum: State contained.
 Acts (multiple): Possible state transitions. Validation rules will be specified.
-Token: The token used to represent the state machine.
+Initial: The permissible initial state and the context necessary (e.g. required UTXOs).
 
 ## State machine certification token
+
+```haskell
+certTokenMP :: MintingPolicy
+```
+
+### Motivation
 
 For a given state machine, we will often need to access
 its state in other scripts. The problem is that, given that it's a state
@@ -71,16 +83,55 @@ in the redeemer. The state then needs to be checked for validity,
 and that is done by having a minting policy, the *certification tokens* of which
 contain the hash of the state and the timestamp in the name of the token itself.
 
-Concretely: The validator will fail if the hash of the state and timestamp
-supplied in the redeemer is not equal to the name of the token
+Concretely: The "client" validators will fail if the hash of the {state + some extra
+stuff} supplied in the redeemer is not equal to the name of the token
 of the relevant minting policy.
 
-The minting policy will be that:
-- You can mint if you have one already.
-- You can always burn.
-- You can also mint if you're consuming a UTXO from the state machine
-  in question, and the token name is equal to the hash of the datum
-  and timestamp.
+### Minting policy
+
+```haskell
+type CertTokenMPRedeemer = [AssetClass]
+```
+
+Each token of this policy minted must correspond to a consumed
+input in the following way:
+```haskell
+data CertifiedDatum = CertifiedDatum
+  { txRange :: POSIXTimeRange
+  , token :: AssetClass
+  , unCertifiedDatum :: Datum
+  }
+
+-- **Must** use sha2_256
+certHash :: CertifiedDatum a -> BuiltinByteString
+
+correpondsToInput :: TokenName -> AssetClass -> TxInfo -> TxOut -> Bool
+correpondsToInput (TokenName name) token info input =
+  uncurry (valueOf . txOutValue input) (unAssetClass token) > 0
+  && certHash certDatum == name
+  where
+    certDatum =
+      CertifiedDatum
+        { txRange = txInfoValidRange info
+        , token = token
+        , unCertifiedDatum = findDatum (txOutDatumHash input) info
+        }
+```
+
+The `AssetClass`es we test against come from the redeemer
+for the minting policy script.
+
+- If an `x` and `y` can be found such that `correpondsToInput token x y ≡ true`,
+  then minting is allowed.
+- Minting is also allowed if we already have an instance of the token,
+  i.e. you can duplicate it.
+- Burning is always allowed.
+- Otherwise it's not allowed.
+
+### Ensuring proliferation
+
+The validator described here is parameterized with the state machine
+in question.
 
 In the common case, the state machine will on each transition,
 i.e. in each transaction that consumes the state machine,
@@ -94,13 +145,16 @@ there will be `Y^n * X` available UTXOs after `n` blocks.
 
 `Y` and `X` can be hard-coded parameters, or depend on the state itself.
 
-The reason that we include a timestamp in the hashed data, is so that
-validators can check how old the token is.
-In the common case, there will be another parameter `Z` for controlling
-how many slots can pass before a certain token has expired. This parameter
-can also be a part of the state itself.
+There will be another parameter `Z` for controlling
+how much time can pass before a certain token has expired.
+This parameter can also be a part of the state itself.
 
-### Clean-up
+Specifically, it will be the maximum difference between
+the maximum allowed timestamp for the consuming transaction
+and the minimum allowed timestamp for the transaction that produced
+the certification token.
+
+#### Clean-up
 
 Each UTXO needs a minimum amount of Ada, which would be a substantial extra
 fee if users make UTXOs that can never be cleaned-up.
@@ -116,7 +170,7 @@ are no restrictions on how many continuing UTXOs there must be
 This means that after the token has expired, you can retrieve the Ada
 locked by the validator without creating more UTXOs with more locked Ada.
 
-### Off-chain usage
+#### Off-chain usage
 
 In the off-chain code, when we need to supply a token certifying
 the state, we will find the latest transaction consuming the state machine
