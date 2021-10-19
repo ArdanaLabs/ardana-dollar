@@ -500,6 +500,17 @@ class Proper model where
       model <- forAll $ genModel properties'
       runScriptTest model
 
+  combinedTestGivenProperties ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    Set (Property model) ->
+    Hedgehog.Property
+  combinedTestGivenProperties properties' =
+    property $ do
+      model <- forAll $ genModel properties'
+      properties model === properties'
+      runScriptTest model
+
   quickCheckModelTest ::
     IsProperty (Property model) =>
     Show (Model model) =>
