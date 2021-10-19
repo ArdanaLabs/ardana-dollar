@@ -153,8 +153,10 @@ mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMinting
 priceOracleTest :: IO ()
 priceOracleTest = do
   void $ checkParallel $ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
-  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
-  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+
+-- these are long running tests that enumerate all scenarios under the model - suggest running these nightly and not on each push
+--  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
+--  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
 
 data PriceOracleModel = Model deriving (Show)
 
