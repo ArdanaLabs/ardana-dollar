@@ -22,6 +22,7 @@ import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
 type Schema =
   Endpoint "insert" (Integer, Integer)
     .\/ Endpoint "remove" Integer
+    .\/ Endpoint "increment" Integer
 
 type CreateSchema =
   Endpoint "create" ()
@@ -41,4 +42,5 @@ endpoints f = do
     selectList
       [ endpoint @"insert" (insert @Integer2IntegerMap f)
       , endpoint @"remove" (remove @Integer2IntegerMap f)
+      , endpoint @"increment" (\key -> use @Integer2IntegerMap f key (+ 1))
       ]

@@ -11,6 +11,7 @@ module ArdanaDollar.Map.Contracts (
   createTest,
   insert,
   remove,
+  use,
   mkMapLookup,
   MapLookup (..),
   address,
@@ -159,13 +160,40 @@ remove mapInstance key = do
   lkp <- fromJust <$> mkMapLookup @t mapInstance
   let atFirstNode = key == node'key (snd $ head $ mapLookup'nodes lkp)
   let atLastNode = key == node'key (snd $ last $ mapLookup'nodes lkp)
-  let triple = findKey @t lkp key
+  let triple = findKeyInTheMiddle @t lkp key
   if
       | length (mapLookup'nodes lkp) == 1 && atFirstNode -> removeFromOneElementMap @t mapInstance lkp
       | atFirstNode -> removeSmallest @t mapInstance lkp
       | atLastNode -> removeGreatest @t mapInstance lkp
       | length (mapLookup'nodes lkp) >= 3 && isJust triple -> removeInTheMiddle @t mapInstance (fromJust triple)
       | otherwise -> throwError "Key not in the map"
+
+use ::
+  forall (t :: Type) (s :: Row Type) (w :: Type).
+  MapTerms t =>
+  MapInstance ->
+  K' t ->
+  (V' t -> V' t) ->
+  Contract w s Text ()
+use mapInstance key update = do
+  lkp <- fromJust <$> mkMapLookup @t mapInstance
+  case findKey @t lkp key of
+    Just (tpl, node) ->
+      do
+        let toSpend = Map.fromList [tpl]
+            lookups = lookups' @t mapInstance toSpend
+            updated = node {node'value = update (node'value node)}
+            tx =
+              Constraints.mustPayToTheScript (NodeDatum updated) (snd tpl ^. Ledger.ciTxOutValue)
+                <> Constraints.mustSpendScriptOutput
+                  (fst tpl)
+                  (Ledger.Redeemer $ Api.toBuiltinData Use)
+
+        logInfo @String $ "Map: use entry"
+
+        ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
+        void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    _ -> return ()
 
 lookups' ::
   forall (t :: Type).
@@ -470,16 +498,29 @@ findPlaceInTheMiddle lkp key =
         then return $ head places
         else Nothing
 
-findKey ::
+findKeyInTheMiddle ::
   forall t.
   MapTerms t =>
   MapLookup (K' t) (V' t) ->
   K' t ->
   Maybe ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)))
-findKey lkp key =
+findKeyInTheMiddle lkp key =
   let nodes = mapLookup'nodes lkp
       zipped = zip3 nodes (tail nodes) (tail (tail nodes))
       places = (\((_, _), (_, node), (_, _)) -> node'key node == key) `filter` zipped
+   in if not (null nodes) && not (null places)
+        then return $ head places
+        else Nothing
+
+findKey ::
+  forall t.
+  MapTerms t =>
+  MapLookup (K' t) (V' t) ->
+  K' t ->
+  Maybe (Tpl, Node (K' t) (V' t))
+findKey lkp key =
+  let nodes = mapLookup'nodes lkp
+      places = (\(_, node) -> node'key node == key) `filter` nodes
    in if not (null nodes) && not (null places)
         then return $ head places
         else Nothing

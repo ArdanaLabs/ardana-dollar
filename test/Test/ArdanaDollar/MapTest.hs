@@ -206,6 +206,15 @@ testRemoveInTheMiddle = do
   callEndpoint @"remove" h1 (fst middlePair)
   void $ Emulator.waitNSlots 1
 
+testIncrement :: EmulatorTrace ContractHandleT
+testIncrement = do
+  h1 <- testAddToEmptyMap
+
+  callEndpoint @"increment" h1 (fst smallestPair)
+  void $ Emulator.waitNSlots 1
+
+  return h1
+
 testAddToEmptyMap' :: TestTree
 testAddToEmptyMap' =
   checkPredicateOptions
@@ -296,6 +305,16 @@ testRemoveInTheMiddle' =
     )
     (void testRemoveInTheMiddle)
 
+testIncrement' :: TestTree
+testIncrement' =
+  checkPredicateOptions
+    (defaultCheckOptions & emulatorConfig .~ emCfg)
+    "testIncrement"
+    ( assertNoFailedTransactions
+        .&&. mapIs [((fst smallestPair, snd smallestPair + 1), mempty)]
+    )
+    (void testIncrement)
+
 mapTests :: TestTree
 mapTests =
   testGroup
@@ -309,4 +328,5 @@ mapTests =
     , testRemoveSmallest'
     , testRemoveGreatest'
     , testRemoveInTheMiddle'
+    , testIncrement'
     ]
