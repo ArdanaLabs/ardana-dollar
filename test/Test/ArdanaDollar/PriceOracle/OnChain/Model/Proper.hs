@@ -36,6 +36,7 @@ import Ledger (
   UpperBound (..),
   Value,
   Address,
+  AssetClass,
   knownPrivateKeys,
   pubKeyHash,
   pubKeyHashAddress,
@@ -95,6 +96,7 @@ import Prelude (
   Maybe (..),
   Monoid (..),
   Semigroup (..),
+  Applicative (..),
   Ord,
   Show,
   elem,
@@ -117,8 +119,6 @@ import Prelude (
   (<=),
   (==),
  )
-
---import System.Exit (exitSuccess)
 
 mkTestValidator :: OracleValidatorParams -> Validator
 mkTestValidator params =
@@ -155,9 +155,8 @@ priceOracleTest = do
   void $ checkParallel $ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect validate" modelTestGivenProperties expect
   void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect validate" plutusTestGivenProperties expect
---  void exitSuccess
---  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect fail to validate" modelTestGivenProperties (Neg expect)
---  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect fail to validate" plutusTestGivenProperties (Neg expect)
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect fail to validate" modelTestGivenProperties (Neg expect)
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect fail to validate" plutusTestGivenProperties (Neg expect)
 
 data PriceOracleModel = Model deriving (Show)
 
@@ -173,6 +172,8 @@ data StateUTXOParams = StateUTXOParams
 data TestDatumParameters = TestDatumParameters
   { signedByWallet :: Integer
   , timeStamp :: Integer
+  , fiatPriceFeedData :: UniqueMap.Map BuiltinByteString Integer
+  , cryptoPriceFeedData :: UniqueMap.Map AssetClass Integer
   }
   deriving (Show)
 
@@ -212,6 +213,8 @@ instance Proper PriceOracleModel where
     | InputDatumIsCorrectType
     | OutputDatumIsCorrectType
     | OwnerIsRetrievingValue
+    | InputPriceTrackingDatumIsEmpty
+    | OutputPriceTrackingDatumIsEmpty
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
   satisfiesProperty = flip satisfiesProperty'
@@ -229,6 +232,8 @@ instance Proper PriceOracleModel where
       , -- parsing will fail before we can check the signature hence these implications
         Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
       , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
+      , Prop OutputPriceTrackingDatumIsEmpty --> Prop OutputDatumIsCorrectType
+      , Prop InputPriceTrackingDatumIsEmpty --> Prop InputDatumIsCorrectType
       ]
 
   expect =
@@ -249,6 +254,7 @@ instance Proper PriceOracleModel where
           --> allOf
             ( Prop
                 <$> [ OutputDatumTimestampIsInRange
+                    , OutputPriceTrackingDatumIsEmpty
                     , RangeWithinSizeLimit
                     , TransactionSignedByOwner
                     , StateTokenReturned
@@ -311,7 +317,7 @@ instance Proper PriceOracleModel where
       , modelDatum' $ stateDatumValue inputParams
       ):(case valueRetrieved of
            Nothing -> []
-           Just so -> (\v -> (v, toBuiltinData ())) <$> fst so)
+           Just so -> (, toBuiltinData ()) <$> fst so)
   modelInputData PriceOracleMinterModel {} = []
 
   modelTxOutputs model@PriceOracleStateMachineModel {..} | isJust valueRetrieved =
@@ -334,7 +340,7 @@ instance Proper PriceOracleModel where
 modelDatum' :: Maybe TestDatumParameters -> BuiltinData
 modelDatum' Nothing = toBuiltinData ()
 modelDatum' (Just TestDatumParameters {..}) =
-  toBuiltinData $ signMessage (PriceTracking UniqueMap.empty UniqueMap.empty (POSIXTime timeStamp)) signedByPrivK
+  toBuiltinData $ signMessage (PriceTracking fiatPriceFeedData cryptoPriceFeedData (POSIXTime timeStamp)) signedByPrivK
   where
     signedByPrivK :: PrivateKey
     signedByPrivK = lookupPrivateKey signedByWallet
@@ -364,11 +370,13 @@ satisfiesProperty' RangeWithinSizeLimit = rangeWithinSizeLimit
 satisfiesProperty' OutputDatumSignedByOwner = outputDatumSignedByOwner
 satisfiesProperty' TransactionSignedByOwner = transactionSignedByOwner
 satisfiesProperty' StateTokenReturned = stateTokenReturned
-satisfiesProperty' InputDatumIsCorrectType = hasIncorrectInputDatum
-satisfiesProperty' OutputDatumIsCorrectType = hasIncorrectOutputDatum
+satisfiesProperty' InputDatumIsCorrectType = inputDatumIsCorrectType
+satisfiesProperty' OutputDatumIsCorrectType = outputDatumIsCorrectType
 satisfiesProperty' PriceOracleMintingPolicyContext = isMinterModel
 satisfiesProperty' PriceOracleStateMachineContext = isScriptModel
 satisfiesProperty' OwnerIsRetrievingValue = ownerIsRetrievingValue
+satisfiesProperty' OutputPriceTrackingDatumIsEmpty = outputPriceTrackingDatumIsEmpty
+satisfiesProperty' InputPriceTrackingDatumIsEmpty = inputPriceTrackingDatumIsEmpty
 
 type ModelProperty = Model PriceOracleModel -> Bool
 
@@ -413,16 +421,29 @@ stateTokenReturned model =
           Just 1 -> True
           _ -> False
 
-hasIncorrectInputDatum :: ModelProperty
-hasIncorrectInputDatum PriceOracleStateMachineModel {..} = isJust $ stateDatumValue inputParams
-hasIncorrectInputDatum _ = False
+inputDatumIsCorrectType :: ModelProperty
+inputDatumIsCorrectType PriceOracleStateMachineModel {..} = isJust $ stateDatumValue inputParams
+inputDatumIsCorrectType _ = False
 
-hasIncorrectOutputDatum :: ModelProperty
-hasIncorrectOutputDatum model = isJust $ stateDatumValue $ outputParams model
+outputDatumIsCorrectType :: ModelProperty
+outputDatumIsCorrectType model = isJust $ stateDatumValue $ outputParams model
 
 ownerIsRetrievingValue :: ModelProperty
 ownerIsRetrievingValue PriceOracleStateMachineModel {..} = isJust valueRetrieved
 ownerIsRetrievingValue _ = False
+
+outputPriceTrackingDatumIsEmpty :: ModelProperty
+outputPriceTrackingDatumIsEmpty model =
+  case stateDatumValue $ outputParams model of
+    Nothing -> False
+    Just so -> UniqueMap.null (fiatPriceFeedData so) && UniqueMap.null (cryptoPriceFeedData so)
+
+inputPriceTrackingDatumIsEmpty :: ModelProperty
+inputPriceTrackingDatumIsEmpty model@PriceOracleStateMachineModel{} =
+  case stateDatumValue $ inputParams model of
+    Nothing -> False
+    Just so -> UniqueMap.null (fiatPriceFeedData so) && UniqueMap.null (cryptoPriceFeedData so)
+inputPriceTrackingDatumIsEmpty _ = False
 
 -- generators
 ---------------------------------------------------------------------------------
@@ -597,7 +618,10 @@ genOutputDatumParameters w ts = do
           then pure w
           else genWalletIdxOtherThan w
       t <- genOutputTimeStamp ts
-      pure $ Just $ TestDatumParameters walletIdx t
+      (f,c) <- if OutputPriceTrackingDatumIsEmpty `elem` properties'
+                 then pure (UniqueMap.empty,UniqueMap.empty)
+                 else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
+      pure $ Just $ TestDatumParameters walletIdx t f c
     else pure Nothing
 
 genInputDatumParameters ::
@@ -610,8 +634,29 @@ genInputDatumParameters = do
     then do
       walletIdx <- genKnownWalletIdx
       t <- genInputTimeStamp
-      pure $ Just $ TestDatumParameters walletIdx t
+      (f,c) <- if InputPriceTrackingDatumIsEmpty `elem` properties'
+                 then pure (UniqueMap.empty,UniqueMap.empty)
+                 else (,) <$> genFiatPriceFeedMap <*> genCryptoPriceFeedMap
+      pure $ Just $ TestDatumParameters walletIdx t f c
     else pure Nothing
+
+genFiatPriceFeedMap ::
+  forall (m :: Type -> Type).
+  MonadGen m =>
+  ReaderT [Property PriceOracleModel] m (UniqueMap.Map BuiltinByteString Integer)
+genFiatPriceFeedMap = do
+  vals <- Gen.list (Range.linear 1 4) ((,) <$> HP.builtinByteString (Range.linear 0 10)
+                                           <*> Gen.integral (Range.linear 0 1000))
+  pure $ UniqueMap.fromList vals
+
+genCryptoPriceFeedMap ::
+  forall (m :: Type -> Type).
+  MonadGen m =>
+  ReaderT [Property PriceOracleModel] m (UniqueMap.Map AssetClass Integer)
+genCryptoPriceFeedMap = do
+  vals <- Gen.list (Range.linear 1 4) ((,) <$> HP.assetClass
+                                           <*> Gen.integral (Range.linear 0 1000))
+  pure $ UniqueMap.fromList vals
 
 genStateTokenCurrencySymbol ::
   forall (m :: Type -> Type).
