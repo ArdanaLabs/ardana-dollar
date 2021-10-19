@@ -1,8 +1,8 @@
-digraph "repayDUSD" {
+digraph "LiquidationCallAct" {
   rankdir = LR;
 
-  wallet_in [shape=record,label="{{User Wallet | {Lovelace: 900_000_000 | dUSD: 5000}}}"];
-  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 900_000_000}}}"];
+  wallet_in [shape=record,label="{{Liquidator Wallet | {Lovelace: 900_000_000 | dUSD: 10_000}}}"];
+  wallet_out [shape=record,label="{{User Wallet | {Lovelace: 950_000_000 | dUSD: 8_000}}}"];
 
   vault_script_in
     [ shape=record
@@ -11,7 +11,7 @@ digraph "repayDUSD" {
          | {VaultStateToken: 1}
          | VaultDatum
          | { vaultCollateral: 100_000_000
-           | vaultDebt: 5000
+           | vaultDebt: 7000
            }
          }}"
     ];
@@ -22,14 +22,19 @@ digraph "repayDUSD" {
          | {VaultStateToken: 1 | Lovelace: 100_000_000}
          | VaultDatum
          | { vaultCollateral: 100_000_000
-           | vaultDebt: 0
+           | vaultDebt: 5000
            }
          }}"
     ];
 
-  redeemer 
+  redeemer
     [ shape=record
-    , label="{{Redeemer | DebtRedeemer}}"
+    , label="{{Redeemer
+             | LiquidationCallAct
+             | amount: Integer
+             | oraclePrice: SignedMessage PriceTracking
+             | adminState: SignedMessage AdminState
+             }}"
     ];
 
   tx [label="Tx"];
