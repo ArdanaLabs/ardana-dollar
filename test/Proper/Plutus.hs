@@ -479,80 +479,69 @@ class Proper model where
 
   -- HedgeHog properties and property groups
 
-  selfTestAll ::
+  modelTestGivenProperties ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    Set (Property model) ->
+    Hedgehog.Property
+  modelTestGivenProperties properties' =
+    property $ do
+      model <- forAll $ genModel properties'
+      properties model === properties'
+
+  plutusTestGivenProperties ::
+    IsProperty (Property model) =>
+    Show (Model model) =>
+    Set (Property model) ->
+    Hedgehog.Property
+  plutusTestGivenProperties properties' =
+    property $ do
+      model <- forAll $ genModel properties'
+      runScriptTest model
+
+  quickCheckModelTest ::
     IsProperty (Property model) =>
     Show (Model model) =>
     model ->
     Hedgehog.Property
-  selfTestAll m =
+  quickCheckModelTest m =
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
       properties model === properties'
 
-  selfTestGivenProperties ::
-    IsProperty (Property model) =>
-    Show (Model model) =>
-    Set (Property model) ->
-    Hedgehog.Property
-  selfTestGivenProperties properties' =
-    property $ do
-      model <- forAll $ genModel properties'
-      properties model === properties'
-
-  selfTestGroup ::
-    IsProperty (Property model) =>
-    Show (Model model) =>
-    Show model =>
-    model ->
-    Int ->
-    Group
-  selfTestGroup model l =
-    Group (fromString $ show model) $
-      (fromString "selfTestRandomProperties", selfTestAll model) :
-        [ (fromString $ "selfTestProperties " <> show p, selfTestGivenProperties p)
-        | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
-        , satisfiesPropLogic logic p
-        ]
-
-  scriptTestAll ::
+  quickCheckPlutusTest ::
     IsProperty (Property model) =>
     Show (Model model) =>
     model ->
     Hedgehog.Property
-  scriptTestAll m =
+  quickCheckPlutusTest m =
     property $ do
       properties' <- forAll $ genProperties m
       model <- forAll $ genModel properties'
       runScriptTest model
 
-  scriptTestGivenProperties ::
-    IsProperty (Property model) =>
-    Show (Model model) =>
-    Set (Property model) ->
-    Hedgehog.Property
-  scriptTestGivenProperties properties' =
-    property $ do
-      model <- forAll $ genModel properties'
-      runScriptTest model
-
-  scriptTestGroup ::
+  testEnumeratedScenarios ::
     IsProperty (Property model) =>
     Show (Model model) =>
     Show model =>
     model ->
-    Int ->
+    String ->
+    (Set (Property model) -> Hedgehog.Property) ->
+    PropLogic (Property model) ->
     Group
-  scriptTestGroup model l =
-    Group (fromString $ show model) $
-      (fromString "scriptTestRandomProperties", scriptTestAll model) :
-        [ (fromString $ "scriptTestProperties " <> show p, scriptTestGivenProperties p)
-        | p <- Set.fromList <$> combinationsUpToLength l ([minBound .. maxBound] :: [Property model])
-        , satisfiesPropLogic logic p
-        ]
+  testEnumeratedScenarios _ groupname test cond =
+    let allProps = ([minBound .. maxBound] :: [Property model])
+     in Group (fromString groupname) $
+         [ (fromString $ show $ Set.toList p, test p)
+         | p <- Set.fromList <$> combinationsUpToLength (length allProps) allProps
+         , satisfiesPropLogic (logic /\ cond) p
+         ]
 
 -- helpers
 
+-- we are using this to brute force solutions to our propositional logic which is inefficient.
+-- we could use a solver to find solutions to the propositional logic if it becomes a problem.
 combinationsUpToLength :: Int -> [a] -> [[a]]
 combinationsUpToLength l li = filter ((<= l) . length) $ subsequences li
 

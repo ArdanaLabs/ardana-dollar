@@ -16,6 +16,7 @@ import Data.Kind (Type)
 import Data.Set qualified as Set
 import Hedgehog (
   MonadGen,
+  Group (..),
   checkParallel,
  )
 import Hedgehog.Gen qualified as Gen
@@ -144,9 +145,12 @@ mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMinting
 
 priceOracleTest :: IO ()
 priceOracleTest = do
-  void $ checkParallel $ selfTestGroup Model 2
-  void $ checkParallel $ scriptTestGroup Model 2
+  void $ checkParallel $ Group "Price Oracle quick check" [("model",quickCheckModelTest Model),("plutus",quickCheckPlutusTest Model)]
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect validate" modelTestGivenProperties expect
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect validate" plutusTestGivenProperties expect
   void exitSuccess
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle model expect fail to validate" modelTestGivenProperties (Neg expect)
+  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle plutus expect fail to validate" plutusTestGivenProperties (Neg expect)
 
 data PriceOracleModel = Model deriving (Show)
 
@@ -247,7 +251,7 @@ instance Proper PriceOracleModel where
   genModel = genModel' . Set.toList
 
   -- Here we are lying about the minting scripts hash due to how the script is wrapped for testing
-  -- perhaps we shouldn't wrap scripts in this way
+  -- perhaps we shouldn't wrap scripts in this way, perhaps this is fine, I'm undecided
   modelScriptPurpose PriceOracleMinterModel {..} = Minting $ fst $ correctNFTCurrency params
     where
       params = oracleMintingParams ownerWallet
@@ -273,8 +277,8 @@ instance Proper PriceOracleModel where
     where
       params = oracleMintingParams ownerWallet
 
-  modelCPUBudget _ = ExCPU 1_000_000_000
-  modelMemoryBudget _ = ExMemory 1_000_000_000
+  modelCPUBudget _ = ExCPU 750_000_000
+  modelMemoryBudget _ = ExMemory 2_000_000
 
   modelTxValidRange model =
     Interval
@@ -400,6 +404,17 @@ genModel' props =
   if PriceOracleValidatorContext `elem` props
     then runReaderT genPriceOracleValidatorModel props
     else runReaderT genPriceOracleMinterModel props
+
+-- TODO?
+--type ModelGen = MonadGen m => ReaderT (Set (Property model)) m
+--
+--given :: Property a -> ModelGen b -> ModelGen b -> ModelGen b
+--given prop whenPropSat whenPropUnsat = do
+--  trueProps <- ask
+--  if prop `elem` trueProps
+--     then whenPropSat
+--     else whenPropUnsat
+
 
 genPriceOracleMinterModel ::
   forall (m :: Type -> Type).
