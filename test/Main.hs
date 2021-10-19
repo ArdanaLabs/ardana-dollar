@@ -23,11 +23,11 @@ main = do
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
 
-  priceOracleTest
   defaultMain $ \(ContractMaxSuccess cms) ->
     testGroup
       "tests"
-      [ vaultUnitTests
+      [ priceOracleTests cms
+      , vaultUnitTests
       , bufferTraceTests
       , danaStakePoolTests
       , treasuryTraceTests

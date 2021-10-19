@@ -3,11 +3,10 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
-  priceOracleTest,
+  priceOracleTests,
 ) where
 
 import ArdanaDollar.PriceOracle.OnChain
-import Control.Monad (void)
 import Control.Monad.Trans.Reader (
   ReaderT (runReaderT),
   ask,
@@ -17,7 +16,6 @@ import Data.Set qualified as Set
 import Hedgehog (
   Group (..),
   MonadGen,
-  checkParallel,
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Plutus qualified as HP
@@ -82,6 +80,8 @@ import PlutusTx.Prelude (
  )
 import PlutusTx.UniqueMap qualified as UniqueMap
 import Proper.Plutus
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.Hedgehog (fromGroup)
 import Wallet.Emulator.Wallet (
   knownWallet,
   walletPubKey,
@@ -92,7 +92,7 @@ import Prelude (
   Bounded (..),
   Enum,
   Eq,
-  IO,
+  Int,
   Integer,
   Maybe (..),
   Monoid (..),
@@ -150,13 +150,17 @@ mkTestMintingPolicy params =
 mkTestMintingPolicyScript :: OracleMintingParams -> Redeemer -> Context -> Script
 mkTestMintingPolicyScript params r c = applyMintingPolicyScript c (mkTestMintingPolicy params) r
 
-priceOracleTest :: IO ()
-priceOracleTest = do
-  void $ checkParallel $ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
-
--- these are long running tests that enumerate all scenarios under the model - suggest running these nightly and not on each push
---  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
---  void $ checkParallel $ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+priceOracleTests :: Int -> TestTree
+priceOracleTests contractMaxSuccesses =
+  let shortTests =
+        [ Group "Price Oracle quick check" [("model", quickCheckModelTest Model), ("plutus", quickCheckPlutusTest Model)]
+        , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
+        ]
+      longTests =
+        [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+        | 75 <= contractMaxSuccesses
+        ]
+   in testGroup "PriceOracle" $ fromGroup <$> (shortTests <> longTests)
 
 data PriceOracleModel = Model deriving (Show)
 
