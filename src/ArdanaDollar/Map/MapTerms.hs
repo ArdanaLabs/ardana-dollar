@@ -8,8 +8,8 @@ module ArdanaDollar.Map.MapTerms (
   MapTerms,
 ) where
 
-import Data.Kind
-import Data.Ord
+import Data.Kind (Type)
+import Data.Ord (Ord)
 
 import ArdanaDollar.Map.Types (Datum, MapInstance)
 

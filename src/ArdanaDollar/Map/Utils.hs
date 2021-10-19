@@ -7,30 +7,29 @@ module ArdanaDollar.Map.Utils (
 import Control.Arrow ((>>>))
 import Control.Foldl qualified as L
 import Data.Map qualified as M
-import Ledger
-import Ledger.Value as V
+import Ledger qualified
+import Ledger.Value qualified as V
 import Plutus.Contract.Test (TracePredicate)
-import PlutusTx
+import PlutusTx qualified
 
-import Data.Maybe (mapMaybe)
-import Wallet.Emulator.Folds (postMapM)
+import Data.Maybe qualified as Maybe
 import Wallet.Emulator.Folds qualified as Folds
 import Prelude
 
 -- | Get a datum of a given type 'd' out of a Transaction Output.
 getTxOutDatum ::
   forall d.
-  (FromData d) =>
+  (PlutusTx.FromData d) =>
   Ledger.TxOutRef ->
   Ledger.TxOutTx ->
   Maybe d
 getTxOutDatum _ (Ledger.TxOutTx _ (Ledger.TxOut _ _ Nothing)) = Nothing
 getTxOutDatum _ (Ledger.TxOutTx tx' (Ledger.TxOut _ _ (Just dh))) =
-  Ledger.lookupDatum tx' dh >>= (Ledger.getDatum >>> fromBuiltinData @d)
+  Ledger.lookupDatum tx' dh >>= (Ledger.getDatum >>> PlutusTx.fromBuiltinData @d)
 
-dataAndValueAtAddress :: forall d. FromData d => Address -> ([(d, V.Value)] -> Bool) -> TracePredicate
+dataAndValueAtAddress :: forall d. PlutusTx.FromData d => Ledger.Address -> ([(d, V.Value)] -> Bool) -> TracePredicate
 dataAndValueAtAddress address check =
-  flip postMapM (L.generalize $ Folds.utxoAtAddress address) $ \utxo -> do
-    let datums = mapMaybe (\(ref, tx) -> (,Ledger.txOutValue $ Ledger.txOutTxOut tx) <$> getTxOutDatum @d ref tx) $ M.toList utxo
+  flip Folds.postMapM (L.generalize $ Folds.utxoAtAddress address) $ \utxo -> do
+    let datums = Maybe.mapMaybe (\(ref, tx) -> (,Ledger.txOutValue $ Ledger.txOutTxOut tx) <$> getTxOutDatum @d ref tx) $ M.toList utxo
         result = check datums
     pure result

@@ -22,20 +22,31 @@ import Prelude
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts qualified as Scripts
-import Plutus.Contract
+
+import Plutus.Contract (
+  Contract,
+  awaitTxConfirmed,
+  logInfo,
+  mapError,
+  ownPubKey,
+  submitTxConstraintsWith,
+  tell,
+  throwError,
+  utxosAt,
+ )
 import Plutus.Contracts.Currency qualified as Currency
-import Plutus.V1.Ledger.Api qualified as Api
+import Plutus.V1.Ledger.Api qualified as Ledger
 import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.Prelude qualified
 
 import Control.Lens ((^.))
-import Control.Monad
-import Data.Kind
+import Control.Monad (join, void)
+import Data.Kind (Type)
 import Data.List (sortOn)
-import Data.Map qualified as Map
-import Data.Maybe
+import Data.Map qualified as M
+import Data.Maybe (fromJust, isJust, maybeToList)
 import Data.Monoid (Last (Last))
-import Data.Row
+import Data.Row (Row)
 import Data.Text (Text, pack)
 
 import ArdanaDollar.Map.MapTerms
@@ -65,7 +76,7 @@ mkMapLookup ::
   MapInstance ->
   Contract w s Text (Maybe (MapLookup (K' t) (V' t)))
 mkMapLookup mapInstance = do
-  utxos <- Map.toList <$> utxosAt (address @t mapInstance)
+  utxos <- M.toList <$> utxosAt (address @t mapInstance)
   list <- join <$> sequence (own <$> utxos)
   let maps = list >>= (maybeToList . mapF)
   let nodes = list >>= (maybeToList . nodeF)
@@ -180,14 +191,14 @@ use mapInstance key update = do
   case findKey @t lkp key of
     Just (tpl, node) ->
       do
-        let toSpend = Map.fromList [tpl]
+        let toSpend = M.fromList [tpl]
             lookups = lookups' @t mapInstance toSpend
             updated = node {node'value = update (node'value node)}
             tx =
               Constraints.mustPayToTheScript (NodeDatum updated) (snd tpl ^. Ledger.ciTxOutValue)
                 <> Constraints.mustSpendScriptOutput
                   (fst tpl)
-                  (Ledger.Redeemer $ Api.toBuiltinData Use)
+                  (Ledger.Redeemer $ Ledger.toBuiltinData Use)
 
         logInfo @String $ "Map: use entry"
 
@@ -199,7 +210,7 @@ lookups' ::
   forall (t :: Type).
   MapTerms t =>
   MapInstance ->
-  Map.Map Api.TxOutRef Ledger.ChainIndexTxOut ->
+  M.Map Ledger.TxOutRef Ledger.ChainIndexTxOut ->
   Constraints.ScriptLookups (ValidatorTypes' t)
 lookups' mapInstance toSpend =
   Constraints.typedValidatorLookups (inst' @t mapInstance)
@@ -223,18 +234,18 @@ removeFromOneElementMap mapInstance lkp =
         tokenValue = Value.assetClassValue tokenAC (-1)
         nftValue = Value.assetClassValue (unMapInstance mapInstance) 1
 
-        toSpend = Map.fromList [fst _map, fst _node]
+        toSpend = M.fromList [fst _map, fst _node]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (MapDatum $ Map Nothing) nftValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _map)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _node)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: remove from one element map"
 
@@ -258,22 +269,22 @@ removeSmallest mapInstance lkp =
         tokenValue = Value.assetClassValue tokenAC (-1)
         nftValue = Value.assetClassValue (unMapInstance mapInstance) 1
 
-        toSpend = Map.fromList [fst _map, fst _node, fst _next]
+        toSpend = M.fromList [fst _map, fst _node, fst _next]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (MapDatum $ Map (node'next $ snd _node)) nftValue
             <> Constraints.mustPayToTheScript (NodeDatum $ snd _next) (snd (fst _next) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _map)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _node)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _next)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: remove smallest"
 
@@ -295,18 +306,18 @@ removeGreatest mapInstance lkp =
         tokenAC = unPointer $ fromJust $ node'next $ snd _node
         tokenValue = Value.assetClassValue tokenAC (-1)
 
-        toSpend = Map.fromList [fst _node, fst _next]
+        toSpend = M.fromList [fst _node, fst _next]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum (snd _node){node'next = Nothing}) (snd (fst _node) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _node)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _next)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: remove greatest"
 
@@ -326,22 +337,22 @@ removeInTheMiddle mapInstance (prev, mid, next) =
         tokenAC = unPointer $ fromJust $ node'next $ snd prev
         tokenValue = Value.assetClassValue tokenAC (-1)
 
-        toSpend = Map.fromList [fst prev, fst mid, fst next]
+        toSpend = M.fromList [fst prev, fst mid, fst next]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum (snd prev){node'next = node'next (snd mid)}) (snd (fst prev) ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript (NodeDatum (snd next)) (snd (fst next) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst prev)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst mid)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst next)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: remove in the middle"
 
@@ -364,16 +375,16 @@ addToEmptyMap mapInstance lkp (key, value) =
         tokenValue = Value.assetClassValue tokenAC 1
         nftValue = Value.assetClassValue (unMapInstance mapInstance) 1
 
-        toSpend = Map.fromList [fst _map]
+        toSpend = M.fromList [fst _map]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (MapDatum $ Map $ Just $ Pointer tokenAC) nftValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node key value Nothing) tokenValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _map)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: add to empty map"
 
@@ -399,20 +410,20 @@ addSmallest mapInstance lkp (key, value) =
 
         nodePointer = map'head $ snd _map
 
-        toSpend = Map.fromList [fst _map, fst _node]
+        toSpend = M.fromList [fst _map, fst _node]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (MapDatum $ Map $ Just $ Pointer tokenAC) nftValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node key value nodePointer) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd _node) (node'value $ snd _node) Nothing) (snd (fst _node) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _map)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _node)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: add smallest"
 
@@ -434,16 +445,16 @@ addGreatest mapInstance lkp (key, value) =
         tokenAC = Value.assetClass (nodeValidPolicySymbol @t mapInstance) (tokenName (fst $ fst _node))
         tokenValue = Value.assetClassValue tokenAC 1
 
-        toSpend = Map.fromList [fst _node]
+        toSpend = M.fromList [fst _node]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node key value Nothing) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd _node) (node'value $ snd _node) (Just $ Pointer tokenAC)) (snd (fst _node) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst _node)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: add greatest"
 
@@ -464,20 +475,20 @@ addInTheMiddle mapInstance (before, after) (key, value) =
         tokenAC = Value.assetClass (nodeValidPolicySymbol @t mapInstance) (tokenName (fst $ fst before))
         tokenValue = Value.assetClassValue tokenAC 1
 
-        toSpend = Map.fromList [fst before, fst after]
+        toSpend = M.fromList [fst before, fst after]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Api.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
+          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node key value (node'next $ snd before)) tokenValue
             <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd before) (node'value $ snd before) (Just $ Pointer tokenAC)) (snd (fst before) ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd after) (node'value $ snd after) (node'next $ snd after)) (snd (fst after) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst before)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst after)
-              (Ledger.Redeemer $ Api.toBuiltinData ListOp)
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
 
     logInfo @String $ "Map: add in the middle"
 

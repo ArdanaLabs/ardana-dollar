@@ -17,19 +17,19 @@ module ArdanaDollar.Map.Validators (
 
 import Ledger qualified
 import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Value qualified as Ledger
+
+import PlutusTx.IsData.Class (FromData)
 import PlutusTx.Prelude
 
 import Data.Maybe (maybeToList)
 
 import ArdanaDollar.Map.Types
 import ArdanaDollar.Utils (datumForOnchain)
-import PlutusTx.IsData.Class (FromData)
 
 {-# INLINEABLE tokenName #-}
 tokenName :: Ledger.TxOutRef -> Ledger.TokenName
 tokenName ref =
-  Ledger.TokenName $ consByteString (Ledger.txOutRefIdx ref) $ Ledger.getTxId (Ledger.txOutRefId ref)
+  Value.TokenName $ consByteString (Ledger.txOutRefIdx ref) $ Ledger.getTxId (Ledger.txOutRefId ref)
 
 {-# INLINEABLE singleList #-}
 singleList :: [a] -> Maybe a
@@ -370,7 +370,7 @@ mkNodeValidPolicy inst redeemer ctx =
 
     tokenAC :: Ledger.TxOutRef -> Ledger.AssetClass
     tokenAC ref =
-      Ledger.assetClass
+      Value.assetClass
         (Ledger.ownCurrencySymbol ctx)
         (tokenName ref)
 

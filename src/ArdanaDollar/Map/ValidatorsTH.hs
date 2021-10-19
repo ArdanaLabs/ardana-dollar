@@ -15,7 +15,11 @@ import Ledger qualified
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import PlutusTx qualified
-import PlutusTx.Prelude
+import PlutusTx.Prelude (
+  Integer,
+  ($),
+  (.),
+ )
 import PlutusTx.TH qualified as TH
 
 import ArdanaDollar.Map.MapTerms

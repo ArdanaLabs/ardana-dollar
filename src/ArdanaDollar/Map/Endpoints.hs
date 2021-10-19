@@ -7,9 +7,20 @@ module ArdanaDollar.Map.Endpoints (
   CreateSchema,
 ) where
 
-import Plutus.Contract
+import Plutus.Contract (
+  Contract,
+  Endpoint,
+  endpoint,
+  selectList,
+  type (.\/),
+ )
 import Plutus.V1.Ledger.Value qualified as Value
-import PlutusTx.Prelude
+import PlutusTx.Prelude (
+  AdditiveSemigroup ((+)),
+  Integer,
+  const,
+  ($),
+ )
 
 import Control.Monad (forever)
 import Data.Monoid (Last)
@@ -17,7 +28,7 @@ import Data.Text (Text)
 
 import ArdanaDollar.Map.Contracts
 import ArdanaDollar.Map.Types
-import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
+import ArdanaDollar.Map.ValidatorsTH
 
 type Schema =
   Endpoint "insert" (Integer, Integer)
