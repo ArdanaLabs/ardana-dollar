@@ -29,7 +29,6 @@ import Prelude (Semigroup (..), String, show)
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Crypto qualified as Crypto
-import Ledger.Extra (OnChainAddress (..))
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
@@ -193,7 +192,7 @@ spendFromCostCenter ::
   Contract w s e ()
 spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
   Left err -> logError err
-  Right tsp -> do
+  Right (tsp, beneficiaryTxCont) -> do
     logInfo @String ("called spendFromCostCenter: " <> show tsp)
     -- TODO: Debug ad-hoc mint of CanSpend
     pkh <- Crypto.pubKeyHash <$> ownPubKey
@@ -215,10 +214,6 @@ spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
 
             treasuryValue = (o ^. Ledger.ciTxOutValue) <> inv spendValue
 
-            beneficiaryTx = case beneficiary of
-              OnChainPubKey pkh' -> Constraints.mustPayToPubKey pkh' spendValue
-              OnChainValidatorHash vh d -> Constraints.mustPayToOtherScript vh d spendValue
-
             lookups =
               Constraints.typedValidatorLookups (treasuryInst treasury)
                 <> Constraints.otherScript (treasuryValidator treasury)
@@ -227,7 +222,7 @@ spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
               Constraints.mustPayToTheScript td' treasuryValue
                 <> Constraints.mustSpendScriptOutput oref (toRedeemer @Treasuring $ SpendFundsFromCostCenter tsp)
                 <> Constraints.mustPayToPubKey pkh canSpendValue
-                <> beneficiaryTx
+                <> beneficiaryTxCont spendValue
         ledgerTx <- submitTxConstraintsWith lookups tx
         awaitTxConfirmed $ Ledger.txId ledgerTx
         logInfo @String $

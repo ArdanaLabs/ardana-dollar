@@ -39,6 +39,8 @@ import Data.OpenApi.Schema qualified as OpenApi
 --------------------------------------------------------------------------------
 
 import Ledger qualified
+import Ledger.Constraints (TxConstraints)
+import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Address (pubKeyHashAddress, scriptHashAddress)
