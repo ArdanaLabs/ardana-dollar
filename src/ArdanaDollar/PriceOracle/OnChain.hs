@@ -32,7 +32,7 @@ data OracleValidatorParams = OracleValidatorParams
   , oracleValidatorParams'operatorPkh :: !Ledger.PubKeyHash
   , oracleValidatorParams'peggedCurrency :: !BuiltinByteString
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeLift ''OracleValidatorParams
 
@@ -41,7 +41,7 @@ data PriceTracking = PriceTracking
   , priceTracking'cryptoPriceFeed :: UniqueMap.Map Value.AssetClass Integer
   , priceTracking'lastUpdate :: Ledger.POSIXTime
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''PriceTracking [('PriceTracking, 0)]
 
@@ -49,7 +49,7 @@ data OracleMintingParams = OracleMintingParams
   { oracleMintingParams'operator :: !Ledger.PubKey
   , oracleMintingParams'operatorPkh :: !Ledger.PubKeyHash
   }
-  deriving stock (Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeLift ''OracleMintingParams
 

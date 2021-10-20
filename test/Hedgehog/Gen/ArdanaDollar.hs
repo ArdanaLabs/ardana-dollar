@@ -10,9 +10,13 @@ module Hedgehog.Gen.ArdanaDollar (
   danaGlobalData,
   danaDatum,
   danaRedeemer,
+  oracleMintingParams,
+  oracleValidatorParams,
+  priceTracking,
   treasury,
   treasuryAction,
   treasuryStateTokenParams,
+  treasuryUpgradeContractTokenParams,
   treasuryCostCenters,
   treasuryDatum,
   treasuryDepositParams,
@@ -23,6 +27,7 @@ module Hedgehog.Gen.ArdanaDollar (
   onchainMapNode,
   onchainMapDatum,
   onchainTokenRedeemer,
+  newContract,
 ) where
 
 import Control.Monad (replicateM)
@@ -37,12 +42,15 @@ import Prelude
 import Hedgehog.Gen.Plutus (
   assetClass,
   builtinByteString,
+  currencySymbol,
   pubKeyHash,
+  pubKeyWithHash,
   tokenName,
   txOutRef,
   validatorHash,
   value,
  )
+import Ledger.Generators qualified as LGen
 import Ledger.Value qualified as Value
 import PlutusTx.Prelude qualified as P
 import PlutusTx.UniqueMap qualified as UniqueMap
@@ -68,6 +76,11 @@ import ArdanaDollar.Map.Types qualified as OnchainMap (
   Node (..),
   Pointer (..),
   TokenRedeemer (..),
+ )
+import ArdanaDollar.PriceOracle.OnChain qualified as PriceOracle (
+  OracleMintingParams (..),
+  OracleValidatorParams (..),
+  PriceTracking (..),
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
   NewContract (..),
@@ -140,6 +153,22 @@ danaRedeemer =
     , DanaStakePool.InitializeUser
     ]
 
+oracleMintingParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleMintingParams
+oracleMintingParams = uncurry PriceOracle.OracleMintingParams <$> pubKeyWithHash
+
+oracleValidatorParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleValidatorParams
+oracleValidatorParams = do
+  cs <- currencySymbol
+  (pk, pkh) <- pubKeyWithHash
+  pc <- peggedCurrency
+  pure $
+    PriceOracle.OracleValidatorParams
+      { PriceOracle.oracleValidatorParams'oracleMintingCurrencySymbol = cs
+      , PriceOracle.oracleValidatorParams'operator = pk
+      , PriceOracle.oracleValidatorParams'operatorPkh = pkh
+      , PriceOracle.oracleValidatorParams'peggedCurrency = pc
+      }
+
 peggedCurrency :: forall (m :: Type -> Type). MonadGen m => m P.BuiltinByteString
 peggedCurrency =
   Gen.frequency
@@ -149,6 +178,13 @@ peggedCurrency =
     , (1, pure "PLN")
     , (1, builtinByteString (Range.singleton 3))
     ]
+
+priceTracking :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.PriceTracking
+priceTracking =
+  PriceOracle.PriceTracking
+    <$> uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) integer
+    <*> uniqueMap (Range.linear 0 10) assetClass integer
+    <*> (LGen.genSlotConfig >>= LGen.genPOSIXTime)
 
 treasury :: forall (m :: Type -> Type). MonadGen m => m Treasury.Treasury
 treasury =
@@ -166,7 +202,7 @@ treasuryAction =
     , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
     , pure Treasury.AllowMint
     , pure Treasury.AllowBurn
-    , Treasury.InitiateUpgrade <$> (Treasury.NewContract <$> validatorHash)
+    , Treasury.InitiateUpgrade <$> newContract
     ]
 
 treasuryStateTokenParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryStateTokenParams
@@ -224,6 +260,9 @@ onchainTokenRedeemer =
     , OnchainMap.RemoveInTheMiddle <$> txOutRef <*> txOutRef <*> txOutRef
     , OnchainMap.RemoveGreatest <$> txOutRef <*> txOutRef
     ]
+
+newContract :: forall (m :: Type -> Type). MonadGen m => m Treasury.NewContract
+newContract = Treasury.NewContract <$> validatorHash
 
 uniqueMap ::
   forall (m :: Type -> Type) (k :: Type) (v :: Type).

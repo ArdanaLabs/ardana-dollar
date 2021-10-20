@@ -15,10 +15,16 @@ builtinDataRoundtripTests :: TestTree
 builtinDataRoundtripTests =
   testGroup
     "BuiltinData roundtrips"
-    [ builtinDataPartialIsomorphism "VaultDatum" vaultDatum
-    , builtinDataPartialIsomorphism "VaultRedeemer" vaultRedeemer
-    , builtinDataPartialIsomorphism "BufferDatum" bufferDatum
-    , builtinDataPartialIsomorphism "BufferAction" bufferAction
+    [ testGroup
+        "Vault"
+        [ builtinDataPartialIsomorphism "VaultDatum" vaultDatum
+        , builtinDataPartialIsomorphism "VaultRedeemer" vaultRedeemer
+        ]
+    , testGroup
+        "Buffer"
+        [ builtinDataPartialIsomorphism "BufferDatum" bufferDatum
+        , builtinDataPartialIsomorphism "BufferAction" bufferAction
+        ]
     , testGroup
         "DanaStakePool"
         [ builtinDataPartialIsomorphism "Balance" danaBalance
@@ -29,10 +35,14 @@ builtinDataRoundtripTests =
         , builtinDataPartialIsomorphism "Redeemer" danaRedeemer
         ]
     , testGroup
+        "PriceOracle"
+        [builtinDataPartialIsomorphism "PriceTracking" priceTracking]
+    , testGroup
         "Treasury"
         [ builtinDataPartialIsomorphism "TreasuryDatum" treasuryDatum
         , builtinDataPartialIsomorphism "TreasuryDepositParams" treasuryDepositParams
         , builtinDataPartialIsomorphism "TreasuryAction" treasuryAction
+        , builtinDataPartialIsomorphism "NewContract" newContract
         ]
     , testGroup
         "Onchain map"
