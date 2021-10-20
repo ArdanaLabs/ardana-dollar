@@ -7,26 +7,15 @@ module Proper.Plutus (
   Proper (..),
   IsProperty,
   justDatumHash,
-  PropLogic (..),
+  Formula (..),
   CompiledObject (..),
-  (\/),
-  (/\),
-  (-->),
-  (<->),
-  noneOf,
-  anyOf,
-  allOf,
-  oneOf,
 ) where
 
-import Control.Monad.Reader (
-  Reader,
-  ask,
-  runReader,
- )
 import Data.Functor.Identity (Identity)
 import Data.Kind (Type)
-import Data.List (subsequences)
+import Data.List (notElem)
+import Data.Map.Lazy qualified as M
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
@@ -89,6 +78,11 @@ import PlutusTx (toBuiltinData)
 import PlutusTx.Builtins (
   BuiltinData,
  )
+import SAT.MiniSat (
+  Formula (..),
+  satisfiable,
+  solve_all,
+ )
 import Safe (
   headMay,
  )
@@ -112,33 +106,25 @@ import Prelude (
   Either (..),
   Enum,
   Eq,
-  Functor,
   Int,
   Integer,
   Maybe (..),
   Ord,
   Show (..),
   String,
-  elem,
   filter,
   fmap,
-  foldr,
-  length,
   mempty,
-  not,
   pure,
   snd,
   zip,
   ($),
   (&&),
   (.),
-  (/=),
   (<$>),
-  (<*>),
   (<=),
   (<>),
   (>>),
-  (||),
  )
 
 --------------------------------------------------------------------------------
@@ -149,68 +135,10 @@ import Prelude (
 
 class (Enum c, Eq c, Ord c, Bounded c, Show c) => IsProperty c
 
-data PropLogic a
-  = Atom Bool
-  | Prop a
-  | Neg (PropLogic a)
-  | Conjunction (PropLogic a) (PropLogic a)
-  | Disjunction (PropLogic a) (PropLogic a)
-  | Implication (PropLogic a) (PropLogic a)
-  | IfAndOnlyIf (PropLogic a) (PropLogic a)
-  deriving (Functor)
-
-(/\) :: PropLogic a -> PropLogic a -> PropLogic a
-(/\) = Conjunction
-
-(\/) :: PropLogic a -> PropLogic a -> PropLogic a
-(\/) = Disjunction
-
-(-->) :: PropLogic a -> PropLogic a -> PropLogic a
-(-->) = Implication
-
-(<->) :: PropLogic a -> PropLogic a -> PropLogic a
-(<->) = IfAndOnlyIf
-
-anyOf :: [PropLogic a] -> PropLogic a
-anyOf = foldr (\/) (Atom False)
-
-allOf :: [PropLogic a] -> PropLogic a
-allOf = foldr (/\) (Atom True)
-
-noneOf :: [PropLogic a] -> PropLogic a
-noneOf ps = allOf (Neg <$> ps)
-
-oneOf :: (Eq a) => [a] -> PropLogic a
-oneOf ps = anyOf (Prop <$> ps) /\ allOf [Prop p --> noneOf (Prop <$> filter (/= p) ps) | p <- ps]
-
-genGivenPropLogic :: (IsProperty a, MonadGen m, GenBase m ~ Identity) => PropLogic a -> m (Set a)
-genGivenPropLogic f =
-  let g = Set.fromList <$> Gen.subsequence [minBound .. maxBound]
-   in Gen.filter (satisfiesPropLogic f) g
-
-satisfiesPropLogic :: Eq a => PropLogic a -> Set a -> Bool
-satisfiesPropLogic l = runReader $ go l
-  where
-    go :: Eq a => PropLogic a -> Reader (Set a) Bool
-    go (Atom a) = pure a
-    go (Prop a) = do
-      ctx <- ask
-      pure $ a `elem` ctx
-    go (Neg a) = not <$> go a
-    go (Conjunction a b) = (&&) <$> go a <*> go b
-    go (Disjunction a b) = (||) <$> go a <*> go b
-    go (Implication a b) = do
-      ia <- go a
-      if ia then go b else pure True
-    go (IfAndOnlyIf a b) = do
-      ia <- go a
-      ib <- go b
-      pure $ (not ia && not ib) || (ia && ib)
-
 -- Proper is a type family over a Model and its Properties
 -- It encapsulates the model checking pattern shown in this diagram
 --
--- PropLogic (Property model)        Set (Property model)
+-- Formula (Property model)        Set (Property model)
 --            \                    /       ^
 --             \                  /         \
 --              \ genP         = /           \ satisfies
@@ -240,19 +168,46 @@ class Proper model where
   -- properties are things that may be true of a model
   data Property model :: Type
 
-  -- propositional logic over model properties defines sets of properties valid in conjunction
-  logic :: PropLogic (Property model)
-  logic = Atom True
-
-  -- given a set of properties we expect a script to pass or fail
-  expect :: PropLogic (Property model)
-  expect = Atom True
-
   -- check whether a property is satisfied
   satisfiesProperty :: Model model -> Property model -> Bool
 
   -- generates a model that satisfies a set of properties
   genModel :: MonadGen m => Set (Property model) -> m (Model model)
+
+  -- propositional logic over model properties defines sets of properties valid in conjunction
+  logic :: Formula (Property model)
+  logic = Yes
+
+  -- given a set of properties we expect a script to pass or fail
+  expect :: Formula (Property model)
+  expect = Yes
+
+  satisfiesFormula :: IsProperty (Property model) => Formula (Property model) -> Set (Property model) -> Bool
+  satisfiesFormula f s = satisfiable $ f :&&: All (Var <$> set) :&&: None (Var <$> unset)
+    where
+      set :: [Property model]
+      set = Set.toList s
+      unset :: [Property model]
+      unset = filter (`notElem` s) ([minBound .. maxBound] :: [Property model])
+
+  enumerateScenariosWhere :: IsProperty (Property model) => Formula (Property model) -> [Set (Property model)]
+  enumerateScenariosWhere condition = enumerateSolutions $ logic :&&: condition :&&: allPresentInFormula
+    where
+      allPresentInFormula :: Formula (Property model)
+      allPresentInFormula = All (mention <$> ([minBound .. maxBound] :: [Property model]))
+      mention :: Property model -> Formula (Property model)
+      mention p = Var p :||: Not (Var p)
+      fromSolution :: IsProperty p => M.Map p Bool -> Set p
+      fromSolution m = Set.fromList $ filter isInSet [minBound .. maxBound]
+        where
+          isInSet k = Just True == M.lookup k m
+      enumerateSolutions :: IsProperty p => Formula p -> [Set p]
+      enumerateSolutions f = fromSolution <$> solve_all f
+
+  genGivenFormula :: (IsProperty (Property model), MonadGen m, GenBase m ~ Identity) => Formula (Property model) -> m (Set (Property model))
+  genGivenFormula f =
+    let g = Set.fromList <$> Gen.subsequence [minBound .. maxBound]
+     in Gen.filter (satisfiesFormula f) g
 
   -- compute the properties of a model
   properties ::
@@ -268,7 +223,7 @@ class Proper model where
     IsProperty (Property model) =>
     model ->
     m (Set (Property model))
-  genProperties _ = genGivenPropLogic logic
+  genProperties _ = genGivenFormula logic
 
   -- Context Api (translate)
   -- defaults are provided to enable up front construction and testing of a model
@@ -430,7 +385,7 @@ class Proper model where
       ctx :: Context
       ctx = modelCtx model
       shouldPass :: Bool
-      shouldPass = satisfiesPropLogic expect $ properties model
+      shouldPass = satisfiesFormula expect $ properties model
       successWithBudgetCheck :: MonadTest m => ExBudget -> m ()
       successWithBudgetCheck cost@(ExBudget cpu mem) =
         if cpu <= modelCPUBudget model && mem <= modelMemoryBudget model
@@ -533,22 +488,16 @@ class Proper model where
     model ->
     String ->
     (Set (Property model) -> Hedgehog.Property) ->
-    PropLogic (Property model) ->
+    Formula (Property model) ->
     Group
   testEnumeratedScenarios _ groupname test cond =
-    let allProps = ([minBound .. maxBound] :: [Property model])
-     in Group (fromString groupname) $
-          [ (fromString $ show $ Set.toList p, test p)
-          | p <- Set.fromList <$> combinationsUpToLength (length allProps) allProps
-          , satisfiesPropLogic (logic /\ cond) p
-          ]
+    Group (fromString groupname) $
+      [ (fromString $ show $ Set.toList p, test p)
+      | p <- enumerateScenariosWhere cond
+      , satisfiesFormula (logic :&&: cond) p
+      ]
 
 -- helpers
-
--- we are using this to brute force solutions to our propositional logic which is inefficient.
--- we could use a solver to find solutions to the propositional logic if it becomes a problem.
-combinationsUpToLength :: Int -> [a] -> [[a]]
-combinationsUpToLength l li = filter ((<= l) . length) $ subsequences li
 
 datumWithHash :: BuiltinData -> (DatumHash, Datum)
 datumWithHash dt = (datumHash dt', dt')

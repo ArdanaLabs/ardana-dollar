@@ -3,6 +3,7 @@
 
 module Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper (
   priceOracleTests,
+  PriceOracleModel (..),
 ) where
 
 import ArdanaDollar.PriceOracle.OnChain
@@ -114,7 +115,7 @@ priceOracleTests contractMaxSuccesses =
         ]
       longTests =
         join
-          [ [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Neg expect)
+          [ [ testEnumeratedScenarios Model "PriceOracle validation failure scenarios" combinedTestGivenProperties (Not expect)
             , testEnumeratedScenarios Model "PriceOracle validation success scenarios" combinedTestGivenProperties expect
             ]
           | 75 <= contractMaxSuccesses
@@ -183,27 +184,27 @@ instance Proper PriceOracleModel where
   satisfiesProperty = flip satisfiesProperty'
 
   logic =
-    allOf
-      [ oneOf [PriceOracleMintingPolicyContext, PriceOracleStateMachineContext]
-      , anyOf
-          ( Prop
+    All
+      [ ExactlyOne (Var <$> [PriceOracleMintingPolicyContext, PriceOracleStateMachineContext])
+      , Some
+          ( Var
               <$> [ InputDatumIsCorrectType
                   , OwnerIsRetrievingValue
                   ]
           )
-          --> Prop PriceOracleStateMachineContext
-      , -- parsing will fail before we can check the signature hence these implications
-        Prop OutputDatumSignedByOwner --> Prop OutputDatumIsCorrectType
-      , Prop OutputDatumTimestampIsInRange --> Prop OutputDatumIsCorrectType
-      , Prop OutputPriceTrackingDatumIsEmpty --> Prop OutputDatumIsCorrectType
-      , Prop InputPriceTrackingDatumIsEmpty --> Prop InputDatumIsCorrectType
+          :->: Var PriceOracleStateMachineContext
+      , -- parsing will fail before we can check properties of the datum hence these implications
+        Var OutputDatumSignedByOwner :->: Var OutputDatumIsCorrectType
+      , Var OutputDatumTimestampIsInRange :->: Var OutputDatumIsCorrectType
+      , Var OutputPriceTrackingDatumIsEmpty :->: Var OutputDatumIsCorrectType
+      , Var InputPriceTrackingDatumIsEmpty :->: Var InputDatumIsCorrectType
       ]
 
   expect =
-    allOf
-      [ Prop PriceOracleStateMachineContext
-          --> allOf
-            ( Prop
+    All
+      [ Var PriceOracleStateMachineContext
+          :->: All
+            ( Var
                 <$> [ OutputDatumTimestampIsInRange
                     , RangeWithinSizeLimit
                     , OutputDatumSignedByOwner
@@ -213,9 +214,9 @@ instance Proper PriceOracleModel where
                     , OutputDatumIsCorrectType
                     ]
             )
-      , Prop PriceOracleMintingPolicyContext
-          --> allOf
-            ( Prop
+      , Var PriceOracleMintingPolicyContext
+          :->: All
+            ( Var
                 <$> [ OutputDatumTimestampIsInRange
                     , OutputPriceTrackingDatumIsEmpty
                     , RangeWithinSizeLimit

@@ -110,6 +110,7 @@ common test-deps
     , transformers
     , pretty
     , pretty-show
+    , minisat-solver
 
 library
   import:          lang
