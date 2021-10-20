@@ -494,7 +494,6 @@ class Proper model where
     Group (fromString groupname) $
       [ (fromString $ show $ Set.toList p, test p)
       | p <- enumerateScenariosWhere cond
-      , satisfiesFormula (logic :&&: cond) p
       ]
 
 -- helpers
