@@ -253,8 +253,12 @@ removeFromOneElementMap mapInstance map' node' =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (MapDatum $ Map Nothing) nftValue
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ Map Nothing)
+              nftValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -287,9 +291,15 @@ removeSmallest mapInstance map' node' next' =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (MapDatum $ Map (node'next $ snd node')) nftValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ snd next') (snd (fst next') ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ Map (node'next $ snd node'))
+              nftValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ snd next')
+              (snd (fst next') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -323,8 +333,12 @@ removeGreatest mapInstance node' next' =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum (snd node'){node'next = Nothing}) (snd (fst node') ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum (snd node'){node'next = Nothing})
+              (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst node')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -354,9 +368,15 @@ removeInTheMiddle mapInstance (prev, mid, next) =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum (snd prev){node'next = node'next (snd mid)}) (snd (fst prev) ^. Ledger.ciTxOutValue)
-            <> Constraints.mustPayToTheScript (NodeDatum (snd next)) (snd (fst next) ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum (snd prev){node'next = node'next (snd mid)})
+              (snd (fst prev) ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (NodeDatum (snd next))
+              (snd (fst next) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst prev)
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -391,9 +411,15 @@ addToEmptyMap mapInstance map' (key, value) =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (MapDatum $ Map $ Just $ Pointer tokenAC) nftValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node key value Nothing) tokenValue
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ Map $ Just $ Pointer tokenAC)
+              nftValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node key value Nothing)
+              tokenValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -425,10 +451,18 @@ addSmallest mapInstance map' node' (key, value) =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (MapDatum $ Map $ Just $ Pointer tokenAC) nftValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node key value nodePointer) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd node') (node'value $ snd node') Nothing) (snd (fst node') ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ Map $ Just $ Pointer tokenAC)
+              nftValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node key value nodePointer)
+              tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node (node'key $ snd node') (node'value $ snd node') Nothing)
+              (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -459,9 +493,15 @@ addGreatest mapInstance node' (key, value) =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node key value Nothing) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd node') (node'value $ snd node') (Just $ Pointer tokenAC)) (snd (fst node') ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node key value Nothing)
+              tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node (node'key $ snd node') (node'value $ snd node') (Just $ Pointer tokenAC))
+              (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst node')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -489,10 +529,18 @@ addInTheMiddle mapInstance (before, after) (key, value) =
 
         lookups = lookups' @t mapInstance toSpend
         tx =
-          Constraints.mustMintValueWithRedeemer (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node key value (node'next $ snd before)) tokenValue
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd before) (node'value $ snd before) (Just $ Pointer tokenAC)) (snd (fst before) ^. Ledger.ciTxOutValue)
-            <> Constraints.mustPayToTheScript (NodeDatum $ Node (node'key $ snd after) (node'value $ snd after) (node'next $ snd after)) (snd (fst after) ^. Ledger.ciTxOutValue)
+          Constraints.mustMintValueWithRedeemer
+            (Ledger.Redeemer $ Ledger.toBuiltinData @(TokenRedeemer (K' t)) tokenRedeemer)
+            tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node key value (node'next $ snd before))
+              tokenValue
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node (node'key $ snd before) (node'value $ snd before) (Just $ Pointer tokenAC))
+              (snd (fst before) ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (NodeDatum $ Node (node'key $ snd after) (node'value $ snd after) (node'next $ snd after))
+              (snd (fst after) ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst before)
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
