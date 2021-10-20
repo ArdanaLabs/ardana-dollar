@@ -176,8 +176,8 @@ executable ardana-pab
     , ardana-dollar
     , data-default
     , freer-simple
+    , openapi3
     , plutus-extra
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
-    , openapi3
