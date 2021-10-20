@@ -15,7 +15,6 @@ import Data.Functor.Identity (Identity)
 import Data.Kind (Type)
 import Data.List (notElem)
 import Data.Map.Lazy qualified as M
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
@@ -124,6 +123,7 @@ import Prelude (
   (<$>),
   (<=),
   (<>),
+  (==),
   (>>),
  )
 
