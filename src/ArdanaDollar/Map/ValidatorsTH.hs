@@ -22,7 +22,7 @@ import PlutusTx.Prelude (
  )
 import PlutusTx.TH qualified as TH
 
-import ArdanaDollar.Map.MapTerms
+import ArdanaDollar.Map.MapTerms qualified as T
 import ArdanaDollar.Map.Types
 import ArdanaDollar.Map.Validators
 
@@ -42,12 +42,12 @@ instance Scripts.ValidatorTypes ValidatorTypes where
   type DatumType ValidatorTypes = Datum Integer Integer
   type RedeemerType ValidatorTypes = Redeemer
 
-{-# INLINEABLE _inst #-}
-_inst ::
+{-# INLINEABLE inst' #-}
+inst' ::
   MapInstance ->
   PointerCS ->
   Scripts.TypedValidator ValidatorTypes
-_inst mapInstance pointerCS =
+inst' mapInstance pointerCS =
   Scripts.mkTypedValidator @ValidatorTypes
     ( $$(PlutusTx.compile [||mkValidator @Integer @Integer||])
         `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
@@ -57,18 +57,17 @@ _inst mapInstance pointerCS =
   where
     wrap = Scripts.wrapValidator @(Datum Integer Integer) @Redeemer
 
---
 {-# INLINEABLE inst #-}
 inst :: MapInstance -> Scripts.TypedValidator ValidatorTypes
-inst mapInstance = _inst mapInstance (PointerCS $ nodeValidPolicySymbol mapInstance)
+inst mapInstance = inst' mapInstance (PointerCS $ nodeValidPolicySymbol mapInstance)
 
 data Integer2IntegerMap
 
-instance MapTerms' Integer2IntegerMap where
+instance T.MapTerms' Integer2IntegerMap where
   type ValidatorTypes' Integer2IntegerMap = ValidatorTypes
   type K' Integer2IntegerMap = Integer
   type V' Integer2IntegerMap = Integer
   nodeValidPolicy' = nodeValidPolicy
   inst' = inst
 
-instance MapTerms Integer2IntegerMap
+instance T.MapTerms Integer2IntegerMap
