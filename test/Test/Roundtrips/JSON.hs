@@ -40,7 +40,7 @@ jsonRoundtripTests =
         ]
     , testGroup
         "Onchain map"
-        [testJsonLaws "MapInstance" mapInstance]
+        [testJsonLaws "MapInstance" onchainMapMapInstance]
     ]
 
 -- LAWS

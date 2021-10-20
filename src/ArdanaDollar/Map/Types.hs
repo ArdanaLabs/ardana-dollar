@@ -26,19 +26,21 @@ newtype MapInstance = MapInstance {unMapInstance :: Ledger.AssetClass}
   deriving newtype (Haskell.Show, Haskell.Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 newtype Pointer = Pointer {unPointer :: Ledger.AssetClass}
-  deriving newtype (Haskell.Show, Generic)
+  deriving newtype (Haskell.Show, Haskell.Eq, Generic)
 
 newtype PointerCS = PointerCS {unPointerCS :: Ledger.CurrencySymbol}
 
 newtype Map = Map
   { map'head :: Maybe Pointer
   }
+  deriving newtype (Haskell.Eq, Haskell.Show, Generic)
 
 data Node k v = Node
   { node'key :: k
   , node'value :: v
   , node'next :: Maybe Pointer
   }
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 instance Eq Pointer where
   {-# INLINEABLE (==) #-}
@@ -56,6 +58,7 @@ instance Eq Map where
   x == y = map'head x == map'head y
 
 data Datum k v = MapDatum Map | NodeDatum (Node k v)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
 data Redeemer = Use | ListOp
 
 data TokenRedeemer k
@@ -67,6 +70,7 @@ data TokenRedeemer k
   | RemoveSmallest Ledger.TxOutRef Ledger.TxOutRef
   | RemoveInTheMiddle Ledger.TxOutRef Ledger.TxOutRef Ledger.TxOutRef
   | RemoveGreatest Ledger.TxOutRef Ledger.TxOutRef
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 PlutusTx.makeLift ''PointerCS
 PlutusTx.makeLift ''MapInstance

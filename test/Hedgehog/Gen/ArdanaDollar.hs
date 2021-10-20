@@ -17,7 +17,12 @@ module Hedgehog.Gen.ArdanaDollar (
   treasuryDatum,
   treasuryDepositParams,
   treasurySpendParams,
-  mapInstance,
+  onchainMapMapInstance,
+  onchainMapPointer,
+  onchainMapMap,
+  onchainMapNode,
+  onchainMapDatum,
+  onchainTokenRedeemer,
 ) where
 
 import Control.Monad (replicateM)
@@ -55,8 +60,14 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   TraversalState (..),
   UserData (..),
  )
+import ArdanaDollar.Map.Types qualified as Onchain
 import ArdanaDollar.Map.Types qualified as OnchainMap (
+  Datum (..),
+  Map (..),
   MapInstance (..),
+  Node (..),
+  Pointer (..),
+  TokenRedeemer (..),
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
   NewContract (..),
@@ -182,8 +193,37 @@ treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.Trea
 treasurySpendParams =
   Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
 
-mapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
-mapInstance = OnchainMap.MapInstance <$> assetClass
+onchainMapMapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
+onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass
+
+onchainMapPointer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Pointer
+onchainMapPointer = OnchainMap.Pointer <$> assetClass
+
+onchainMapMap :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Map
+onchainMapMap = OnchainMap.Map <$> Gen.maybe onchainMapPointer
+
+onchainMapNode :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Node Integer Integer)
+onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMapPointer
+
+onchainMapDatum :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Datum Integer Integer)
+onchainMapDatum =
+  Gen.choice
+    [ Onchain.MapDatum <$> onchainMapMap
+    , Onchain.NodeDatum <$> onchainMapNode
+    ]
+
+onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.TokenRedeemer Integer)
+onchainTokenRedeemer =
+  Gen.choice
+    [ OnchainMap.AddToEmptyMap <$> integer
+    , OnchainMap.AddSmallest <$> integer <*> txOutRef
+    , OnchainMap.AddInTheMiddle <$> integer <*> txOutRef <*> txOutRef
+    , OnchainMap.AddGreatest <$> integer <*> txOutRef
+    , OnchainMap.RemoveFromOneElementMap <$> txOutRef
+    , OnchainMap.RemoveSmallest <$> txOutRef <*> txOutRef
+    , OnchainMap.RemoveInTheMiddle <$> txOutRef <*> txOutRef <*> txOutRef
+    , OnchainMap.RemoveGreatest <$> txOutRef <*> txOutRef
+    ]
 
 uniqueMap ::
   forall (m :: Type -> Type) (k :: Type) (v :: Type).

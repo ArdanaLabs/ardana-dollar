@@ -34,6 +34,13 @@ builtinDataRoundtripTests =
         , builtinDataPartialIsomorphism "TreasuryDepositParams" treasuryDepositParams
         , builtinDataPartialIsomorphism "TreasuryAction" treasuryAction
         ]
+    , testGroup
+        "Onchain map"
+        [ builtinDataPartialIsomorphism "MapInstance" onchainMapMapInstance
+        , builtinDataPartialIsomorphism "Pointer" onchainMapPointer
+        , builtinDataPartialIsomorphism "Datum" onchainMapDatum
+        , builtinDataPartialIsomorphism "TokenRedeemer" onchainTokenRedeemer
+        ]
     ]
 
 builtinDataPartialIsomorphism ::
