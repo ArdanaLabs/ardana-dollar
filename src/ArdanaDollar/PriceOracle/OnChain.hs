@@ -2,18 +2,21 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.PriceOracle.OnChain (
-  getScriptOutputsWithDatum,
+  --  getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
   mkOracleValidator,
-  OracleMintingParams (..),
+  oracleValidator,
   oracleMintingPolicy,
+  OracleMintingParams (..),
+  oracleCurrencySymbol,
   OracleValidatorParams (..),
   PriceTracking (..),
 ) where
 
-import ArdanaDollar.Utils (getScriptOutputsWithDatum)
+import ArdanaDollar.Utils (getAllScriptOutputsWithDatum, getContinuingScriptOutputsWithDatum)
 import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger qualified
@@ -99,22 +102,20 @@ stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
-  () ->
+  Ledger.ValidatorHash ->
   Ledger.ScriptContext ->
   Bool
 mkOracleMintingPolicy
-  oracle
   (OracleMintingParams op opPkh)
-  _
+  oracle
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
     narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
     where
       range :: Ledger.POSIXTimeRange
       range = Ledger.txInfoValidRange txInfo
       narrowInterval :: Bool
-      narrowInterval = withinInterval 10000 txInfo
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       expected :: Ledger.Value
@@ -127,7 +128,7 @@ mkOracleMintingPolicy
         traceIfFalse
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+      priceMessageToOracle = case getAllScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput
             op
@@ -150,28 +151,21 @@ mkOracleMintingPolicy
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   Ledger.MintingPolicy
-oracleMintingPolicy oracle params =
+oracleMintingPolicy params =
   Ledger.mkMintingPolicyScript $
     $$( PlutusTx.compile
-          [||
-          \o p ->
-            Scripts.wrapMintingPolicy
-              (mkOracleMintingPolicy o p)
-          ||]
+          [||Scripts.wrapMintingPolicy . mkOracleMintingPolicy||]
       )
-      `PlutusTx.applyCode` PlutusTx.liftCode oracle
       `PlutusTx.applyCode` PlutusTx.liftCode params
 
 {-# INLINEABLE oracleCurrencySymbol #-}
 oracleCurrencySymbol ::
-  Ledger.ValidatorHash ->
   OracleMintingParams ->
   Value.CurrencySymbol
-oracleCurrencySymbol oracle params =
-  Ledger.scriptCurrencySymbol (oracleMintingPolicy oracle params)
+oracleCurrencySymbol params =
+  Ledger.scriptCurrencySymbol (oracleMintingPolicy params)
 
 {-# INLINEABLE mkOracleValidator #-}
 mkOracleValidator ::
@@ -193,7 +187,7 @@ mkOracleValidator
       expectedOutVal = stateTokenValue curSymbol
       txSignedByOperator :: Bool
       txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-      priceMessageToOracle = case getScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
+      priceMessageToOracle = case getContinuingScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
         [(output, dat)] ->
           checkMessageOutput
             op
@@ -210,13 +204,19 @@ instance Scripts.ValidatorTypes PriceOracling where
   type DatumType PriceOracling = Oracle.SignedMessage PriceTracking
   type RedeemerType PriceOracling = ()
 
+{-# INLINEABLE oracleCompiledTypedValidator #-}
+oracleCompiledTypedValidator ::
+  OracleValidatorParams ->
+  PlutusTx.CompiledCode (Oracle.SignedMessage PriceTracking -> () -> Ledger.ScriptContext -> Bool)
+oracleCompiledTypedValidator params =
+  $$(PlutusTx.compile [||mkOracleValidator||])
+    `PlutusTx.applyCode` PlutusTx.liftCode params
+
 {-# INLINEABLE oracleInst #-}
 oracleInst :: OracleValidatorParams -> Scripts.TypedValidator PriceOracling
 oracleInst params =
   Scripts.mkTypedValidator @PriceOracling
-    ( $$(PlutusTx.compile [||mkOracleValidator||])
-        `PlutusTx.applyCode` PlutusTx.liftCode params
-    )
+    (oracleCompiledTypedValidator params)
     $$(PlutusTx.compile [||wrap||])
   where
     wrap = Scripts.wrapValidator @(Oracle.SignedMessage PriceTracking) @()
