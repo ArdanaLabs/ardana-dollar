@@ -16,8 +16,7 @@ data VaultParams = VaultParams
 
 ```haskell
 data VaultState = VaultState
-  { collateralCurrency :: AssetClass
-  , borrowPrincipal :: Integer
+  { borrowPrincipal :: Integer
   , lastStabilityFeeTime :: PosixTime
   }
 ```
@@ -27,4 +26,7 @@ data VaultState = VaultState
 This token is not one-shot and is interchangeable with
 every Vault State Machine state token with the same `VaultParams`.
 
-FIXME
+Minting policy:
+- There must be exactly one output with the Vault validator, with datum
+  `VaultState { borrowPrincipal = 0, lastStabilityFeeTime = 0 }`.
+  There must only be Ada (minimum Ada requirement) and `collateralCurrency` in the UTXO.

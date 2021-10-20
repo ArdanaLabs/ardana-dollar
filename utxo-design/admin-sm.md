@@ -7,8 +7,7 @@ Parameterized by:
 data AdminParams = AdminParams
   { targetCurrency :: ByteString -- fiat currency identifier
   , collateralCurrency :: AssetClass
-  , treasuryAddress :: ValidatorHash
-  , treasuryStateTokenSymbol :: CurrencySymbol
+  , treasuryStateToken :: AssetClass
   , ownerAddress :: PubKey
   , oneShotUtxo :: TxOutRef
   }
@@ -24,43 +23,36 @@ data AdminState = AdminState
   , liquidationBenefitFloor :: Rational
   , minCollateralRatio :: Rational
   , lastUpdated :: PosixTime
-  , oracleToken :: AssetClass,
-  , oracleCertification :: CurrencySymbol
-  , oracleAddress :: Credential
+  , oracleStateToken :: AssetClass,
   , certTokenStart :: Natural
   , certTokenBase :: Natural
-  , certTokenExpiration :: Natural 
+  , certTokenExpiration :: POSIXTime
+  , validRangeSize :: POSIXTime
   }
 ```
 
-## Token
+## Initial
 
-Minting rules:
 - `oneShotUtxo` must be consumed by the transaction.
-- The state must be initialized to the following.
 
-Can only mint if `oneShotUtxo` is consumed,
-and if the state is the following:
 ```haskell
-data AdminState = AdminState
-  { active :: Bool
-  , stabilityFeeMultiplier :: Rational
-  , liquidationBenefitCap :: Rational
-  , liquidationBenefitFloor :: Rational
-  , minCollateralRatio :: Rational
-  , lastUpdated :: PosixTime
-  }
-AdminState
-  { active = False
-  , stabilityFeeMultiplier = 1
-  , liquidationBenefitCap = 1 % 5 -- 20%
-  , liquidationBenefitFloor = 1 % 20 -- 5%
-  , minCollateralRatio = 3 % 2 -- 150%
+outputDatum ≡ outputDatum
+  { active = True
   , lastUpdated = currentTime
   }
+  where currentTime = ivFrom $ txInfoValidRange _
 ```
 
+## Certification Tokens
+
+- Each act will create `certTokenStart` UTXOs with certification tokens.
+- The validator for the UTXOs will require that `certTokenBase` UTXOs with the same
+  token are made in the consuming transaction.
+- The tokens are only valid for `certTokenExpiration` slots.
+
 ## Acts
+
+- `ivFrom (txInfoValidRange _) ≡ ivTo (txInfoValidRange _) - validRangeSize _`
 
 ### UpdateAdminStateAct
 Purpose: Allows `ownerAddress` to do anything.
@@ -83,10 +75,3 @@ Purpose: Triggers Upgrade procedure by securely sending an UpgradeContractToken 
   datum must be  (set `UpgradeContract.newContract` to `Just InitiateUpgradeAct.newContract`)
 
 FIXME: - UpgradeContract token -> `InitiateUpgradeAct.newContract` address (set `newContract` to `Nothing`)
-
-## Certification Tokens
-
-- Each act will create `certTokenStart` UTXOs with the certification token.
-- The validator for the UTXOs will require that `certTokenBase` UTXOs with the same
-  token are made in the consuming transaction.
-- The tokens are only valid for `certTokenExpiration` slots.

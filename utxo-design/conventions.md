@@ -97,7 +97,7 @@ Each token of this policy minted must correspond to a consumed
 input in the following way:
 ```haskell
 data CertifiedDatum = CertifiedDatum
-  { txRange :: POSIXTimeRange
+  { timestamp :: POSIXTime
   , token :: AssetClass
   , unCertifiedDatum :: Datum
   }
@@ -112,7 +112,7 @@ correpondsToInput (TokenName name) token info input =
   where
     certDatum =
       CertifiedDatum
-        { txRange = txInfoValidRange info
+        { timestamp = ivFrom $ txInfoValidRange info
         , token = token
         , unCertifiedDatum = findDatum (txOutDatumHash input) info
         }
@@ -127,6 +127,16 @@ for the minting policy script.
   i.e. you can duplicate it.
 - Burning is always allowed.
 - Otherwise it's not allowed.
+
+### Using it downstream
+
+A downstream validator will take the certification token's name
+in the redeemer, check that such a token exists in the transaction,
+then fetch the corresponding data from `txInfoData` by looking up
+the datum using the token name, that is essentially the hash of the datum.
+
+**NB:** This means that the submitter of the transaction **must**
+remember to include the datum as a witness in the transaction.
 
 ### Ensuring proliferation
 
