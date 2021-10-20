@@ -2,7 +2,9 @@ module Hedgehog.Gen.Plutus (
   assetClass,
   builtinByteString,
   currencySymbol,
+  pubKey,
   pubKeyHash,
+  pubKeyWithHash,
   singletonValue,
   tokenName,
   txId,
@@ -18,9 +20,11 @@ import Hedgehog.Gen.Extra (integer)
 import Hedgehog.Range qualified as Range
 import Prelude
 
+import Ledger qualified
 import Ledger.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Crypto (PubKeyHash (..))
+import Plutus.V1.Ledger.Bytes (LedgerBytes (..))
+import Plutus.V1.Ledger.Crypto (PubKey (..), PubKeyHash (..))
 import Plutus.V1.Ledger.Tx (TxOutRef (..))
 import Plutus.V1.Ledger.TxId (TxId (..))
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
@@ -38,8 +42,20 @@ assetClass = Value.assetClass <$> currencySymbol <*> tokenName
 currencySymbol :: forall (m :: Type -> Type). MonadGen m => m Value.CurrencySymbol
 currencySymbol = Value.currencySymbol <$> Gen.utf8 (Range.singleton 32) Gen.unicodeAll
 
+ledgerBytes :: forall (m :: Type -> Type). MonadGen m => m LedgerBytes
+ledgerBytes = LedgerBytes <$> builtinByteString (Range.singleton 32)
+
+pubKey :: forall (m :: Type -> Type). MonadGen m => m PubKey
+pubKey = PubKey <$> ledgerBytes
+
 pubKeyHash :: forall (m :: Type -> Type). MonadGen m => m PubKeyHash
 pubKeyHash = PubKeyHash <$> builtinByteString (Range.singleton 32)
+
+pubKeyWithHash :: forall (m :: Type -> Type). MonadGen m => m (PubKey, PubKeyHash)
+pubKeyWithHash = do
+  pk <- pubKey
+  let pkh = Ledger.pubKeyHash pk
+  pure (pk, pkh)
 
 singletonValue :: forall (m :: Type -> Type). MonadGen m => m Value.Value
 singletonValue = Value.singleton <$> currencySymbol <*> tokenName <*> integer

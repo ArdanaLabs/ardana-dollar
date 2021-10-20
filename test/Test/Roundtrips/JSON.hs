@@ -18,8 +18,8 @@ jsonRoundtripTests :: TestTree
 jsonRoundtripTests =
   testGroup
     "JSON roundtrips"
-    [ testJsonLaws "VaultDatum" vaultDatum
-    , testJsonLaws "BufferDatum" bufferDatum
+    [ testGroup "Vault" [testJsonLaws "VaultDatum" vaultDatum]
+    , testGroup "Buffer" [testJsonLaws "BufferDatum" bufferDatum]
     , testGroup
         "DanaStakePool"
         [ testJsonLaws "NFTAssetClass" danaNftAssetClass
@@ -31,12 +31,20 @@ jsonRoundtripTests =
         , testJsonLaws "Redeemer" danaRedeemer
         ]
     , testGroup
+        "PriceOracle"
+        [ testJsonLaws "OracleMintingParams" oracleMintingParams
+        , testJsonLaws "OracleValidatorParams" oracleValidatorParams
+        , testJsonLaws "PriceTracking" priceTracking
+        ]
+    , testGroup
         "Treasury"
         [ testJsonLaws "Treasury" treasury
         , testJsonLaws "TreasuryStateTokenParams" treasuryStateTokenParams
+        , testJsonLaws "TreasuryUpgradeContractTokenParams" treasuryUpgradeContractTokenParams
         , testJsonLaws "TreasuryDatum" treasuryDatum
         , testJsonLaws "TreasuryDepositParams" treasuryDepositParams
         , testJsonLaws "TreasurySpendParams" treasurySpendParams
+        , testJsonLaws "NewContract" newContract
         ]
     ]
 
