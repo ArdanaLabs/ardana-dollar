@@ -17,6 +17,7 @@ module Hedgehog.Gen.ArdanaDollar (
   treasuryDatum,
   treasuryDepositParams,
   treasurySpendParams,
+  mapInstance,
 ) where
 
 import Control.Monad (replicateM)
@@ -53,6 +54,9 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   Redeemer (..),
   TraversalState (..),
   UserData (..),
+ )
+import ArdanaDollar.Map.Types qualified as OnchainMap (
+  MapInstance (..),
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
   NewContract (..),
@@ -177,6 +181,9 @@ treasuryDepositParams =
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
   Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
+
+mapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
+mapInstance = OnchainMap.MapInstance <$> assetClass
 
 uniqueMap ::
   forall (m :: Type -> Type) (k :: Type) (v :: Type).

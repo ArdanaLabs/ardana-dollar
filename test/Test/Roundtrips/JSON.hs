@@ -38,6 +38,9 @@ jsonRoundtripTests =
         , testJsonLaws "TreasuryDepositParams" treasuryDepositParams
         , testJsonLaws "TreasurySpendParams" treasurySpendParams
         ]
+    , testGroup
+        "Onchain map"
+        [testJsonLaws "MapInstance" mapInstance]
     ]
 
 -- LAWS

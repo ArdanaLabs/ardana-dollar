@@ -23,10 +23,10 @@ import Ledger qualified
 import Prelude qualified as Haskell
 
 newtype MapInstance = MapInstance {unMapInstance :: Ledger.AssetClass}
-  deriving newtype (Haskell.Show, Generic, JSON.FromJSON, JSON.ToJSON)
+  deriving newtype (Haskell.Show, Haskell.Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 newtype Pointer = Pointer {unPointer :: Ledger.AssetClass}
-  deriving newtype (Haskell.Show, Generic, JSON.FromJSON, JSON.ToJSON)
+  deriving newtype (Haskell.Show, Generic)
 
 newtype PointerCS = PointerCS {unPointerCS :: Ledger.CurrencySymbol}
 
