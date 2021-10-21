@@ -88,12 +88,12 @@ mkTreasuryStateTokenMintingPolicy params () sc =
           , txOutDatumHash = dh
           } ->
             isScriptAddress addr
-              && v `valueSubsetOf` forgeValue
+              && forgeValue `valueSubsetOf` v
               && Value.assetClassValueOf v stateTokenAssetClass == 1
               && maybeEmpty isCorrectDatum (dh >>= flip Contexts.findDatum info)
 
     isCorrectlyForging :: Bool
-    isCorrectlyForging = Contexts.txInfoMint info `valueSubsetOf` forgeValue
+    isCorrectlyForging = forgeValue `valueSubsetOf` Contexts.txInfoMint info
 
     isScriptAddress :: Ledger.Address -> Bool
     isScriptAddress =

@@ -6,6 +6,7 @@ import Prelude
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.MapTest
+import Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
 import Test.ArdanaDollar.TreasuryValidatorTest (treasuryValidatorTests)
 import Test.ArdanaDollar.Utils (vaultUnitTests)
@@ -26,7 +27,8 @@ main = do
   defaultMain $ \(ContractMaxSuccess cms) ->
     testGroup
       "tests"
-      [ vaultUnitTests
+      [ priceOracleTests cms
+      , vaultUnitTests
       , bufferTraceTests
       , danaStakePoolTests
       , mapTests

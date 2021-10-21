@@ -1,4 +1,4 @@
-cabal-version: 2.4
+Cabal-version: 2.4
 name:          ardana-dollar
 version:       0.1.0.0
 
@@ -107,6 +107,11 @@ common test-deps
     , tasty-hunit
     , tasty-plutus
     , tasty-quickcheck
+    , safe
+    , transformers
+    , pretty
+    , pretty-show
+    , minisat-solver
 
 library
   import:          lang
@@ -155,10 +160,12 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    Proper.Plutus
     TastyDefaultMain
     Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
     Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.TreasuryValidatorTest
@@ -185,8 +192,8 @@ executable ardana-pab
     , ardana-dollar
     , data-default
     , freer-simple
+    , openapi3
     , plutus-extra
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
-    , openapi3

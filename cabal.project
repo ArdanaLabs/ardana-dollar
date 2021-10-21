@@ -47,9 +47,10 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/Liqwid-Labs/plutus-extra.git
-  tag: c2079131a2a138d0895282e26d6cdd16cd65c649
+  tag: 78caf59d3615dd7949ff12cca86838379c615280
   subdir:
     plutus-extra
+    plutus-pretty
     tasty-plutus
 
 -- The following sections are copied from the 'plutus' repository cabal.project at the revision
