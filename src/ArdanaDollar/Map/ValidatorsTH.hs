@@ -23,14 +23,19 @@ import PlutusTx.Prelude (
 import PlutusTx.TH qualified as TH
 
 import ArdanaDollar.Map.MapTerms qualified as T
-import ArdanaDollar.Map.Types
-import ArdanaDollar.Map.Validators
+import ArdanaDollar.Map.Types (
+  Datum,
+  MapInstance,
+  PointerCS (PointerCS),
+  Redeemer,
+ )
+import ArdanaDollar.Map.Validators qualified as V
 
 {-# INLINEABLE nodeValidPolicy #-}
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy
 nodeValidPolicy mapInstance =
   Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||Scripts.wrapMintingPolicy . mkNodeValidPolicy @Integer @Integer||])
+    $$(TH.compile [||Scripts.wrapMintingPolicy . V.mkNodeValidPolicy @Integer @Integer||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
 
 {-# INLINEABLE nodeValidPolicySymbol #-}
@@ -49,7 +54,7 @@ inst' ::
   Scripts.TypedValidator ValidatorTypes
 inst' mapInstance pointerCS =
   Scripts.mkTypedValidator @ValidatorTypes
-    ( $$(PlutusTx.compile [||mkValidator @Integer @Integer||])
+    ( $$(PlutusTx.compile [||V.mkValidator @Integer @Integer||])
         `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
         `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
     )

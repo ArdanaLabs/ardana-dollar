@@ -248,17 +248,17 @@ onchainMapDatum =
     , Onchain.NodeDatum <$> onchainMapNode
     ]
 
-onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.TokenRedeemer Integer)
+onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.TokenRedeemer
 onchainTokenRedeemer =
   Gen.choice
-    [ OnchainMap.AddToEmptyMap <$> integer
-    , OnchainMap.AddSmallest <$> integer <*> txOutRef
-    , OnchainMap.AddInTheMiddle <$> integer <*> txOutRef <*> txOutRef
-    , OnchainMap.AddGreatest <$> integer <*> txOutRef
-    , OnchainMap.RemoveFromOneElementMap <$> txOutRef
-    , OnchainMap.RemoveSmallest <$> txOutRef <*> txOutRef
-    , OnchainMap.RemoveInTheMiddle <$> txOutRef <*> txOutRef <*> txOutRef
-    , OnchainMap.RemoveGreatest <$> txOutRef <*> txOutRef
+    [ pure OnchainMap.AddToEmptyMap
+    , pure OnchainMap.AddSmallest
+    , OnchainMap.AddInTheMiddle <$> txOutRef
+    , OnchainMap.AddGreatest <$> txOutRef
+    , pure OnchainMap.RemoveFromOneElementMap
+    , pure OnchainMap.RemoveSmallest
+    , OnchainMap.RemoveInTheMiddle <$> txOutRef
+    , OnchainMap.RemoveGreatest <$> txOutRef
     ]
 
 newContract :: forall (m :: Type -> Type). MonadGen m => m Treasury.NewContract

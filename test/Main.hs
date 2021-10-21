@@ -27,11 +27,11 @@ main = do
   defaultMain $ \(ContractMaxSuccess cms) ->
     testGroup
       "tests"
-      [ priceOracleTests cms
+      [ mapTests
+      , priceOracleTests cms
       , vaultUnitTests
       , bufferTraceTests
       , danaStakePoolTests
-      , mapTests
       , treasuryTraceTests
       , treasuryValidatorTests
       , jsonRoundtripTests

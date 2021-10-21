@@ -61,15 +61,15 @@ data Datum k v = MapDatum Map | NodeDatum (Node k v)
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 data Redeemer = Use | ListOp
 
-data TokenRedeemer k
-  = AddToEmptyMap k
-  | AddSmallest k Ledger.TxOutRef
-  | AddInTheMiddle k Ledger.TxOutRef Ledger.TxOutRef
-  | AddGreatest k Ledger.TxOutRef
-  | RemoveFromOneElementMap Ledger.TxOutRef
-  | RemoveSmallest Ledger.TxOutRef Ledger.TxOutRef
-  | RemoveInTheMiddle Ledger.TxOutRef Ledger.TxOutRef Ledger.TxOutRef
-  | RemoveGreatest Ledger.TxOutRef Ledger.TxOutRef
+data TokenRedeemer
+  = AddToEmptyMap
+  | AddSmallest
+  | AddInTheMiddle Ledger.TxOutRef
+  | AddGreatest Ledger.TxOutRef
+  | RemoveFromOneElementMap
+  | RemoveSmallest
+  | RemoveInTheMiddle Ledger.TxOutRef
+  | RemoveGreatest Ledger.TxOutRef
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 PlutusTx.makeLift ''PointerCS
