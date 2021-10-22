@@ -164,6 +164,7 @@ test-suite ardana-dollar-test
     Test.AssertUtils
     Test.ContractModel.Buffer
     Test.ContractModel.Vault
+    Test.Data.StickBreakingSet.Mock
     Test.Roundtrips.BuiltinData
     Test.Roundtrips.JSON
     Test.TraceUtils
