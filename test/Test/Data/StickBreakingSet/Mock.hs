@@ -1,6 +1,6 @@
 module Test.Data.StickBreakingSet.Mock (mockStickBreakingSetTests) where
 
-import Control.Monad (join)
+import Control.Monad (foldM, join)
 import Data.Kind (Type)
 import Data.List (isPrefixOf)
 import Data.Map qualified as M
@@ -16,10 +16,10 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Safe (maximumMay)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (fromGroup)
 import Prelude
-import Safe (maximumMay)
 
 mockStickBreakingSetTests :: TestTree
 mockStickBreakingSetTests = testGroup "StickBreakingSet" [fromGroup $ Group "tests" [("is a set", mockSetIsASet)]]
@@ -42,37 +42,37 @@ mockEmpty :: MockSet
 mockEmpty = MockSet (M.singleton "" (Stick "" [] []))
 
 -- this is a proof that can be done on chain that consumes a single Stick and reproduces it
-mockContains :: MockSet -> String -> Bool
+mockContains :: MockSet -> String -> Either String Bool
 mockContains (MockSet m) s =
   let longestSharedPrefix = longest $ filter (`elem` M.keys m) ((s %) <$> M.keys m)
    in case M.lookup longestSharedPrefix m of
-        Nothing -> error "map lookup error"
-        Just so -> drop (length (prefix so)) s `elem` leafs so
+        Nothing -> Left "malformed set"
+        Just so -> Right $ drop (length (prefix so)) s `elem` leafs so
 
 -- the insertion can be done on chain - it involves consuming a single Stick and producing one or two sticks
 -- to insert on chain we require a proof that the element is not contained
 -- - in this mock that is handled by the guard in the first expression
 -- - on chain we fail if the proof is not present
-mockInsert :: MockSet -> String -> MockSet
-mockInsert ms s | mockContains ms s = ms
+mockInsert :: MockSet -> String -> Either String MockSet
+mockInsert ms s | Right True == mockContains ms s = Right ms
 mockInsert (MockSet m) s =
   let longestSharedPrefix = longest $ filter (`elem` M.keys m) ((s %) <$> M.keys m)
    in case M.lookup longestSharedPrefix m of
-        Nothing -> error "malformed set"
+        Nothing -> Left "malformed set"
         Just so ->
           let wop = drop (length (prefix so)) s
            in case longest ((wop %) <$> leafs so) of
                 "" ->
                   case longest ((wop %) <$> branches so) of
                     -- The case where the insert goes into an existing node
-                    "" -> MockSet (M.insert longestSharedPrefix (so {leafs = drop (length longestSharedPrefix) s : leafs so}) m)
+                    "" -> Right $ MockSet (M.insert longestSharedPrefix (so {leafs = drop (length longestSharedPrefix) s : leafs so}) m)
                     e ->
                       -- The case where a branch is broken
                       --  - it is replaced with base of the branch containing the inserted node and the tip of the branch
                       let rmd = M.insert longestSharedPrefix (so {branches = e : filter (not . isPrefixOf e) (branches so)}) m
                           np = longestSharedPrefix <> e
                           w = head $ filter (isPrefixOf e) (branches so)
-                       in MockSet (M.insert np (Stick np [drop (length np) s] [drop (length e) w]) rmd)
+                       in Right $ MockSet (M.insert np (Stick np [drop (length np) s] [drop (length e) w]) rmd)
                 e ->
                   -- The case where a leaf is broken
                   -- - it is deleted and the common prefix with the inserted element becomes a branch containing
@@ -80,7 +80,7 @@ mockInsert (MockSet m) s =
                   let rmd = M.insert longestSharedPrefix (so {leafs = filter (not . isPrefixOf e) (leafs so), branches = e : branches so}) m
                       np = longestSharedPrefix <> e
                       w = head $ filter (isPrefixOf e) (leafs so)
-                   in MockSet (M.insert np (Stick np [drop (length e) w, drop (length np) s] []) rmd)
+                   in Right $ MockSet (M.insert np (Stick np [drop (length e) w, drop (length np) s] []) rmd)
 
 ---- this requires traversal and is not possible to do on chain. it's here for testing
 --mockSize :: MockSet -> Int
@@ -90,8 +90,8 @@ mockInsert (MockSet m) s =
 mockAsList :: MockSet -> [String]
 mockAsList (MockSet m) = join [(p <>) <$> ls | Stick p ls _ <- snd <$> M.toList m]
 
-mockFromSet :: S.Set String -> MockSet
-mockFromSet s = foldr (flip mockInsert) mockEmpty $ S.toList s
+mockFromSet :: S.Set String -> Either String MockSet
+mockFromSet s = foldM mockInsert mockEmpty $ S.toList s
 
 genSetOfStrings ::
   forall (m :: Type -> Type).
@@ -107,7 +107,7 @@ mockSetIsASet =
     s <- forAll genSetOfStrings
     let mock = mockFromSet s
     footnoteShow mock
-    s === S.fromList (mockAsList mock)
+    Right s === (S.fromList . mockAsList <$> mock)
 
 -- helpers
 
@@ -117,4 +117,3 @@ mockSetIsASet =
 
 longest :: [String] -> String
 longest xss = maybe "" snd (maximumMay [(length xs, xs) | xs <- xss])
-
