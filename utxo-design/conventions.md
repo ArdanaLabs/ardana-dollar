@@ -210,3 +210,26 @@ block.
 ### Specification
 
 A state machine will have a "certification token" section.
+
+## Authentication tokens
+
+Often, we will have a need for authenticating a transaction,
+ensuring that it has been authorized by the user in question.
+
+However, we do not want to restrict users to simple public keys.
+There are many more advanced forms of authentication we want to allow,
+for example multi-sig systems, where multiple signatures are needed
+on a transaction.
+
+Other crucial authentication systems include governance, whereby
+multiple parties control global state on the blockchain through
+decentralized democracy.
+
+We want to support all of these use cases.
+
+To do so, we introduce the concept of *authentication tokens*.
+Authentication tokens are quite simple. Scripts will instead of a `PubKeyHash`
+check whether some `AssetClass` has been minted or burned, i.e.
+if the value in `txInfoMint` corresponding to this key is non-zero.
+This gives us proof that this user-chosen script ran and validated
+the transaction.
