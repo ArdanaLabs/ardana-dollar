@@ -31,6 +31,10 @@ Handling of fees is implicit, as it's often not important.
 Each part of the specification can be parameterized arbitrarily,
 meaning that we have a family of it.
 
+These parameters often don't have to live in the source code,
+since they are effectively just "imports" from other parts
+of the specification.
+
 ## State machine
 
 State machines are a pattern, whereby some state is
