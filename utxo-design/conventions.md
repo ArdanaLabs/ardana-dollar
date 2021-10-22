@@ -58,11 +58,19 @@ constraints separately, taking the context into account.
 The token can also be non-fungible, meaning that only one
 instance can ever exist.
 
+### Concurrent state machines
+
+FIXME: How do we handle multiple instances of the same state machine,
+i.e. same validator and token, in the same transaction?
+
 ### Specification
 
 Datum: State contained.
 Acts (multiple): Possible state transitions. Validation rules will be specified.
 Initial: The permissible initial state and the context necessary (e.g. required UTXOs).
+
+When ambigious, field names will be prefixed with `new.` or `old.` to indicate
+whether they belong to the input or the output of the transaction.
 
 ## State machine certification token
 
@@ -81,7 +89,7 @@ We solve this problem by not reading the state directly
 in a script, but by requiring that the consumer supply it
 in the redeemer. The state then needs to be checked for validity,
 and that is done by having a minting policy, the *certification tokens* of which
-contain the hash of the state and the timestamp in the name of the token itself.
+contain the hash of the state in the name of the token itself.
 
 Concretely: The "client" validators will fail if the hash of the {state + some extra
 stuff} supplied in the redeemer is not equal to the name of the token
@@ -97,8 +105,7 @@ Each token of this policy minted must correspond to a consumed
 input in the following way:
 ```haskell
 data CertifiedDatum = CertifiedDatum
-  { timestamp :: POSIXTime
-  , token :: AssetClass
+  { token :: AssetClass
   , unCertifiedDatum :: Datum
   }
 
@@ -112,8 +119,7 @@ correpondsToInput (TokenName name) token info input =
   where
     certDatum =
       CertifiedDatum
-        { timestamp = ivFrom $ txInfoValidRange info
-        , token = token
+        { token = token
         , unCertifiedDatum = findDatum (txOutDatumHash input) info
         }
 ```
@@ -163,6 +169,12 @@ Specifically, it will be the maximum difference between
 the maximum allowed timestamp for the consuming transaction
 and the minimum allowed timestamp for the transaction that produced
 the certification token.
+
+For `Z` to be usable, the state must also contain a field
+like the following:
+```haskell
+timestamp = ivFrom $ txInfoValidRange info :: POSIXTime
+```
 
 #### Clean-up
 
