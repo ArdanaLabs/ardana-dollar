@@ -53,7 +53,7 @@ data TreasuryState = TreasuryState
 
 - There must only be one output and only one input.
 - Nothing must be minted.
-- Output datum must be the same as the input datum.
+- `new ≡ old`.
 - `old.timestamp - ivTo (txInfoValidRange _) >= old.refreshInterval`
 
 ### UpdateAct

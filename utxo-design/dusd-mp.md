@@ -10,15 +10,16 @@ data DUSDParameters = DUSDParameters
 Redeemer:
 ```haskell
 data DUSDRedeemer = DUSDRedeemer
-  { treasuryState :: TokenName
+  { treasuryStateHash :: TokenName
   }
 ```
 
 `dUSD` itself as an empty token name.
 
 Rules when minting >= 0:
-- There must be a certification token with `treasuryState` as name.
-- The token `dUSDPermissionToken` must be available in the transaction,
-  it will be read from the datum which hash is `treasuryState`.
+- There must be a `treasuryState :: TreasuryState` certified with
+  a token with the name `treasuryStateHash`.
+- `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
+- The token `treasuryState.dUSDPermissionToken` must be available in the transaction.
 
 You can always burn.

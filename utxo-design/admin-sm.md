@@ -5,11 +5,7 @@ Purpose: Admin holds the global state for a `(peggedCurrency, collateralCurrency
 Parameterized by:
 ```haskell
 data AdminParams = AdminParams
-  { targetCurrency :: ByteString -- fiat currency identifier
-  , collateralCurrency :: AssetClass
-  , treasuryStateToken :: AssetClass
-  , ownerAddress :: PubKey
-  , oneShotUtxo :: TxOutRef
+  { treasuryStateToken :: AssetClass
   }
 ```
 
@@ -18,30 +14,35 @@ data AdminParams = AdminParams
 ```haskell
 data AdminState = AdminState
   { active :: Bool
-  , stabilityFeeMultiplier :: Rational
+  , collateralCurrency :: AssetClass
+  , interestRate :: Rational
   , liquidationBenefitCap :: Rational
   , liquidationBenefitFloor :: Rational
   , minCollateralRatio :: Rational
-  , lastUpdated :: PosixTime
-  , oracleStateToken :: AssetClass,
+  , oracleToken :: AssetClass,
   , certTokenStart :: Natural
   , certTokenBase :: Natural
   , certTokenExpiration :: POSIXTime
   , validRangeSize :: POSIXTime
+  , refreshInterval :: POSIXTime
+  , timestamp :: POSIXTime
   }
 ```
 
 ## Initial
 
-- `oneShotUtxo` must be consumed by the transaction.
-
+Redeemer for minting policy:
 ```haskell
-outputDatum ≡ outputDatum
-  { active = True
-  , lastUpdated = currentTime
+data AdminMPRedeemer = AdminMPRedeemer
+  { treasuryStateHash :: TokenName
   }
-  where currentTime = ivFrom $ txInfoValidRange _
 ```
+
+- There must be a `treasuryState :: TreasuryState` certified with
+  a token with the name `treasuryStateHash`.
+- `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
+- `treasuryState.ownerAuthToken` must be minted or burned.
+- `timestamp ≡ ivFrom $ txInfoValidRange _`
 
 ## Certification Tokens
 
@@ -52,26 +53,26 @@ outputDatum ≡ outputDatum
 
 ## Acts
 
-- `ivFrom (txInfoValidRange _) ≡ ivTo (txInfoValidRange _) - validRangeSize _`
+**NB:** The output datum has to be available in `txInfoData`.
 
-### UpdateAdminStateAct
-Purpose: Allows `ownerAddress` to do anything.
+- `ivFrom (txInfoValidRange _) ≡ ivTo (txInfoValidRange _) - validRangeSize _`.
+- `new.timestamp ≡ ivFrom $ txInfoValidRange info`.
+- `new.collateralCurrency ≡ old.collateralCurrency`. 
 
-- Transaction must be signed by `ownerAddress`.
+### UpdateAct
 
-### InitiateUpgradeAct
+```haskell
+treasuryStateHash :: TokenName
+```
 
-FIXME: Is this needed when we have `UpdateAdminStateAct`?
-FIXME: Will likely need to change.
+- There must be a `treasuryState :: TreasuryState` certified with
+  a token with the name `treasuryStateHash`.
+- `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
+- `treasuryState.ownerAuthToken` must be minted or burned.
 
-Purpose: Triggers Upgrade procedure by securely sending an UpgradeContractToken to the Treasury.
+### RefreshAct
 
-- `InitiateUpgradeAct` for Treasury state machine also in transaction.
-- Must be signed by `ownerAddress`.
-- Must consume UTXO containing `UpgradeContractToken` locked by `treasuryAddress`.
-- Must set `active` to `False`.
-- Must create UTXO with `UpgradeContractToken` locked with `treasuryAddress`,
-  with datum set to `UpgradeContract { newContract = Just x }` for some `x`.
-  datum must be  (set `UpgradeContract.newContract` to `Just InitiateUpgradeAct.newContract`)
-
-FIXME: - UpgradeContract token -> `InitiateUpgradeAct.newContract` address (set `newContract` to `Nothing`)
+- There must only be one output and only one input.
+- Nothing must be minted.
+- `new ≡ old`.
+- `old.timestamp - ivTo (txInfoValidRange _) >= old.refreshInterval`
