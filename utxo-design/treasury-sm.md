@@ -1,5 +1,7 @@
 # Treasury (State Machine)
 
+-- TODO: Cost centers
+
 Purpose: The Treasury is a structure that allows for a store of funds across multiple versions of the protocol, totals of these funds are stored in `CostCenterState` datum.
 
 Note: the treasury scripts will not be updated as part of version 2 or any future version of the protocol, Instead, the treasury will integrate with those future versions of the protocol without any code changes.
