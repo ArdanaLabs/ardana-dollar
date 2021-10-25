@@ -243,17 +243,18 @@ instance Proper PriceOracleModel where
   modelRedeemer PriceOracleMinterModel {} = Redeemer $ toBuiltinData ("90ab" :: ValidatorHash)
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
-  script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
-    where
-      ownerPubKey :: PubKey
-      ownerPubKey = walletPubKey (knownWallet ownerWallet)
-      ownerPubKeyHash :: PubKeyHash
-      ownerPubKeyHash = pubKeyHash ownerPubKey
-      params :: OracleValidatorParams
-      params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
+--  script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
+--    where
+--      ownerPubKey :: PubKey
+--      ownerPubKey = walletPubKey (knownWallet ownerWallet)
+--      ownerPubKeyHash :: PubKeyHash
+--      ownerPubKeyHash = pubKeyHash ownerPubKey
+--      params :: OracleValidatorParams
+--      params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
   script PriceOracleMinterModel {..} = Just $ CompiledMintingPolicy $ oracleMintingPolicy params
     where
       params = oracleMintingParams ownerWallet
+  script _ = Nothing
 
   -- we could compute these bounds from the model
   modelCPUBudget _ = ExCPU 3_000_000_000
@@ -314,7 +315,7 @@ modelDatum' (Just TestDatumParameters {..}) =
 --
 
 oracleMintingParams :: Integer -> OracleMintingParams
-oracleMintingParams walletIdx = OracleMintingParams ownerPubKey ownerPubKeyHash
+oracleMintingParams walletIdx = OracleMintingParams ownerPubKey ownerPubKeyHash (pubKeyHashAddress ownerPubKeyHash)
   where
     ownerPubKey :: PubKey
     ownerPubKey = walletPubKey $ knownWallet walletIdx

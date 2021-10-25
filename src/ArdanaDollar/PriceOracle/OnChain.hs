@@ -5,90 +5,25 @@
 {-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.PriceOracle.OnChain (
-  --  getScriptOutputsWithDatum,
   mkOracleMintingPolicy,
-  mkOracleValidator,
-  oracleValidator,
   oracleMintingPolicy,
   OracleMintingParams (..),
   oracleCurrencySymbol,
   OracleValidatorParams (..),
   PriceTracking (..),
 ) where
-
-import ArdanaDollar.Utils (getAllScriptOutputsWithDatum, getContinuingScriptOutputsWithDatum)
-import Data.Aeson qualified as JSON
-import GHC.Generics (Generic)
+import ArdanaDollar.PriceOracle.Types
+import ArdanaDollar.Utils (getContinuingScriptOutputsWithDatum,getAllScriptInputsWithDatum)
 import Ledger qualified
-import Ledger.Oracle qualified as Oracle
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Interval.Extra (width)
 import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.UniqueMap qualified as UniqueMap
-import Prelude qualified as Haskell
+import PlutusTx.AssocMap as AssocMap
 
-data OracleValidatorParams = OracleValidatorParams
-  { oracleValidatorParams'oracleMintingCurrencySymbol :: !Value.CurrencySymbol
-  , oracleValidatorParams'operator :: !Ledger.PubKey
-  , oracleValidatorParams'operatorPkh :: !Ledger.PubKeyHash
-  , oracleValidatorParams'peggedCurrency :: !BuiltinByteString
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeLift ''OracleValidatorParams
 
-data PriceTracking = PriceTracking
-  { priceTracking'fiatPriceFeed :: UniqueMap.Map BuiltinByteString Integer
-  , priceTracking'cryptoPriceFeed :: UniqueMap.Map Value.AssetClass Integer
-  , priceTracking'lastUpdate :: Ledger.POSIXTime
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''PriceTracking [('PriceTracking, 0)]
-
-data OracleMintingParams = OracleMintingParams
-  { oracleMintingParams'operator :: !Ledger.PubKey
-  , oracleMintingParams'operatorPkh :: !Ledger.PubKeyHash
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeLift ''OracleMintingParams
-
-{-# INLINEABLE checkMessageOutput #-}
-checkMessageOutput ::
-  Ledger.PubKey ->
-  Ledger.ValidatorHash ->
-  Ledger.POSIXTimeRange ->
-  Ledger.Value ->
-  Ledger.TxOut ->
-  Oracle.SignedMessage PriceTracking ->
-  Bool
-checkMessageOutput
-  oracleOperatorPubKey
-  oracleValidator_
-  range
-  outputValue
-  output
-  (Oracle.SignedMessage sig hash dat) =
-    traceIfFalse
-      "cryptographic signature is incorrect"
-      (isRight $ Oracle.checkSignature hash oracleOperatorPubKey sig)
-      && traceIfFalse
-        "does not go to oracle validator"
-        (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just oracleValidator_)
-      && traceIfFalse
-        "incorrect output value"
-        (Ledger.txOutValue output == outputValue)
-      && traceIfFalse
-        "incorrect PriceTracking datum"
-        ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum dat) of
-            Nothing ->
-              False
-            Just (PriceTracking _ _ upd) ->
-              upd `Ledger.member` range
-        )
 
 {-# INLINEABLE withinInterval #-}
 withinInterval :: Integer -> Ledger.TxInfo -> Bool
@@ -103,14 +38,14 @@ stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy ::
   OracleMintingParams ->
-  Ledger.ValidatorHash ->
+  OracleMintingRedeemer ->
   Ledger.ScriptContext ->
   Bool
 mkOracleMintingPolicy
-  (OracleMintingParams op opPkh)
-  oracle
+  (OracleMintingParams _ opPkh _)
+  Initialise
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && txSignedByOperator && priceMessageToOracle
+    narrowInterval && correctMinting && txSignedByOperator && hasContinuingState
     where
       range :: Ledger.POSIXTimeRange
       range = Ledger.txInfoValidRange txInfo
@@ -118,36 +53,153 @@ mkOracleMintingPolicy
       narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
-      expected :: Ledger.Value
-      expected = stateTokenValue (Ledger.ownCurrencySymbol sc)
+      stateToken :: Ledger.Value
+      stateToken = stateTokenValue (Ledger.ownCurrencySymbol sc)
       correctMinting =
         traceIfFalse
           "incorrect minted amount"
-          (minted == expected)
+          (minted == stateToken)
       txSignedByOperator =
         traceIfFalse
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
-      priceMessageToOracle = case getAllScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
-          checkMessageOutput
-            op
-            oracle
-            range
-            expected
-            output
-            dat
+      hasContinuingState = case getContinuingScriptOutputsWithDatum @PriceTracking sc of
+        [(output, _, dat)] ->
+            traceIfFalse
+              "output is not continuing"
+              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
+            && traceIfFalse
+              "incorrect output value"
+              (Ledger.txOutValue output == stateToken)
             && traceIfFalse
               "no PriceTracking datum"
-              ( case PlutusTx.fromBuiltinData @PriceTracking (Ledger.getDatum $ Oracle.osmDatum dat) of
-                  Nothing ->
-                    False
-                  Just (PriceTracking fiatFeed cryptoFeed _) ->
+              ( case dat of
+                  (PriceTracking fiatFeed cryptoFeed upd) ->
                     UniqueMap.null fiatFeed
                       && UniqueMap.null cryptoFeed
+                      && upd `Ledger.member` range
               )
         _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found" False
+          traceIfFalse "no unique PriceTracking carrying UTXO found in output" False
+mkOracleMintingPolicy
+  (OracleMintingParams _ opPkh changeAddress)
+  (Update p@PriceTracking{} expiry replications)
+  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
+    narrowInterval && correctMinting && txSignedByOperator && hasContinuingState && hasContinuingPriceTrackingCertifications
+    where
+      range :: Ledger.POSIXTimeRange
+      range = Ledger.txInfoValidRange txInfo
+      narrowInterval :: Bool
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
+      minted :: Ledger.Value
+      minted = Ledger.txInfoMint txInfo
+      stateToken :: Ledger.Value
+      stateToken = stateTokenValue (Ledger.ownCurrencySymbol sc)
+      certificationToken :: Ledger.Value
+      certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) 1
+      certificationOutput = PriceTrackingCopy changeAddress expiry replications
+      correctMinting =
+            traceIfFalse
+              "incorrect minted amount"
+              (minted == mconcat (replicate numCopies certificationToken))
+      txSignedByOperator =
+        traceIfFalse
+          "not signed by oracle operator"
+          (Ledger.txSignedBy txInfo opPkh)
+      (hasContinuingPriceTrackingCertifications,numCopies) = case getContinuingScriptOutputsWithDatum @PriceTrackingCopy sc of
+        [] -> (traceIfFalse "no PriceTrackingCopy produced" False,0)
+        outputs -> (all (validateContinuingPriceTrackingCertification sc certificationOutput certificationToken) outputs, length outputs)
+
+      (hasContinuingState,Ledger.DatumHash priceTrackingDatumHash) = case getContinuingScriptOutputsWithDatum @PriceTracking sc of
+        [(output, dhsh, dat)] ->
+          (traceIfFalse
+              "state output is not continuing"
+              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
+            && traceIfFalse
+              "incorrect state token output value"
+              (Ledger.txOutValue output == stateToken)
+            && traceIfFalse
+              "no PriceTracking datum"
+              ( case dat of
+                  op@(PriceTracking _ _ upd) ->
+                    p == op
+                    && upd `Ledger.member` range
+              )
+          , dhsh)
+        _ ->
+          traceError "no unique PriceTracking carrying UTXO found in output"
+mkOracleMintingPolicy
+  (OracleMintingParams _ _ _)
+  (CreateCopy changeAddress)
+  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
+    narrowInterval && correctMinting && expiryInRange && doesNotConsumeState && repaysAuthor && createsAtLeastNCopies && hasContinuingPriceTrackingCertifications
+    where
+      range :: Ledger.POSIXTimeRange
+      range = Ledger.txInfoValidRange txInfo
+      expiryInRange = copiedExpiry `Ledger.member` range
+      narrowInterval :: Bool
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
+      minted :: Ledger.Value
+      minted = Ledger.txInfoMint txInfo
+      certificationToken :: Ledger.Value
+      certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName 1
+      certificationTokenName = certificationTokenNameInValue copiedValue (Ledger.ownCurrencySymbol sc)
+      continuingOutput = PriceTrackingCopy changeAddress copiedExpiry requiredReplications
+      correctMinting =
+            traceIfFalse
+              "incorrect minted amount"
+              (minted == mconcat (replicate numCopies certificationToken))
+      createsAtLeastNCopies = traceIfFalse "does not create required replications" (numCopies >= requiredReplications)
+      repaysAuthor = paysAdaInValueToAddr sc copiedValue repayAddr
+      (copiedValue,repayAddr,copiedExpiry,requiredReplications) = case getAllScriptInputsWithDatum @PriceTrackingCopy sc of
+                  [(output,_,PriceTrackingCopy payToAddr expiry replications)] ->
+                    (Ledger.txOutValue output, payToAddr, expiry,replications)
+                  _ -> traceError "can only copy one at a time"
+      doesNotConsumeState = case getAllScriptInputsWithDatum @PriceTracking sc of
+                              [] -> True
+                              _ -> traceIfFalse "cannot consume state" False
+      (hasContinuingPriceTrackingCertifications,numCopies) = case getContinuingScriptOutputsWithDatum @PriceTrackingCopy sc of
+        [] -> (traceIfFalse "no PriceTrackingCopy produced" False,0)
+        outputs -> (all (validateContinuingPriceTrackingCertification sc continuingOutput certificationToken) outputs, length outputs)
+mkOracleMintingPolicy _ _ _ = False --TODO the rest of the owl
+
+
+{-# INLINEABLE certificationTokenNameInValue #-}
+certificationTokenNameInValue :: Ledger.Value -> Ledger.CurrencySymbol -> Ledger.TokenName
+certificationTokenNameInValue v cs =
+  case AssocMap.lookup cs (Value.getValue v) of
+    Nothing -> traceError "currency symbol not found in value"
+    Just so -> case AssocMap.keys so of
+                 [tok] -> tok
+                 _ -> traceError "expected single token name"
+
+{-# INLINEABLE paysAdaInValueToAddr #-}
+paysAdaInValueToAddr :: Ledger.ScriptContext -> Ledger.Value -> Ledger.Address -> Bool
+paysAdaInValueToAddr _ _ _ = False
+
+{-# INLINEABLE replicate #-}
+replicate :: Integer -> a -> [a]
+replicate i a | i > 0 = a : replicate (i - 1) a
+replicate _ _ = []
+
+{-# INLINEABLE validateContinuingPriceTrackingCertification #-}
+validateContinuingPriceTrackingCertification ::
+  Ledger.ScriptContext ->
+  PriceTrackingCopy ->
+  Ledger.Value ->
+  (Ledger.TxOut,b,PriceTrackingCopy) ->
+  Bool
+validateContinuingPriceTrackingCertification sc pt certificationToken (output,_,dat) =
+    traceIfFalse
+        "copy output is not continuing"
+        (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
+      && traceIfFalse
+        "incorrect state token output value"
+        (Ledger.txOutValue output == certificationToken)
+      && traceIfFalse
+        "pricetracking copy incorrect"
+        (dat == pt)
+
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
@@ -157,6 +209,7 @@ oracleMintingPolicy params =
   Ledger.mkMintingPolicyScript $
     $$( PlutusTx.compile
           [||Scripts.wrapMintingPolicy . mkOracleMintingPolicy||]
+
       )
       `PlutusTx.applyCode` PlutusTx.liftCode params
 
@@ -167,64 +220,3 @@ oracleCurrencySymbol ::
 oracleCurrencySymbol params =
   Ledger.scriptCurrencySymbol (oracleMintingPolicy params)
 
-{-# INLINEABLE mkOracleValidator #-}
-mkOracleValidator ::
-  OracleValidatorParams ->
-  Oracle.SignedMessage PriceTracking ->
-  () ->
-  Ledger.ScriptContext ->
-  Bool
-mkOracleValidator
-  (OracleValidatorParams curSymbol op opPkh _)
-  _
-  _
-  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && txSignedByOperator && priceMessageToOracle
-    where
-      narrowInterval :: Bool
-      narrowInterval = withinInterval 10000 txInfo
-      expectedOutVal :: Ledger.Value
-      expectedOutVal = stateTokenValue curSymbol
-      txSignedByOperator :: Bool
-      txSignedByOperator = Ledger.txSignedBy txInfo opPkh
-      priceMessageToOracle = case getContinuingScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
-          checkMessageOutput
-            op
-            (Ledger.ownHash sc)
-            (Ledger.txInfoValidRange txInfo)
-            expectedOutVal
-            output
-            dat
-        _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found" False
-
-data PriceOracling
-instance Scripts.ValidatorTypes PriceOracling where
-  type DatumType PriceOracling = Oracle.SignedMessage PriceTracking
-  type RedeemerType PriceOracling = ()
-
-{-# INLINEABLE oracleCompiledTypedValidator #-}
-oracleCompiledTypedValidator ::
-  OracleValidatorParams ->
-  PlutusTx.CompiledCode (Oracle.SignedMessage PriceTracking -> () -> Ledger.ScriptContext -> Bool)
-oracleCompiledTypedValidator params =
-  $$(PlutusTx.compile [||mkOracleValidator||])
-    `PlutusTx.applyCode` PlutusTx.liftCode params
-
-{-# INLINEABLE oracleInst #-}
-oracleInst :: OracleValidatorParams -> Scripts.TypedValidator PriceOracling
-oracleInst params =
-  Scripts.mkTypedValidator @PriceOracling
-    (oracleCompiledTypedValidator params)
-    $$(PlutusTx.compile [||wrap||])
-  where
-    wrap = Scripts.wrapValidator @(Oracle.SignedMessage PriceTracking) @()
-
-{-# INLINEABLE oracleValidator #-}
-oracleValidator :: OracleValidatorParams -> Ledger.Validator
-oracleValidator = Scripts.validatorScript . oracleInst
-
-{-# INLINEABLE oracleAddress #-}
-oracleAddress :: OracleValidatorParams -> Ledger.Address
-oracleAddress = Ledger.scriptAddress . oracleValidator

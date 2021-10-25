@@ -32,6 +32,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Extra (integer)
 import Hedgehog.Range qualified as Range
 import Prelude
+import Plutus.V1.Ledger.Address (pubKeyHashAddress)
 
 import Hedgehog.Gen.Plutus (
   assetClass,
@@ -139,7 +140,9 @@ danaRedeemer =
     ]
 
 oracleMintingParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleMintingParams
-oracleMintingParams = uncurry PriceOracle.OracleMintingParams <$> pubKeyWithHash
+oracleMintingParams = do
+  (p,p') <- pubKeyWithHash
+  pure $ PriceOracle.OracleMintingParams p p' (pubKeyHashAddress p')
 
 oracleValidatorParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleValidatorParams
 oracleValidatorParams = do
