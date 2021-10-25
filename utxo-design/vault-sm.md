@@ -32,6 +32,7 @@ data VaultState = VaultState
 - `userAuthToken` must be minted or burned.
 - There must be no values in the output other than
   `collateralCurrency`, ADA, and the state token.
+- `assetClassValueOf txInfoMint dUSD ≡ 0`.
 
 ## Interest algorithm
 
@@ -62,6 +63,7 @@ Purpose: Allow the user to add collateral.
 - `old ≡ new`
 - For each token, there must be just as much in the new UTXO as
   there is in the old UTXO.
+- `assetClassValueOf txInfoMint dUSD ≡ 0`.
 
 ### RemoveCollateralAct
 
@@ -73,6 +75,7 @@ adminStateHash :: TokenName
 oracleHash :: TokenName
 ```
 
+- `assetClassValueOf txInfoMint dUSD ≡ 0`.
 - There must be an `adminState :: AdminState` certified with a certification
   token for `adminStateToken` with the name `adminStateHash`.
 - `adminState.active`.
