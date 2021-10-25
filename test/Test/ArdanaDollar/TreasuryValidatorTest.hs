@@ -7,14 +7,17 @@ module Test.ArdanaDollar.TreasuryValidatorTest (treasuryValidatorTests) where
 
 import Control.Exception (catch, throwIO)
 import Control.Monad.IO.Class (liftIO)
+import Data.ByteString qualified as BS
 import Data.Semigroup ((<>))
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as E (encodeUtf8)
 import GHC.IO.Encoding
 import Hedgehog (Property, PropertyT, forAll, property)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen.Extra qualified as Gen (integer)
 import System.Exit (ExitCode (ExitSuccess))
 import System.IO.Silently (capture)
-import Prelude (IO, mconcat, putStrLn)
+import Prelude (IO, mconcat)
 
 --------------------------------------------------------------------------------
 
@@ -584,4 +587,4 @@ runTest test = do
         `catch` (\(e :: ExitCode) -> return e)
   case result of
     ExitSuccess -> return ()
-    _ -> putStrLn stdOutput >> throwIO result
+    _ -> (BS.putStr . E.encodeUtf8 . Text.pack) stdOutput >> throwIO result

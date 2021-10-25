@@ -4,14 +4,6 @@ module Main (main) where
 
 --------------------------------------------------------------------------------
 
-import Data.Kind (Type)
-import Data.Semigroup qualified as Semigroup
-import GHC.Generics (Generic)
-import System.IO (hSetEncoding, stderr, stdout, utf8)
-import Prelude
-
---------------------------------------------------------------------------------
-
 import Control.Monad (void, when, (>=>))
 import Control.Monad.Freer (Eff, interpret)
 import Control.Monad.Freer.Error qualified as Error
@@ -23,14 +15,20 @@ import Data.Aeson (
  )
 import Data.Default (Default (def))
 import Data.Foldable (traverse_)
+import Data.Kind (Type)
 import Data.List (intercalate)
 import Data.Map qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.OpenApi.Schema qualified as OpenApi
+import Data.Semigroup qualified as Semigroup
 import Data.Text qualified as Text (unpack)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
 import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
 import Data.Vector (Vector)
+import GHC.Generics (Generic)
+import System.IO (hSetEncoding, stderr, stdout, utf8)
+import Prelude
 
 --------------------------------------------------------------------------------
 
@@ -125,8 +123,8 @@ pabSimulation = do
   Simulator.waitNSlots 5
   balancesMap2 <- Simulator.currentBalances
   let simulatorBalance = balancesMap2 Map.\\ balancesMap1
-  adminValidatorHash <- case head (Map.toList simulatorBalance) of
-    (Wallet.ScriptEntity scr, _) -> return scr
+  adminValidatorHash <- case listToMaybe (Map.toList simulatorBalance) of
+    Just (Wallet.ScriptEntity scr, _) -> return scr
     _ -> Error.throwError $ OtherError "Could not find admin script hash"
 
   -- Treasury
