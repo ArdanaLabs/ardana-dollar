@@ -10,8 +10,6 @@ module ArdanaDollar.Map.Contracts (
   insert,
   remove,
   use,
-  mkMapLookup,
-  MapLookup (..),
   address,
 ) where
 
