@@ -59,7 +59,9 @@ instance Eq Map where
 
 data Datum k v = MapDatum Map | NodeDatum (Node k v)
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
+
 data Redeemer = Use | ListOp
+  deriving stock (Haskell.Show, Haskell.Eq, Generic)
 
 data TokenRedeemer
   = AddToEmptyMap

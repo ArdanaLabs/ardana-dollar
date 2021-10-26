@@ -27,6 +27,7 @@ module Hedgehog.Gen.ArdanaDollar (
   onchainMapNode,
   onchainMapDatum,
   onchainTokenRedeemer,
+  onchainRedeemer,
   newContract,
 ) where
 
@@ -68,13 +69,13 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   TraversalState (..),
   UserData (..),
  )
-import ArdanaDollar.Map.Types qualified as Onchain
 import ArdanaDollar.Map.Types qualified as OnchainMap (
   Datum (..),
   Map (..),
   MapInstance (..),
   Node (..),
   Pointer (..),
+  Redeemer (..),
   TokenRedeemer (..),
  )
 import ArdanaDollar.PriceOracle.OnChain qualified as PriceOracle (
@@ -244,9 +245,12 @@ onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMa
 onchainMapDatum :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Datum Integer Integer)
 onchainMapDatum =
   Gen.choice
-    [ Onchain.MapDatum <$> onchainMapMap
-    , Onchain.NodeDatum <$> onchainMapNode
+    [ OnchainMap.MapDatum <$> onchainMapMap
+    , OnchainMap.NodeDatum <$> onchainMapNode
     ]
+
+onchainRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Redeemer
+onchainRedeemer = Gen.element [OnchainMap.Use, OnchainMap.ListOp]
 
 onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.TokenRedeemer
 onchainTokenRedeemer =
