@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -176,16 +175,24 @@ insert ::
   Contract w s Text ()
 insert mapInstance pair@(key, _) = do
   lkp <- mkMapLookup @t mapInstance
+
   let nodes = mapLookup'nodes lkp
-      goesBeforeFirst = key < T.node'key (snd $ head nodes)
-      goesAfterLast = key > T.node'key (snd $ last nodes)
-  if
-      | null nodes -> addToEmptyMap @t mapInstance (mapLookup'map lkp) pair
-      | goesBeforeFirst -> addSmallest @t mapInstance (mapLookup'map lkp) (head nodes) pair
-      | goesAfterLast -> addGreatest @t mapInstance (last nodes) pair
+      zipped = zip nodes (reverse nodes)
+
+  case zipped of
+    [] -> addToEmptyMap @t mapInstance (mapLookup'map lkp) pair
+    (head', last') : _
+      | goesBefore (snd head') -> addSmallest @t mapInstance (mapLookup'map lkp) head' pair
+      | goesAfter (snd last') -> addGreatest @t mapInstance last' pair
       | otherwise -> case findPlaceInTheMiddle @t lkp key of
         Just neighbours -> addInTheMiddle @t mapInstance neighbours pair
         Nothing -> throwError "Key already in the map"
+  where
+    goesBefore :: Node (K' t) (V' t) -> Bool
+    goesBefore node = key < T.node'key node
+
+    goesAfter :: Node (K' t) (V' t) -> Bool
+    goesAfter node = key > T.node'key node
 
 remove ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -195,20 +202,22 @@ remove ::
   Contract w s Text ()
 remove mapInstance key = do
   lkp <- mkMapLookup @t mapInstance
-  let nodes = mapLookup'nodes lkp
-      atFirstNode = key == T.node'key (snd $ head nodes)
-      atLastNode = key == T.node'key (snd $ last nodes)
 
-  case nodes of
-    [] -> throwError "Removing from empty map"
-    [node] | atFirstNode -> removeFromOneElementMap @t mapInstance (mapLookup'map lkp) node
-    fstNode : sndNode : _
-      | atFirstNode -> removeSmallest @t mapInstance (mapLookup'map lkp) fstNode sndNode
-      | atLastNode -> removeGreatest @t mapInstance (last $ init nodes) (last nodes)
+  let nodes = mapLookup'nodes lkp
+      zipped = zip nodes (reverse nodes)
+
+  case zipped of
+    [(head', _)] | at (snd head') -> removeFromOneElementMap @t mapInstance (mapLookup'map lkp) head'
+    (head', last') : (oneAfterHead', oneBeforeLast') : _
+      | at (snd head') -> removeSmallest @t mapInstance (mapLookup'map lkp) head' oneAfterHead'
+      | at (snd last') -> removeGreatest @t mapInstance oneBeforeLast' last'
       | otherwise -> case findKeyInTheMiddle @t lkp key of
         Just triple -> removeInTheMiddle @t mapInstance triple
         Nothing -> throwError "Key not in the map"
-    _ -> throwError ""
+    _ -> throwError "Key not in the map"
+  where
+    at :: Node (K' t) (V' t) -> Bool
+    at node = key == T.node'key node
 
 use ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -580,12 +589,14 @@ findPlaceInTheMiddle ::
   K' t ->
   Maybe ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)))
 findPlaceInTheMiddle lkp key =
-  let nodes = mapLookup'nodes lkp
-      zipped = zip nodes (tail nodes)
-      places = (\((_, node1), (_, node2)) -> T.node'key node1 < key && key < T.node'key node2) `filter` zipped
-   in case nodes of
-        _ : _ -> listToMaybe places
-        _ -> Nothing
+  case nodes of
+    _ : tail' ->
+      let zipped = zip nodes tail'
+          places = (\((_, node1), (_, node2)) -> T.node'key node1 < key && key < T.node'key node2) `filter` zipped
+       in listToMaybe places
+    _ -> Nothing
+  where
+    nodes = mapLookup'nodes lkp
 
 findKeyInTheMiddle ::
   forall t.
@@ -594,12 +605,14 @@ findKeyInTheMiddle ::
   K' t ->
   Maybe ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)))
 findKeyInTheMiddle lkp key =
-  let nodes = mapLookup'nodes lkp
-      zipped = zip3 nodes (tail nodes) (tail (tail nodes))
-      places = (\((_, _), (_, node), (_, _)) -> T.node'key node == key) `filter` zipped
-   in case nodes of
-        _ : _ : _ -> listToMaybe places
-        _ -> Nothing
+  case nodes of
+    _ : tail'@(_ : tail'') ->
+      let zipped = zip3 nodes tail' tail''
+          places = (\((_, _), (_, node), (_, _)) -> T.node'key node == key) `filter` zipped
+       in listToMaybe places
+    _ -> Nothing
+  where
+    nodes = mapLookup'nodes lkp
 
 findKey ::
   forall t.
