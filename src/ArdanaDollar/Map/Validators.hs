@@ -19,8 +19,6 @@ import Ledger.Value qualified as Value
 import PlutusTx.IsData.Class (FromData)
 import PlutusTx.Prelude
 
-import Data.Maybe (maybeToList)
-
 import ArdanaDollar.Map.Types (
   Datum (MapDatum, NodeDatum),
   Map,
@@ -33,6 +31,11 @@ import ArdanaDollar.Map.Types (
  )
 import ArdanaDollar.Map.Types qualified as T
 import ArdanaDollar.Utils (datumForOnchain)
+
+{-# INLINEABLE maybeToList #-}
+maybeToList :: Maybe a -> [a]
+maybeToList Nothing = []
+maybeToList (Just x) = [x]
 
 {-# INLINEABLE tokenName #-}
 tokenName :: Ledger.TxOutRef -> Ledger.TokenName
