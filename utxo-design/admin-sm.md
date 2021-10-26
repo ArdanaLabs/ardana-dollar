@@ -72,7 +72,8 @@ treasuryStateHash :: TokenName
 
 ### RefreshAct
 
-- There must only be one output and only one input.
-- Nothing must be minted.
+- There must only one input, one output for this the treasury, and the outputs
+  for the certification tokens.
+- Only the certification tokens must be minted.
 - `new ≡ old`.
 - `old.timestamp - ivTo (txInfoValidRange _) >= old.refreshInterval`
