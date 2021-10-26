@@ -116,8 +116,8 @@ data CertifiedDatum = CertifiedDatum
 -- **Must** use sha2_256
 certHash :: CertifiedDatum a -> BuiltinByteString
 
-correpondsToInput :: TokenName -> AssetClass -> TxInfo -> TxOut -> Bool
-correpondsToInput (TokenName name) token info input =
+correpondsToInput :: TxInfo -> TokenName -> AssetClass -> TxOut -> Bool
+correpondsToInput info (TokenName name) token input =
   uncurry (valueOf . txOutValue input) (unAssetClass token) > 0
   && certHash certDatum == name
   where
@@ -131,7 +131,7 @@ correpondsToInput (TokenName name) token info input =
 The `AssetClass`es we test against come from the redeemer
 for the minting policy script.
 
-- If an `x` and `y` can be found such that `correpondsToInput token x y ≡ true`,
+- If an `x` and `y` can be found such that `correpondsToInput _ token x y ≡ true`,
   then minting is allowed.
 - Minting is also allowed if we already have an instance of the token,
   i.e. you can duplicate it.
