@@ -129,7 +129,7 @@ mkOracleMintingPolicy
           "not signed by oracle operator"
           (Ledger.txSignedBy txInfo opPkh)
       priceMessageToOracle = case getAllScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
+        [(output, _, dat)] ->
           checkMessageOutput
             op
             oracle
@@ -188,7 +188,7 @@ mkOracleValidator
       txSignedByOperator :: Bool
       txSignedByOperator = Ledger.txSignedBy txInfo opPkh
       priceMessageToOracle = case getContinuingScriptOutputsWithDatum @(Oracle.SignedMessage PriceTracking) sc of
-        [(output, dat)] ->
+        [(output, _, dat)] ->
           checkMessageOutput
             op
             (Ledger.ownHash sc)

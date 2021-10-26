@@ -120,6 +120,8 @@ library
     ArdanaDollar.Buffer.OffChain
     ArdanaDollar.Buffer.OnChain
     ArdanaDollar.Buffer.Types
+    ArdanaDollar.Certification.OnChain
+    ArdanaDollar.Certification.Types
     ArdanaDollar.DanaStakePool.Contracts
     ArdanaDollar.DanaStakePool.DanaCurrency
     ArdanaDollar.DanaStakePool.Endpoints

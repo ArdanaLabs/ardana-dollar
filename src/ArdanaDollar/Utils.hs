@@ -19,6 +19,7 @@ module ArdanaDollar.Utils (
   getAllOutputsWithDatum,
   getContinuingScriptOutputsWithDatum,
   getAllScriptOutputsWithDatum,
+  getAllScriptInputsWithDatum,
 ) where
 
 import Control.Monad ((>=>))
@@ -291,12 +292,12 @@ parseDatum ::
   (PlutusTx.FromData datum) =>
   Contexts.TxInfo ->
   Contexts.TxOut ->
-  Maybe (Contexts.TxOut, datum)
+  Maybe (Contexts.TxOut, Ledger.DatumHash, datum)
 parseDatum txInfo out = do
   dh <- Contexts.txOutDatumHash out
   datum <- Ledger.getDatum <$> Contexts.findDatum dh txInfo
   typedDatum <- PlutusTx.fromBuiltinData datum
-  return (out, typedDatum)
+  return (out, dh, typedDatum)
 
 {-# INLINEABLE getAllOutputsWithDatum #-}
 
@@ -309,7 +310,7 @@ getAllOutputsWithDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
   Contexts.ScriptContext ->
-  [(Contexts.TxOut, datum)]
+  [(Contexts.TxOut, Ledger.DatumHash, datum)]
 getAllOutputsWithDatum
   Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs txInfo)
@@ -325,7 +326,7 @@ getContinuingScriptOutputsWithDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
   Contexts.ScriptContext ->
-  [(Contexts.TxOut, datum)]
+  [(Contexts.TxOut, Ledger.DatumHash, datum)]
 getContinuingScriptOutputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.getContinuingOutputs sc)
@@ -340,7 +341,22 @@ getAllScriptOutputsWithDatum ::
   forall (datum :: Type).
   (PlutusTx.FromData datum) =>
   Contexts.ScriptContext ->
-  [(Contexts.TxOut, datum)]
+  [(Contexts.TxOut, Ledger.DatumHash, datum)]
 getAllScriptOutputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
     mapMaybe (parseDatum txInfo) (Contexts.txInfoOutputs $ Contexts.scriptContextTxInfo sc)
+
+{-# INLINEABLE getAllScriptInputsWithDatum #-}
+
+{- | Get a list of pairs (utxo, datum) consisting of inputs
+     whose datums succeded to parse as the passed `datum`
+     type and those datums themselves
+-}
+getAllScriptInputsWithDatum ::
+  forall (datum :: Type).
+  (PlutusTx.FromData datum) =>
+  Contexts.ScriptContext ->
+  [(Contexts.TxOut, Ledger.DatumHash, datum)]
+getAllScriptInputsWithDatum
+  sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
+    mapMaybe (parseDatum txInfo) (Contexts.txInInfoResolved <$> Contexts.txInfoInputs (Contexts.scriptContextTxInfo sc))
