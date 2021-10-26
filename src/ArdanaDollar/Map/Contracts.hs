@@ -106,7 +106,7 @@ mkMapLookup' mapInstance = do
 
     nodeF :: (Tpl, Datum k v) -> Maybe (Tpl, Node k v)
     nodeF (tpl, datum) = case datum of
-      NodeDatum m | isJust (V.hasToken' token (snd tpl ^. Ledger.ciTxOutValue)) -> Just (tpl, m)
+      NodeDatum m | isJust (V.lookupToken' token (snd tpl ^. Ledger.ciTxOutValue)) -> Just (tpl, m)
       _ -> Nothing
 
 mkMapLookup ::

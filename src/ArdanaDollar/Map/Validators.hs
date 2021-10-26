@@ -10,7 +10,7 @@ module ArdanaDollar.Map.Validators (
   hasOne,
   hasOne',
   hasToken,
-  hasToken',
+  lookupToken',
 ) where
 
 import Ledger qualified
@@ -65,9 +65,9 @@ hasOne' ac value = Value.assetClassValueOf value ac == 1
 hasOne :: Ledger.AssetClass -> Ledger.TxOut -> Bool
 hasOne ac txOut = hasOne' ac (Ledger.txOutValue txOut)
 
-{-# INLINEABLE hasToken' #-}
-hasToken' :: Ledger.CurrencySymbol -> Value.Value -> Maybe Ledger.AssetClass
-hasToken' expected value =
+{-# INLINEABLE lookupToken' #-}
+lookupToken' :: Ledger.CurrencySymbol -> Value.Value -> Maybe Ledger.AssetClass
+lookupToken' expected value =
   let flattened = Value.flattenValue value
       f = (\(cs, _, _) -> cs == expected) `filter` flattened
    in case f of
@@ -76,7 +76,7 @@ hasToken' expected value =
 
 {-# INLINEABLE hasToken #-}
 hasToken :: Ledger.CurrencySymbol -> Ledger.TxOut -> Maybe Ledger.AssetClass
-hasToken expected txOut = hasToken' expected (Ledger.txOutValue txOut)
+hasToken expected txOut = lookupToken' expected (Ledger.txOutValue txOut)
 
 {-# INLINEABLE mapInput' #-}
 mapInput' :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> [Ledger.TxInInfo] -> Maybe (Ledger.TxInInfo, Map)
