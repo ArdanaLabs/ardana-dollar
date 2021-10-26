@@ -44,7 +44,7 @@ data VaultState = VaultState
   -- FIXME: This might be too complex for Plutus.
   newInterest :: Natural
   newInterest =
-    e^(
+    2^(
       (new.interestTimestamp - old.interestTimestamp)
       * adminState.interestRate
     )
