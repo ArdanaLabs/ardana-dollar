@@ -26,6 +26,7 @@ data AdminState = AdminState
   , validRangeSize :: POSIXTime
   , refreshInterval :: POSIXTime
   , timestamp :: POSIXTime
+  , extra :: Data
   }
 ```
 
