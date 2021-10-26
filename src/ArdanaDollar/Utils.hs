@@ -359,4 +359,4 @@ getAllScriptInputsWithDatum ::
   [(Contexts.TxOut, Ledger.DatumHash, datum)]
 getAllScriptInputsWithDatum
   sc@Contexts.ScriptContext {scriptContextTxInfo = txInfo} =
-    mapMaybe (parseDatum txInfo) (Contexts.txInInfoResolved <$> (Contexts.txInfoInputs $ Contexts.scriptContextTxInfo sc))
+    mapMaybe (parseDatum txInfo) (Contexts.txInInfoResolved <$> Contexts.txInfoInputs (Contexts.scriptContextTxInfo sc))

@@ -3,89 +3,84 @@
 {-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.PriceOracle.Types (
-  OracleMintingRedeemer(..),
-  PriceTracking(..),
-  PriceTrackingCopy(..),
-  OracleMintingParams(..),
-  OracleValidatorParams(..),
- ) where
+  OracleMintingRedeemer (..),
+  PriceTracking (..),
+  PriceTrackingCertification (..),
+  OracleMintingParams (..),
+) where
+
 import Data.Aeson qualified as JSON
-import PlutusTx qualified
-import PlutusTx.Prelude (
-   BuiltinByteString,
-   Integer,
-   Eq(..),
-   (&&),
- )
+import GHC.Generics (Generic)
 import Ledger (
-   PubKey,
-   PubKeyHash,
-   POSIXTime,
-   Address,
+  Address,
+  POSIXTime,
+  TxOutRef,
+  ValidatorHash,
  )
 import Ledger.Value (
-   CurrencySymbol,
-   AssetClass,
+  AssetClass,
  )
-import Prelude qualified as Haskell
-import GHC.Generics (Generic)
+import PlutusTx qualified
+import PlutusTx.Prelude (
+  BuiltinByteString,
+  Eq (..),
+  Integer,
+  (&&),
+ )
 import PlutusTx.UniqueMap qualified as UniqueMap
-
-
-data OracleValidatorParams = OracleValidatorParams
-  { oracleValidatorParams'oracleMintingCurrencySymbol :: !CurrencySymbol
-  , oracleValidatorParams'operator :: !PubKey
-  , oracleValidatorParams'operatorPkh :: !PubKeyHash
-  , oracleValidatorParams'peggedCurrency :: !BuiltinByteString
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeLift ''OracleValidatorParams
+import Prelude qualified as Haskell
 
 data PriceTracking = PriceTracking
-  { priceTracking'fiatPriceFeed :: UniqueMap.Map BuiltinByteString Integer
-  , priceTracking'cryptoPriceFeed :: UniqueMap.Map AssetClass Integer
-  , priceTracking'lastUpdate :: POSIXTime
+  { fiatPriceFeed :: UniqueMap.Map BuiltinByteString Integer
+  , cryptoPriceFeed :: UniqueMap.Map AssetClass Integer
+  , lastUpdate :: POSIXTime
+  , controllingScript :: ValidatorHash
+  , requiredCertificationReplications :: Integer
+  , certificationExpiry :: POSIXTime
+  , narrowIntervalWidth :: Integer
   }
-  deriving stock (Haskell.Eq,Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''PriceTracking [('PriceTracking, 0)]
 
 instance Eq PriceTracking where
   {-# INLINEABLE (==) #-}
-  (==) a b = priceTracking'fiatPriceFeed a == priceTracking'fiatPriceFeed b
-          && priceTracking'cryptoPriceFeed a == priceTracking'cryptoPriceFeed b
-          && priceTracking'lastUpdate a == priceTracking'lastUpdate b
+  (==) a b =
+    fiatPriceFeed a == fiatPriceFeed b
+      && cryptoPriceFeed a == cryptoPriceFeed b
+      && lastUpdate a == lastUpdate b
+      && controllingScript a == controllingScript b
+      && requiredCertificationReplications a == requiredCertificationReplications b
+      && certificationExpiry a == certificationExpiry b
+      && narrowIntervalWidth a == narrowIntervalWidth b
 
-
-data PriceTrackingCopy = PriceTrackingCopy
-  {
-    priceTrackingCopy'Copier :: Address
-  , priceTrackingCopy'Expiry :: POSIXTime
-  , priceTrackingCopy'Replications :: Integer
+data PriceTrackingCertification = PriceTrackingCertification
+  { priceTrackingCertification'copier :: Address
+  , priceTrackingCertification'expiry :: POSIXTime
+  , priceTrackingCertification'replications :: Integer
+  , priceTrackingCertification'narrowIntervalWidth :: Integer
   }
-  deriving stock (Haskell.Eq,Haskell.Show, Generic)
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''PriceTrackingCopy [('PriceTrackingCopy, 0)]
+PlutusTx.makeIsDataIndexed ''PriceTrackingCertification [('PriceTrackingCertification, 0)]
 
-
-instance Eq PriceTrackingCopy where
+instance Eq PriceTrackingCertification where
   {-# INLINEABLE (==) #-}
-  (==) a b = priceTrackingCopy'Copier a == priceTrackingCopy'Copier b
-          && priceTrackingCopy'Expiry a == priceTrackingCopy'Expiry b
+  (==) a b =
+    priceTrackingCertification'copier a == priceTrackingCertification'copier b
+      && priceTrackingCertification'expiry a == priceTrackingCertification'expiry b
+      && priceTrackingCertification'replications a == priceTrackingCertification'replications b
+      && priceTrackingCertification'narrowIntervalWidth a == priceTrackingCertification'narrowIntervalWidth b
 
 data OracleMintingParams = OracleMintingParams
-  { oracleMintingParams'operator :: !Ledger.PubKey
-  , oracleMintingParams'operatorPkh :: !Ledger.PubKeyHash
-  , oracleMintingParams'operatorChangeAddress :: !Address
+  { stateTokenTxOutRef :: !TxOutRef
+  , initialControllingValidator :: !ValidatorHash
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeLift ''OracleMintingParams
 
-data OracleMintingRedeemer = Initialise | Update PriceTracking POSIXTime Integer | CreateCopy Address | DestroyCopy
+data OracleMintingRedeemer = Initialise | Update | CopyCertification Address | DestroyCertification
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''OracleMintingRedeemer [('Initialise, 0),('Update,1),('CreateCopy,2),('DestroyCopy,3)]
-
-
+PlutusTx.makeIsDataIndexed ''OracleMintingRedeemer [('Initialise, 0), ('Update, 1), ('CopyCertification, 2), ('DestroyCertification, 3)]

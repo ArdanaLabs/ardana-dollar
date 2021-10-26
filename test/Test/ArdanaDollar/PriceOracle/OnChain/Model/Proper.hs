@@ -29,20 +29,14 @@ import Ledger (
   Interval (..),
   LowerBound (..),
   POSIXTime (..),
-  PrivateKey,
-  PubKey,
-  PubKeyHash,
   TokenName,
+  TxId (..),
   TxOutRef (..),
   UpperBound (..),
   Value,
-  knownPrivateKeys,
   pubKeyHash,
   pubKeyHashAddress,
   scriptHashAddress,
- )
-import Ledger.Oracle (
-  signMessage,
  )
 import Plutus.V1.Ledger.Api (
   TxOut (..),
@@ -90,12 +84,10 @@ import Prelude (
   elem,
   filter,
   flip,
-  fromInteger,
   fst,
   pure,
   snd,
   uncurry,
-  (!!),
   ($),
   (&&),
   (+),
@@ -243,14 +235,14 @@ instance Proper PriceOracleModel where
   modelRedeemer PriceOracleMinterModel {} = Redeemer $ toBuiltinData ("90ab" :: ValidatorHash)
   modelRedeemer _ = Redeemer $ toBuiltinData ()
 
---  script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
---    where
---      ownerPubKey :: PubKey
---      ownerPubKey = walletPubKey (knownWallet ownerWallet)
---      ownerPubKeyHash :: PubKeyHash
---      ownerPubKeyHash = pubKeyHash ownerPubKey
---      params :: OracleValidatorParams
---      params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
+  --  script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
+  --    where
+  --      ownerPubKey :: PubKey
+  --      ownerPubKey = walletPubKey (knownWallet ownerWallet)
+  --      ownerPubKeyHash :: PubKeyHash
+  --      ownerPubKeyHash = pubKeyHash ownerPubKey
+  --      params :: OracleValidatorParams
+  --      params = OracleValidatorParams (fst stateNFTCurrency) ownerPubKey ownerPubKeyHash peggedCurrency
   script PriceOracleMinterModel {..} = Just $ CompiledMintingPolicy $ oracleMintingPolicy params
     where
       params = oracleMintingParams ownerWallet
@@ -302,25 +294,13 @@ instance Proper PriceOracleModel where
     ]
 
 modelDatum' :: Maybe TestDatumParameters -> BuiltinData
-modelDatum' Nothing = toBuiltinData ()
-modelDatum' (Just TestDatumParameters {..}) =
-  toBuiltinData $ signMessage (PriceTracking fiatPriceFeedData cryptoPriceFeedData (POSIXTime timeStamp)) signedByPrivK
-  where
-    signedByPrivK :: PrivateKey
-    signedByPrivK = lookupPrivateKey signedByWallet
-    lookupPrivateKey :: Integer -> PrivateKey
-    lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
+modelDatum' _ = toBuiltinData ()
 
 --helpers
 --
 
 oracleMintingParams :: Integer -> OracleMintingParams
-oracleMintingParams walletIdx = OracleMintingParams ownerPubKey ownerPubKeyHash (pubKeyHashAddress ownerPubKeyHash)
-  where
-    ownerPubKey :: PubKey
-    ownerPubKey = walletPubKey $ knownWallet walletIdx
-    ownerPubKeyHash :: PubKeyHash
-    ownerPubKeyHash = pubKeyHash ownerPubKey
+oracleMintingParams _ = OracleMintingParams (TxOutRef (TxId "80ab") 0) "90ab"
 
 correctNFTCurrency :: OracleMintingParams -> (CurrencySymbol, TokenName)
 correctNFTCurrency params = (oracleCurrencySymbol params, "PriceTracking")

@@ -9,21 +9,31 @@ module ArdanaDollar.PriceOracle.OnChain (
   oracleMintingPolicy,
   OracleMintingParams (..),
   oracleCurrencySymbol,
-  OracleValidatorParams (..),
   PriceTracking (..),
 ) where
+
 import ArdanaDollar.PriceOracle.Types
-import ArdanaDollar.Utils (getContinuingScriptOutputsWithDatum,getAllScriptInputsWithDatum)
+import ArdanaDollar.Utils (getAllScriptInputsWithDatum, getContinuingScriptOutputsWithDatum)
+import Ledger (
+  DatumHash (..),
+  member,
+  ownCurrencySymbol,
+  scriptHashAddress,
+  txInInfoOutRef,
+  txInfoInputs,
+ )
 import Ledger qualified
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
+import Plutus.V1.Ledger.Ada qualified as Ada
 import Plutus.V1.Ledger.Interval.Extra (width)
+import Plutus.V1.Ledger.Value (
+  assetClass,
+  assetClassValueOf,
+ )
 import PlutusTx qualified
+import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Prelude
-import PlutusTx.UniqueMap qualified as UniqueMap
-import PlutusTx.AssocMap as AssocMap
-
-
 
 {-# INLINEABLE withinInterval #-}
 withinInterval :: Integer -> Ledger.TxInfo -> Bool
@@ -35,6 +45,10 @@ withinInterval interval txInfo = case width (Ledger.txInfoValidRange txInfo) of
 stateTokenValue :: Value.CurrencySymbol -> Ledger.Value
 stateTokenValue cs = Value.singleton cs (Value.TokenName "PriceTracking") 1
 
+{-# INLINEABLE valueCarriesStateToken #-}
+valueCarriesStateToken :: Value.CurrencySymbol -> Ledger.Value -> Bool
+valueCarriesStateToken cs v = assetClassValueOf v (assetClass cs (Value.TokenName "PriceTracking")) == 1
+
 {-# INLINEABLE mkOracleMintingPolicy #-}
 mkOracleMintingPolicy ::
   OracleMintingParams ->
@@ -42,15 +56,13 @@ mkOracleMintingPolicy ::
   Ledger.ScriptContext ->
   Bool
 mkOracleMintingPolicy
-  (OracleMintingParams _ opPkh _)
+  params
   Initialise
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && txSignedByOperator && hasContinuingState
+    correctMinting && hasStateTokenMintingUTXO && sendsStateTokenToControllingAddress
     where
-      range :: Ledger.POSIXTimeRange
-      range = Ledger.txInfoValidRange txInfo
-      narrowInterval :: Bool
-      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
+      hasStateTokenMintingUTXO :: Bool
+      hasStateTokenMintingUTXO = any (\i -> txInInfoOutRef i == stateTokenTxOutRef params) $ txInfoInputs txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       stateToken :: Ledger.Value
@@ -59,110 +71,131 @@ mkOracleMintingPolicy
         traceIfFalse
           "incorrect minted amount"
           (minted == stateToken)
-      txSignedByOperator =
-        traceIfFalse
-          "not signed by oracle operator"
-          (Ledger.txSignedBy txInfo opPkh)
-      hasContinuingState = case getContinuingScriptOutputsWithDatum @PriceTracking sc of
-        [(output, _, dat)] ->
+      sendsStateTokenToControllingAddress =
+        case getAllScriptInputsWithDatum @() sc of
+          [(output, _, _)] ->
             traceIfFalse
-              "output is not continuing"
-              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
-            && traceIfFalse
-              "incorrect output value"
-              (Ledger.txOutValue output == stateToken)
-            && traceIfFalse
-              "no PriceTracking datum"
-              ( case dat of
-                  (PriceTracking fiatFeed cryptoFeed upd) ->
-                    UniqueMap.null fiatFeed
-                      && UniqueMap.null cryptoFeed
-                      && upd `Ledger.member` range
-              )
-        _ ->
-          traceIfFalse "no unique PriceTracking carrying UTXO found in output" False
+              "output does not go to controlling address"
+              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (initialControllingValidator params))
+              && traceIfFalse
+                "incorrect output value"
+                (Ledger.txOutValue output == stateToken)
+          _ ->
+            traceIfFalse "no unique state token carrying UTXO found in output" False
 mkOracleMintingPolicy
-  (OracleMintingParams _ opPkh changeAddress)
-  (Update p@PriceTracking{} expiry replications)
+  _
+  Update
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && txSignedByOperator && hasContinuingState && hasContinuingPriceTrackingCertifications
+    narrowInterval && correctMinting && lastUpdateInRange && inputCarriesStateToken
+      && continuingCertificationsAreValid
+      && atLeastOneCertificationProduced
+      && sendsStateTokenToControllingAddress
     where
       range :: Ledger.POSIXTimeRange
       range = Ledger.txInfoValidRange txInfo
       narrowInterval :: Bool
-      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval narIntW txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
-      stateToken :: Ledger.Value
-      stateToken = stateTokenValue (Ledger.ownCurrencySymbol sc)
       certificationToken :: Ledger.Value
       certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) 1
-      certificationOutput = PriceTrackingCopy changeAddress expiry replications
+      certificationTokensMinted :: Ledger.Value
+      certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) numCertifications
+      certificationOutput =
+        PriceTrackingCertification
+          (scriptHashAddress contScr)
+          certExp
+          reqRep
+          narIntW
       correctMinting =
-            traceIfFalse
-              "incorrect minted amount"
-              (minted == mconcat (replicate numCopies certificationToken))
-      txSignedByOperator =
         traceIfFalse
-          "not signed by oracle operator"
-          (Ledger.txSignedBy txInfo opPkh)
-      (hasContinuingPriceTrackingCertifications,numCopies) = case getContinuingScriptOutputsWithDatum @PriceTrackingCopy sc of
-        [] -> (traceIfFalse "no PriceTrackingCopy produced" False,0)
+          "incorrect minted amount"
+          (minted == certificationTokensMinted)
+      atLeastOneCertificationProduced = traceIfFalse "at least one certification must be produced" (numCertifications > 0)
+      (continuingCertificationsAreValid, numCertifications) = case getContinuingScriptOutputsWithDatum @PriceTrackingCertification sc of
         outputs -> (all (validateContinuingPriceTrackingCertification sc certificationOutput certificationToken) outputs, length outputs)
-
-      (hasContinuingState,Ledger.DatumHash priceTrackingDatumHash) = case getContinuingScriptOutputsWithDatum @PriceTracking sc of
-        [(output, dhsh, dat)] ->
-          (traceIfFalse
-              "state output is not continuing"
-              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
-            && traceIfFalse
-              "incorrect state token output value"
-              (Ledger.txOutValue output == stateToken)
-            && traceIfFalse
-              "no PriceTracking datum"
-              ( case dat of
-                  op@(PriceTracking _ _ upd) ->
-                    p == op
-                    && upd `Ledger.member` range
-              )
-          , dhsh)
-        _ ->
-          traceError "no unique PriceTracking carrying UTXO found in output"
+      sendsStateTokenToControllingAddress =
+        case getAllScriptInputsWithDatum @() sc of
+          [(output, _, _)] ->
+            traceIfFalse
+              "output does not go to controlling address"
+              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just contScr)
+              && traceIfFalse
+                "incorrect output value"
+                (valueCarriesStateToken (ownCurrencySymbol sc) (Ledger.txOutValue output))
+          _ ->
+            traceIfFalse "no unique state token carrying UTXO found in output" False
+      inputCarriesStateToken =
+        traceIfFalse
+          "incorrect state token input value"
+          (valueCarriesStateToken (ownCurrencySymbol sc) (Ledger.txOutValue input))
+      lastUpdateInRange = traceIfFalse "lastUpdate not in range" (lastUp `member` range)
+      (input, priceTrackingDatumHash, PriceTracking _ _ lastUp contScr reqRep certExp narIntW) =
+        case getAllScriptInputsWithDatum @PriceTracking sc of
+          [(i, DatumHash hsh, pt)] -> (i, hsh, pt)
+          _ -> traceError "no unique PriceTracking carrying UTXO found in input"
 mkOracleMintingPolicy
-  (OracleMintingParams _ _ _)
-  (CreateCopy changeAddress)
+  _
+  (CopyCertification returnAddress)
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    narrowInterval && correctMinting && expiryInRange && doesNotConsumeState && repaysAuthor && createsAtLeastNCopies && hasContinuingPriceTrackingCertifications
+    narrowInterval && correctMinting && expiryNotInRange
+      && repaysCopyCreator
+      && createsAtLeastNCopies
+      && continuingCertificationsAreValid
     where
       range :: Ledger.POSIXTimeRange
       range = Ledger.txInfoValidRange txInfo
-      expiryInRange = copiedExpiry `Ledger.member` range
+      expiryNotInRange = not $ certExp `Ledger.member` range
       narrowInterval :: Bool
-      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval 10000 txInfo
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval narWidth txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       certificationToken :: Ledger.Value
       certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName 1
-      certificationTokenName = certificationTokenNameInValue copiedValue (Ledger.ownCurrencySymbol sc)
-      continuingOutput = PriceTrackingCopy changeAddress copiedExpiry requiredReplications
+      certificationTokensMinted :: Ledger.Value
+      certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName numCertifications
+      certificationTokenName = certificationTokenNameInValue certificationValue (Ledger.ownCurrencySymbol sc)
+      continuingOutput = PriceTrackingCertification returnAddress certExp requiredReplications narWidth
       correctMinting =
-            traceIfFalse
-              "incorrect minted amount"
-              (minted == mconcat (replicate numCopies certificationToken))
-      createsAtLeastNCopies = traceIfFalse "does not create required replications" (numCopies >= requiredReplications)
-      repaysAuthor = paysAdaInValueToAddr sc copiedValue repayAddr
-      (copiedValue,repayAddr,copiedExpiry,requiredReplications) = case getAllScriptInputsWithDatum @PriceTrackingCopy sc of
-                  [(output,_,PriceTrackingCopy payToAddr expiry replications)] ->
-                    (Ledger.txOutValue output, payToAddr, expiry,replications)
-                  _ -> traceError "can only copy one at a time"
-      doesNotConsumeState = case getAllScriptInputsWithDatum @PriceTracking sc of
-                              [] -> True
-                              _ -> traceIfFalse "cannot consume state" False
-      (hasContinuingPriceTrackingCertifications,numCopies) = case getContinuingScriptOutputsWithDatum @PriceTrackingCopy sc of
-        [] -> (traceIfFalse "no PriceTrackingCopy produced" False,0)
-        outputs -> (all (validateContinuingPriceTrackingCertification sc continuingOutput certificationToken) outputs, length outputs)
-mkOracleMintingPolicy _ _ _ = False --TODO the rest of the owl
-
+        traceIfFalse
+          "incorrect minted amount"
+          (minted == certificationTokensMinted)
+      createsAtLeastNCopies = traceIfFalse "does not create required replications" (numCertifications >= requiredReplications)
+      repaysCopyCreator = paysAdaInValueToAddr txInfo certificationValue repayAddr
+      (certificationValue, repayAddr, certExp, requiredReplications, narWidth) =
+        case getAllScriptInputsWithDatum @PriceTrackingCertification sc of
+          [(output, _, PriceTrackingCertification payToAddr expiry replications narWidth')] ->
+            (Ledger.txOutValue output, payToAddr, expiry, replications, narWidth')
+          _ -> traceError "can only copy one at a time"
+      (continuingCertificationsAreValid, numCertifications) =
+        let outputs = getContinuingScriptOutputsWithDatum @PriceTrackingCertification sc
+         in (all (validateContinuingPriceTrackingCertification sc continuingOutput certificationToken) outputs, length outputs)
+mkOracleMintingPolicy
+  _
+  DestroyCertification
+  sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
+    narrowInterval && correctMinting && expiryInRange && repaysCopyCreator
+    where
+      range :: Ledger.POSIXTimeRange
+      range = Ledger.txInfoValidRange txInfo
+      expiryInRange = certExp `Ledger.member` range
+      narrowInterval :: Bool
+      narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval narWidth txInfo
+      minted :: Ledger.Value
+      minted = Ledger.txInfoMint txInfo
+      certificationTokensMinted :: Ledger.Value
+      certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName (-1)
+      certificationTokenName = certificationTokenNameInValue certificationValue (Ledger.ownCurrencySymbol sc)
+      correctMinting =
+        traceIfFalse
+          "incorrect minted amount"
+          (minted == certificationTokensMinted)
+      repaysCopyCreator = paysAdaInValueToAddr txInfo certificationValue repayAddr
+      (certificationValue, repayAddr, certExp, _, narWidth) =
+        case getAllScriptInputsWithDatum @PriceTrackingCertification sc of
+          [(output, _, PriceTrackingCertification payToAddr expiry replications narWidth')] ->
+            (Ledger.txOutValue output, payToAddr, expiry, replications, narWidth')
+          _ -> traceError "can only destroy one at a time"
 
 {-# INLINEABLE certificationTokenNameInValue #-}
 certificationTokenNameInValue :: Ledger.Value -> Ledger.CurrencySymbol -> Ledger.TokenName
@@ -170,36 +203,33 @@ certificationTokenNameInValue v cs =
   case AssocMap.lookup cs (Value.getValue v) of
     Nothing -> traceError "currency symbol not found in value"
     Just so -> case AssocMap.keys so of
-                 [tok] -> tok
-                 _ -> traceError "expected single token name"
+      [tok] -> tok
+      _ -> traceError "expected single token name"
 
 {-# INLINEABLE paysAdaInValueToAddr #-}
-paysAdaInValueToAddr :: Ledger.ScriptContext -> Ledger.Value -> Ledger.Address -> Bool
-paysAdaInValueToAddr _ _ _ = False
-
-{-# INLINEABLE replicate #-}
-replicate :: Integer -> a -> [a]
-replicate i a | i > 0 = a : replicate (i - 1) a
-replicate _ _ = []
+paysAdaInValueToAddr :: Ledger.TxInfo -> Ledger.Value -> Ledger.Address -> Bool
+paysAdaInValueToAddr txInfo rv addr =
+  case filter (\txo -> addr == Ledger.txOutAddress txo) (Ledger.txInfoOutputs txInfo) of
+    [Ledger.TxOut _ wv _] -> traceIfFalse "does not return ada to copy creator" $ wv == Ada.toValue (Ada.fromValue rv)
+    _ -> traceIfFalse "does not return ada to copy creator in single tx" False
 
 {-# INLINEABLE validateContinuingPriceTrackingCertification #-}
 validateContinuingPriceTrackingCertification ::
   Ledger.ScriptContext ->
-  PriceTrackingCopy ->
+  PriceTrackingCertification ->
   Ledger.Value ->
-  (Ledger.TxOut,b,PriceTrackingCopy) ->
+  (Ledger.TxOut, b, PriceTrackingCertification) ->
   Bool
-validateContinuingPriceTrackingCertification sc pt certificationToken (output,_,dat) =
-    traceIfFalse
-        "copy output is not continuing"
-        (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
-      && traceIfFalse
-        "incorrect state token output value"
-        (Ledger.txOutValue output == certificationToken)
-      && traceIfFalse
-        "pricetracking copy incorrect"
-        (dat == pt)
-
+validateContinuingPriceTrackingCertification sc pt certificationToken (output, _, dat) =
+  traceIfFalse
+    "copy output is not continuing"
+    (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
+    && traceIfFalse
+      "incorrect state token output value"
+      (Ledger.txOutValue output == certificationToken)
+    && traceIfFalse
+      "pricetracking copy incorrect"
+      (dat == pt)
 
 {-# INLINEABLE oracleMintingPolicy #-}
 oracleMintingPolicy ::
@@ -209,7 +239,6 @@ oracleMintingPolicy params =
   Ledger.mkMintingPolicyScript $
     $$( PlutusTx.compile
           [||Scripts.wrapMintingPolicy . mkOracleMintingPolicy||]
-
       )
       `PlutusTx.applyCode` PlutusTx.liftCode params
 
@@ -219,4 +248,3 @@ oracleCurrencySymbol ::
   Value.CurrencySymbol
 oracleCurrencySymbol params =
   Ledger.scriptCurrencySymbol (oracleMintingPolicy params)
-

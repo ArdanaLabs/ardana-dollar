@@ -34,10 +34,10 @@ builtinDataRoundtripTests =
         , builtinDataPartialIsomorphism "Datum" danaDatum
         , builtinDataPartialIsomorphism "Redeemer" danaRedeemer
         ]
-    , testGroup
-        "PriceOracle"
-        [builtinDataPartialIsomorphism "PriceTracking" priceTracking]
-    , testGroup
+    , --    , testGroup
+      --        "PriceOracle"
+      --        [builtinDataPartialIsomorphism "PriceTracking" priceTracking]
+      testGroup
         "Treasury"
         [ builtinDataPartialIsomorphism "TreasuryDatum" treasuryDatum
         , builtinDataPartialIsomorphism "TreasuryDepositParams" treasuryDepositParams

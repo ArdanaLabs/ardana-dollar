@@ -30,13 +30,13 @@ jsonRoundtripTests =
         , testJsonLaws "Datum" danaDatum
         , testJsonLaws "Redeemer" danaRedeemer
         ]
-    , testGroup
-        "PriceOracle"
-        [ testJsonLaws "OracleMintingParams" oracleMintingParams
-        , testJsonLaws "OracleValidatorParams" oracleValidatorParams
-        , testJsonLaws "PriceTracking" priceTracking
-        ]
-    , testGroup
+    , --    , testGroup
+      --        "PriceOracle"
+      --        [ testJsonLaws "OracleMintingParams" oracleMintingParams
+      --        , testJsonLaws "OracleValidatorParams" oracleValidatorParams
+      --        , testJsonLaws "PriceTracking" priceTracking
+      --        ]
+      testGroup
         "Treasury"
         [ testJsonLaws "Treasury" treasury
         , testJsonLaws "TreasuryStateTokenParams" treasuryStateTokenParams
