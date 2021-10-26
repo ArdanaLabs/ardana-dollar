@@ -21,6 +21,13 @@ module Hedgehog.Gen.ArdanaDollar (
   treasuryDatum,
   treasuryDepositParams,
   treasurySpendParams,
+  onchainMapMapInstance,
+  onchainMapPointer,
+  onchainMapMap,
+  onchainMapNode,
+  onchainMapDatum,
+  onchainTokenRedeemer,
+  onchainRedeemer,
   newContract,
 ) where
 
@@ -61,6 +68,15 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   Redeemer (..),
   TraversalState (..),
   UserData (..),
+ )
+import ArdanaDollar.Map.Types qualified as OnchainMap (
+  Datum (..),
+  Map (..),
+  MapInstance (..),
+  Node (..),
+  Pointer (..),
+  Redeemer (..),
+  TokenRedeemer (..),
  )
 import ArdanaDollar.PriceOracle.OnChain qualified as PriceOracle (
   OracleMintingParams (..),
@@ -213,6 +229,41 @@ treasuryDepositParams =
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
   Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
+
+onchainMapMapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
+onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass
+
+onchainMapPointer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Pointer
+onchainMapPointer = OnchainMap.Pointer <$> assetClass
+
+onchainMapMap :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Map
+onchainMapMap = OnchainMap.Map <$> Gen.maybe onchainMapPointer
+
+onchainMapNode :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Node Integer Integer)
+onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMapPointer
+
+onchainMapDatum :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Datum Integer Integer)
+onchainMapDatum =
+  Gen.choice
+    [ OnchainMap.MapDatum <$> onchainMapMap
+    , OnchainMap.NodeDatum <$> onchainMapNode
+    ]
+
+onchainRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Redeemer
+onchainRedeemer = Gen.element [OnchainMap.Use, OnchainMap.ListOp]
+
+onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.TokenRedeemer
+onchainTokenRedeemer =
+  Gen.choice
+    [ pure OnchainMap.AddToEmptyMap
+    , pure OnchainMap.AddSmallest
+    , OnchainMap.AddInTheMiddle <$> txOutRef
+    , OnchainMap.AddGreatest <$> txOutRef
+    , pure OnchainMap.RemoveFromOneElementMap
+    , pure OnchainMap.RemoveSmallest
+    , OnchainMap.RemoveInTheMiddle <$> txOutRef
+    , OnchainMap.RemoveGreatest <$> txOutRef
+    ]
 
 newContract :: forall (m :: Type -> Type). MonadGen m => m Treasury.NewContract
 newContract = Treasury.NewContract <$> validatorHash
