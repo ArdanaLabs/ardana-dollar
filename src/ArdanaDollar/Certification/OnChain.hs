@@ -7,7 +7,6 @@
 module ArdanaDollar.Certification.OnChain (
   mkCertificationMintingPolicy,
   certificationMintingPolicy,
-  CertificationMintingParams (..),
   certificationCurrencySymbol,
   CertifiedDatum (..),
 ) where
@@ -16,9 +15,9 @@ import ArdanaDollar.Certification.Types
 import ArdanaDollar.Utils (getAllScriptInputsWithDatum, getContinuingScriptOutputsWithDatum)
 import Ledger (
   DatumHash (..),
+  TxOutRef,
   member,
   ownCurrencySymbol,
-  scriptHashAddress,
   txInInfoOutRef,
   txInfoInputs,
  )
@@ -51,18 +50,18 @@ valueCarriesStateToken cs v = assetClassValueOf v (assetClass cs (Value.TokenNam
 
 {-# INLINEABLE mkCertificationMintingPolicy #-}
 mkCertificationMintingPolicy ::
-  CertificationMintingParams ->
+  TxOutRef ->
   CertificationMintingRedeemer ->
   Ledger.ScriptContext ->
   Bool
 mkCertificationMintingPolicy
-  params
+  oneShotTx
   Initialise
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-    correctMinting && hasStateTokenMintingUTXO && sendsStateTokenToControllingAddress
+    correctMinting && hasStateTokenMintingUTXO
     where
       hasStateTokenMintingUTXO :: Bool
-      hasStateTokenMintingUTXO = any (\i -> txInInfoOutRef i == stateTokenTxOutRef params) $ txInfoInputs txInfo
+      hasStateTokenMintingUTXO = any (\i -> txInInfoOutRef i == oneShotTx) $ txInfoInputs txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       stateToken :: Ledger.Value
@@ -71,25 +70,13 @@ mkCertificationMintingPolicy
         traceIfFalse
           "incorrect minted amount"
           (minted == stateToken)
-      sendsStateTokenToControllingAddress =
-        case getAllScriptInputsWithDatum @() sc of
-          [(output, _, _)] ->
-            traceIfFalse
-              "output does not go to controlling address"
-              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (initialControllingValidator params))
-              && traceIfFalse
-                "incorrect output value"
-                (Ledger.txOutValue output == stateToken)
-          _ ->
-            traceIfFalse "no unique state token carrying UTXO found in output" False
 mkCertificationMintingPolicy
   _
-  Update
+  (Update returnAddress)
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
     narrowInterval && correctMinting && lastUpdateInRange && inputCarriesStateToken
       && continuingCertificationsAreValid
       && atLeastOneCertificationProduced
-      && sendsStateTokenToControllingAddress
     where
       range :: Ledger.POSIXTimeRange
       range = Ledger.txInfoValidRange txInfo
@@ -103,7 +90,7 @@ mkCertificationMintingPolicy
       certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) numCertifications
       certificationOutput =
         CertificationCopyingParameters
-          (scriptHashAddress contScr)
+          returnAddress
           certExp
           reqRep
           narIntW
@@ -114,23 +101,12 @@ mkCertificationMintingPolicy
       atLeastOneCertificationProduced = traceIfFalse "at least one certification must be produced" (numCertifications > 0)
       (continuingCertificationsAreValid, numCertifications) = case getContinuingScriptOutputsWithDatum @CertificationCopyingParameters sc of
         outputs -> (all (validateContinuingCertificationCopyingParameters sc certificationOutput certificationToken) outputs, length outputs)
-      sendsStateTokenToControllingAddress =
-        case getAllScriptInputsWithDatum @() sc of
-          [(output, _, _)] ->
-            traceIfFalse
-              "output does not go to controlling address"
-              (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just contScr)
-              && traceIfFalse
-                "incorrect output value"
-                (valueCarriesStateToken (ownCurrencySymbol sc) (Ledger.txOutValue output))
-          _ ->
-            traceIfFalse "no unique state token carrying UTXO found in output" False
       inputCarriesStateToken =
         traceIfFalse
           "incorrect state token input value"
           (valueCarriesStateToken (ownCurrencySymbol sc) (Ledger.txOutValue input))
       lastUpdateInRange = traceIfFalse "lastUpdate not in range" (lastUp `member` range)
-      (input, priceTrackingDatumHash, CertifiedDatum _ lastUp contScr reqRep certExp narIntW) =
+      (input, priceTrackingDatumHash, CertifiedDatum _ lastUp reqRep certExp narIntW) =
         case getAllScriptInputsWithDatum @CertifiedDatum sc of
           [(i, DatumHash hsh, pt)] -> (i, hsh, pt)
           _ -> traceError "no unique CertifiedDatum carrying UTXO found in input"
@@ -233,7 +209,7 @@ validateContinuingCertificationCopyingParameters sc pt certificationToken (outpu
 
 {-# INLINEABLE certificationMintingPolicy #-}
 certificationMintingPolicy ::
-  CertificationMintingParams ->
+  TxOutRef ->
   Ledger.MintingPolicy
 certificationMintingPolicy params =
   Ledger.mkMintingPolicyScript $
@@ -244,7 +220,7 @@ certificationMintingPolicy params =
 
 {-# INLINEABLE certificationCurrencySymbol #-}
 certificationCurrencySymbol ::
-  CertificationMintingParams ->
+  TxOutRef ->
   Value.CurrencySymbol
 certificationCurrencySymbol params =
   Ledger.scriptCurrencySymbol (certificationMintingPolicy params)

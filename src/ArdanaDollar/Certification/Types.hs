@@ -6,7 +6,6 @@ module ArdanaDollar.Certification.Types (
   CertificationMintingRedeemer (..),
   CertificationCopyingParameters (..),
   CertifiedDatum (..),
-  CertificationMintingParams (..),
 ) where
 
 import Data.Aeson qualified as JSON
@@ -15,8 +14,6 @@ import Ledger (
   Address,
   Datum,
   POSIXTime,
-  TxOutRef,
-  ValidatorHash,
  )
 import PlutusTx qualified
 import PlutusTx.Prelude (
@@ -29,7 +26,6 @@ import Prelude qualified as Haskell
 data CertifiedDatum = CertifiedDatum
   { unCertificateCopyingParameters :: Datum
   , lastUpdate :: POSIXTime
-  , certificationAuthority :: ValidatorHash
   , requiredCertificationReplications :: Integer
   , certificationExpiry :: POSIXTime
   , narrowIntervalWidth :: Integer
@@ -43,7 +39,6 @@ instance Eq CertifiedDatum where
   (==) a b =
     unCertificateCopyingParameters a == unCertificateCopyingParameters b
       && lastUpdate a == lastUpdate b
-      && certificationAuthority a == certificationAuthority b
       && requiredCertificationReplications a == requiredCertificationReplications b
       && certificationExpiry a == certificationExpiry b
       && narrowIntervalWidth a == narrowIntervalWidth b
@@ -66,15 +61,7 @@ instance Eq CertificationCopyingParameters where
       && replications a == replications b
       && narrowIntervalWidth' a == narrowIntervalWidth' b
 
-data CertificationMintingParams = CertificationMintingParams
-  { stateTokenTxOutRef :: !TxOutRef
-  , initialControllingValidator :: !ValidatorHash
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeLift ''CertificationMintingParams
-
-data CertificationMintingRedeemer = Initialise | Update | CopyCertificationToken Address | DestroyCertificationToken
+data CertificationMintingRedeemer = Initialise | Update Address | CopyCertificationToken Address | DestroyCertificationToken
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''CertificationMintingRedeemer [('Initialise, 0), ('Update, 1), ('CopyCertificationToken, 2), ('DestroyCertificationToken, 3)]
