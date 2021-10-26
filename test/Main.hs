@@ -4,6 +4,7 @@ import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
+import Test.ArdanaDollar.Certification.OnChain.Model.Proper
 import Test.ArdanaDollar.DanaStakePoolTest
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
@@ -26,7 +27,8 @@ main = do
   defaultMain $ \(ContractMaxSuccess cms) ->
     testGroup
       "tests"
-      [ priceOracleTests cms
+      [ certificationTests cms
+      , priceOracleTests cms
       , vaultUnitTests
       , bufferTraceTests
       , danaStakePoolTests
