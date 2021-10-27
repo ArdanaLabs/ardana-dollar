@@ -54,18 +54,27 @@ instance IsProperty (Property CertificationModel)
 instance Proper CertificationModel where
   data Model CertificationModel
     = Initialising
-    | Updating
+    | Certifying
     | Copying
     | Destroying
     deriving (Show)
   data Property CertificationModel
     = InitialiseContext
-    | UpdateContext
+--    | HasOneShotUTXOInput
+--    | HasCertificationAuthorityTokenInOutput
+
+    | CertificationContext
     | CopyCertificationTokenContext
     | DestroyCertificationTokenContext
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
-  logic = ExactlyOne (Var <$> [InitialiseContext, UpdateContext, CopyCertificationTokenContext, DestroyCertificationTokenContext])
+  logic = All
+    [ ExactlyOne (Var <$> [InitialiseContext, CertificationContext, CopyCertificationTokenContext, DestroyCertificationTokenContext])
+--    , Some (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput]) :->: Var InitialiseContext
+    ]
+--  expect = All
+--    [ Var InitialiseContext :->: All (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput])
+--    ]
   satisfiesProperty = flip satisfiesProperty'
   genModel = genModel' . Set.toList
 
@@ -74,7 +83,7 @@ instance Proper CertificationModel where
 
 satisfiesProperty' :: Property CertificationModel -> Model CertificationModel -> Bool
 satisfiesProperty' InitialiseContext = isInInitialiseContext
-satisfiesProperty' UpdateContext = isInUpdateContext
+satisfiesProperty' CertificationContext = isInCertificationContext
 satisfiesProperty' CopyCertificationTokenContext = isInCopyCertificationTokenContext
 satisfiesProperty' DestroyCertificationTokenContext = isInDestroyCertificationTokenContext
 
@@ -84,9 +93,9 @@ isInInitialiseContext :: ModelProperty
 isInInitialiseContext Initialising = True
 isInInitialiseContext _ = False
 
-isInUpdateContext :: ModelProperty
-isInUpdateContext Updating = True
-isInUpdateContext _ = False
+isInCertificationContext :: ModelProperty
+isInCertificationContext Certifying = True
+isInCertificationContext _ = False
 
 isInCopyCertificationTokenContext :: ModelProperty
 isInCopyCertificationTokenContext Copying = True
@@ -101,7 +110,7 @@ isInDestroyCertificationTokenContext _ = False
 
 genModel' :: MonadGen m => [Property CertificationModel] -> m (Model CertificationModel)
 genModel' props | InitialiseContext `elem` props = runReaderT genInitialisingModel props
-genModel' props | UpdateContext `elem` props = runReaderT genUpdatingModel props
+genModel' props | CertificationContext `elem` props = runReaderT genCertifyingModel props
 genModel' props | CopyCertificationTokenContext `elem` props = runReaderT genCopyingModel props
 genModel' props = runReaderT genDestroyingModel props
 
@@ -111,11 +120,11 @@ genInitialisingModel ::
   ReaderT [Property CertificationModel] m (Model CertificationModel)
 genInitialisingModel = pure Initialising
 
-genUpdatingModel ::
+genCertifyingModel ::
   forall (m :: Type -> Type).
   MonadGen m =>
   ReaderT [Property CertificationModel] m (Model CertificationModel)
-genUpdatingModel = pure Updating
+genCertifyingModel = pure Certifying
 
 genCopyingModel ::
   forall (m :: Type -> Type).

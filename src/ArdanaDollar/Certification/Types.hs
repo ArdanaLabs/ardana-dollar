@@ -3,17 +3,17 @@
 {-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Certification.Types (
+  ProliferationParameters (..),
   CertificationMintingRedeemer (..),
-  CertificationCopyingParameters (..),
-  CertifiedDatum (..),
+  Certification (..),
 ) where
 
 import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger (
   Address,
-  Datum,
   POSIXTime,
+  DatumHash,
  )
 import PlutusTx qualified
 import PlutusTx.Prelude (
@@ -23,45 +23,39 @@ import PlutusTx.Prelude (
  )
 import Prelude qualified as Haskell
 
-data CertifiedDatum = CertifiedDatum
-  { unCertificateCopyingParameters :: Datum
-  , lastUpdate :: POSIXTime
-  , requiredCertificationReplications :: Integer
-  , certificationExpiry :: POSIXTime
-  , narrowIntervalWidth :: Integer
-  }
-  deriving stock (Haskell.Eq, Haskell.Show, Generic)
-  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''CertifiedDatum [('CertifiedDatum, 0)]
-
-instance Eq CertifiedDatum where
-  {-# INLINEABLE (==) #-}
-  (==) a b =
-    unCertificateCopyingParameters a == unCertificateCopyingParameters b
-      && lastUpdate a == lastUpdate b
-      && requiredCertificationReplications a == requiredCertificationReplications b
-      && certificationExpiry a == certificationExpiry b
-      && narrowIntervalWidth a == narrowIntervalWidth b
-
-data CertificationCopyingParameters = CertificationCopyingParameters
-  { copier :: Address
-  , expiry :: POSIXTime
-  , replications :: Integer
+data ProliferationParameters = ProliferationParameters
+  { adaReturnAddress' :: Address
+  , minReplications' :: Integer
+  , certificationExpiry' :: POSIXTime
   , narrowIntervalWidth' :: Integer
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''CertificationCopyingParameters [('CertificationCopyingParameters, 0)]
+PlutusTx.makeIsDataIndexed ''ProliferationParameters [('ProliferationParameters, 0)]
 
-instance Eq CertificationCopyingParameters where
+instance Eq ProliferationParameters where
   {-# INLINEABLE (==) #-}
   (==) a b =
-    copier a == copier b
-      && expiry a == expiry b
-      && replications a == replications b
+    adaReturnAddress' a == adaReturnAddress' b
+      && certificationExpiry' a == certificationExpiry' b
+      && minReplications' a == minReplications' b
       && narrowIntervalWidth' a == narrowIntervalWidth' b
 
-data CertificationMintingRedeemer = Initialise | Update Address | CopyCertificationToken Address | DestroyCertificationToken
+data Certification = Certification {
+    minReplications         :: Integer
+  , certificationExpiry     :: POSIXTime
+  , narrowIntervalWidth     :: Integer
+  , certificatiedDatumHash  :: DatumHash
+  }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''CertificationMintingRedeemer [('Initialise, 0), ('Update, 1), ('CopyCertificationToken, 2), ('DestroyCertificationToken, 3)]
+PlutusTx.makeIsDataIndexed ''Certification [('Certification, 0)]
+
+data CertificationMintingRedeemer =
+  Initialise
+  | Certify Address Certification
+  | CopyCertificationToken Address DatumHash
+  | DestroyCertificationToken DatumHash
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
+  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
+PlutusTx.makeIsDataIndexed ''CertificationMintingRedeemer [('Initialise, 0), ('Certify, 1), ('CopyCertificationToken, 2), ('DestroyCertificationToken, 3)]
