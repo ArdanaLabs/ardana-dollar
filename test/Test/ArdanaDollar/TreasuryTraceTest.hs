@@ -59,7 +59,7 @@ treasuryTraceTests =
 draftTrace ::
   EmulatorTrace
     ( Treasury
-    , ContractHandle (OutputBus (Vector (BuiltinByteString, Value.Value))) TreasurySchema ContractError
+    , ContractHandle (OutputBus (Vector (BuiltinByteString, Value.Value))) (TreasurySchema ()) ContractError
     )
 draftTrace = do
   _ <- startAdminTrace
@@ -67,7 +67,7 @@ draftTrace = do
   void $ waitNSlots 5
   treasury <- getBus cTreasuryId
   void $ waitNSlots 5
-  treasuryUserId <- activateContractWallet (knownWallet 2) (treasuryContract @ContractError treasury <* Contract.waitNSlots 5)
+  treasuryUserId <- activateContractWallet (knownWallet 2) (treasuryContract @() @ContractError treasury <* Contract.waitNSlots 5)
   void $ waitNSlots 5
   return (treasury, treasuryUserId)
 
@@ -123,7 +123,7 @@ noTreasury =
           cTreasuryUserId <-
             activateContractWallet
               (knownWallet 2)
-              (treasuryContract @ContractError mockTreasury <* Contract.waitNSlots 5)
+              (treasuryContract @() @ContractError mockTreasury <* Contract.waitNSlots 5)
           void $ Emulator.waitNSlots 2
 
           callEndpoint @"depositFundsWithCostCenter" cTreasuryUserId $

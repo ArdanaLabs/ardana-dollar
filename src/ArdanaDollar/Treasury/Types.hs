@@ -12,7 +12,9 @@ module ArdanaDollar.Treasury.Types (
   TreasuryAction (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
+  TreasurySpendEndpointParams (..),
   NewContract (..),
+  prepareTreasurySpendParams,
   isInitialDatum,
   calculateCostCenterValueOf,
   danaAssetClass,
@@ -23,6 +25,9 @@ module ArdanaDollar.Treasury.Types (
 
 --------------------------------------------------------------------------------
 
+import Data.Functor ((<&>))
+import Data.Kind (Type)
+import Data.Text (Text)
 import GHC.Generics (Generic)
 import Prelude qualified
 
@@ -34,16 +39,16 @@ import Data.OpenApi.Schema qualified as OpenApi
 --------------------------------------------------------------------------------
 
 import Ledger qualified
+import Ledger.Constraints (TxConstraints)
+import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
+import Plutus.V1.Ledger.Address (pubKeyHashAddress, scriptHashAddress)
 import Plutus.V1.Ledger.Contexts qualified as Contexts
 import PlutusTx qualified
 import PlutusTx.Prelude
-import Schema (ToSchema)
-
---------------------------------------------------------------------------------
-
 import PlutusTx.UniqueMap qualified as UniqueMap
+import Schema (ToSchema)
 
 --------------------------------------------------------------------------------
 
@@ -93,19 +98,30 @@ data TreasuryDepositParams = TreasuryDepositParams
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
 data TreasurySpendParams = TreasurySpendParams
-  { treasurySpendValue :: !Value.Value
-  , treasurySpendCostCenter :: !BuiltinByteString
-  , treasurySpendBeneficiary :: !Ledger.PubKeyHash
+  { treasurySpend'value :: !Value.Value
+  , treasurySpend'costCenter :: !BuiltinByteString
+  , treasurySpend'beneficiary :: !Ledger.Address
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
+  deriving anyclass (FromJSON, ToJSON)
+
+-- TODO: For now, there is no `ToSchema` instance for coproduct
+-- so to make the endpoint usable we use two Maybes instead of
+-- a single Either-like type
+data TreasurySpendEndpointParams d = TreasurySpendEndpointParams
+  { treasurySpendEndpoint'value :: !Value.Value
+  , treasurySpendEndpoint'costCenter :: !BuiltinByteString
+  , treasurySpendEndpoint'pubKey :: !(Maybe Ledger.PubKeyHash)
+  , treasurySpendEndpoint'validator :: !(Maybe (Ledger.ValidatorHash, d))
+  }
+  deriving stock (Generic)
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
--- TODO: Should the Redeemer give more information?
 data TreasuryAction
   = BorrowForAuction
   | DepositFundsWithCostCenter !TreasuryDepositParams
-  | SpendFundsFromCostCenter !BuiltinByteString
-  | AllowMint
+  | SpendFundsFromCostCenter !TreasurySpendParams
+  | AllowMint !Value.AssetClass
   | AllowBurn
   | InitiateUpgrade !NewContract
   deriving stock (Prelude.Eq, Prelude.Show)
@@ -121,6 +137,42 @@ instance Eq TreasuryDatum where
     ada1 == ada2 && cc1 == cc2 && ccs1 == ccs2
 
 -- helper functions
+prepareTreasurySpendParams ::
+  forall (d :: Type) (i :: Type) (o :: Type).
+  (PlutusTx.ToData d) =>
+  TreasurySpendEndpointParams d ->
+  Either Text (TreasurySpendParams, Value.Value -> TxConstraints i o)
+prepareTreasurySpendParams params =
+  onChainAddress <&> \(oca, d) ->
+    ( TreasurySpendParams
+        { treasurySpend'value = treasurySpendEndpoint'value params
+        , treasurySpend'costCenter = treasurySpendEndpoint'costCenter params
+        , treasurySpend'beneficiary = oca
+        }
+    , d
+    )
+  where
+    pubKey :: Maybe Ledger.PubKeyHash
+    pubKey = treasurySpendEndpoint'pubKey params
+
+    validatorHash :: Maybe (Ledger.ValidatorHash, d)
+    validatorHash = treasurySpendEndpoint'validator params
+
+    onChainAddress ::
+      Either Text (Ledger.Address, Value.Value -> TxConstraints i o)
+    onChainAddress = case (pubKey, validatorHash) of
+      (Just pk, Nothing) ->
+        Right (pubKeyHashAddress pk, Constraints.mustPayToPubKey pk)
+      (Nothing, Just (vh, d)) ->
+        Right
+          ( scriptHashAddress vh
+          , Constraints.mustPayToOtherScript
+              vh
+              (Ledger.Datum $ PlutusTx.toBuiltinData d)
+          )
+      (Just _, Just _) -> Left "two beneficiary addresses supplied"
+      (Nothing, Nothing) -> Left "no beneficiary address supplied"
+
 {-# INLINEABLE isInitialDatum #-}
 isInitialDatum :: TreasuryDatum -> Bool
 isInitialDatum td = UniqueMap.null (costCenters td)
@@ -165,6 +217,8 @@ PlutusTx.makeLift ''TreasuryStateTokenParams
 PlutusTx.makeLift ''TreasuryUpgradeContractTokenParams
 PlutusTx.makeIsDataIndexed ''TreasuryDepositParams [('TreasuryDepositParams, 0)]
 PlutusTx.makeLift ''TreasuryDepositParams
+PlutusTx.makeIsDataIndexed ''TreasurySpendParams [('TreasurySpendParams, 0)]
+PlutusTx.makeLift ''TreasurySpendParams
 PlutusTx.makeIsDataIndexed
   ''TreasuryAction
   [ ('BorrowForAuction, 0)
