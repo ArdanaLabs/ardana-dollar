@@ -28,7 +28,6 @@ main = do
   defaultMain $ \(ContractMaxSuccess cms) ->
     testGroup
       "tests"
-
       [ certificationTests cms
       , mapTests
       , priceOracleTests cms
