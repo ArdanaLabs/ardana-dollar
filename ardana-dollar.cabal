@@ -1,4 +1,4 @@
-Cabal-version: 2.4
+cabal-version: 2.4
 name:          ardana-dollar
 version:       0.1.0.0
 
@@ -11,7 +11,7 @@ version:       0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
-license: NONE
+license:
 license-files: LICENSE
 author:        Your name
 maintainer:    Your email
@@ -71,6 +71,7 @@ common deps
     , bytestring
     , containers
     , data-default
+    , foldl
     , freer-extras
     , lens
     , mtl
@@ -96,8 +97,12 @@ common test-deps
     , freer-simple
     , hedgehog
     , lens
+    , minisat-solver
     , optparse-applicative  ^>=0.16
+    , pretty
+    , pretty-show
     , QuickCheck
+    , safe
     , silently
     , streaming
     , tagged
@@ -106,11 +111,7 @@ common test-deps
     , tasty-hunit
     , tasty-plutus
     , tasty-quickcheck
-    , safe
     , transformers
-    , pretty
-    , pretty-show
-    , minisat-solver
 
 library
   import:          lang
@@ -129,6 +130,13 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.Map.Contracts
+    ArdanaDollar.Map.Endpoints
+    ArdanaDollar.Map.MapTerms
+    ArdanaDollar.Map.Types
+    ArdanaDollar.Map.Utils
+    ArdanaDollar.Map.Validators
+    ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
@@ -159,6 +167,7 @@ test-suite ardana-dollar-test
     Test.ArdanaDollar.Certification.OnChain.Model.Proper
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
     Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest

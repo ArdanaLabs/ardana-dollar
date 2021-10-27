@@ -46,6 +46,9 @@ jsonRoundtripTests =
         , testJsonLaws "TreasurySpendParams" treasurySpendParams
         , testJsonLaws "NewContract" newContract
         ]
+    , testGroup
+        "Onchain map"
+        [testJsonLaws "MapInstance" onchainMapMapInstance]
     ]
 
 -- LAWS
