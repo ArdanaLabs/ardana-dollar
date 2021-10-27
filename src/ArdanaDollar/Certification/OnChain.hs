@@ -34,20 +34,6 @@ import PlutusTx qualified
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Prelude
 
-{-# INLINEABLE withinInterval #-}
-withinInterval :: Integer -> Ledger.TxInfo -> Bool
-withinInterval interval txInfo = case width (Ledger.txInfoValidRange txInfo) of
-  Nothing -> False
-  Just ms -> ms <= interval
-
-{-# INLINEABLE stateTokenValue #-}
-stateTokenValue :: Value.CurrencySymbol -> Ledger.Value
-stateTokenValue cs = Value.singleton cs (Value.TokenName "CertificationAuthority") 1
-
-{-# INLINEABLE valueCarriesStateToken #-}
-valueCarriesStateToken :: Value.CurrencySymbol -> Ledger.Value -> Bool
-valueCarriesStateToken cs v = assetClassValueOf v (assetClass cs (Value.TokenName "CertificationAuthority")) == 1
-
 {-# INLINEABLE mkCertificationMintingPolicy #-}
 mkCertificationMintingPolicy ::
   TxOutRef ->
@@ -84,10 +70,12 @@ mkCertificationMintingPolicy
       narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval narIntW txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
-      certificationToken :: Ledger.Value
-      certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) 1
+      certificationTokenName :: Value.TokenName
+      certificationTokenName = Value.TokenName priceTrackingDatumHash
       certificationTokensMinted :: Ledger.Value
       certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName priceTrackingDatumHash) numCertifications
+      captiveTokensMinted :: Ledger.Value
+      captiveTokensMinted = captiveTokenValue (Ledger.ownCurrencySymbol sc) numCertifications
       certificationOutput =
         CertificationCopyingParameters
           returnAddress
@@ -97,10 +85,10 @@ mkCertificationMintingPolicy
       correctMinting =
         traceIfFalse
           "incorrect minted amount"
-          (minted == certificationTokensMinted)
+          (minted == certificationTokensMinted <> captiveTokensMinted)
       atLeastOneCertificationProduced = traceIfFalse "at least one certification must be produced" (numCertifications > 0)
       (continuingCertificationsAreValid, numCertifications) = case getContinuingScriptOutputsWithDatum @CertificationCopyingParameters sc of
-        outputs -> (all (validateContinuingCertificationCopyingParameters sc certificationOutput certificationToken) outputs, length outputs)
+        outputs -> (all (validateContinuingCertificationCopyingParameters sc certificationOutput certificationTokenName) outputs, length outputs)
       inputCarriesStateToken =
         traceIfFalse
           "incorrect state token input value"
@@ -126,16 +114,16 @@ mkCertificationMintingPolicy
       narrowInterval = traceIfFalse "timestamp outwith interval" $ withinInterval narWidth txInfo
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
-      certificationToken :: Ledger.Value
-      certificationToken = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName 1
       certificationTokensMinted :: Ledger.Value
       certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName numCertifications
+      captiveTokensMinted :: Ledger.Value
+      captiveTokensMinted = captiveTokenValue (Ledger.ownCurrencySymbol sc) (numCertifications - 1)
       certificationTokenName = certificationTokenNameInValue certificationValue (Ledger.ownCurrencySymbol sc)
       continuingOutput = CertificationCopyingParameters returnAddress certExp requiredReplications narWidth
       correctMinting =
         traceIfFalse
           "incorrect minted amount"
-          (minted == certificationTokensMinted)
+          (minted == certificationTokensMinted <> captiveTokensMinted)
       createsAtLeastNCopies = traceIfFalse "does not create required replications" (numCertifications >= requiredReplications)
       repaysCopyCreator = paysAdaInValueToAddr txInfo certificationValue repayAddr
       (certificationValue, repayAddr, certExp, requiredReplications, narWidth) =
@@ -145,7 +133,7 @@ mkCertificationMintingPolicy
           _ -> traceError "can only copy one at a time"
       (continuingCertificationsAreValid, numCertifications) =
         let outputs = getContinuingScriptOutputsWithDatum @CertificationCopyingParameters sc
-         in (all (validateContinuingCertificationCopyingParameters sc continuingOutput certificationToken) outputs, length outputs)
+         in (all (validateContinuingCertificationCopyingParameters sc continuingOutput certificationTokenName) outputs, length outputs)
 mkCertificationMintingPolicy
   _
   DestroyCertificationToken
@@ -162,16 +150,44 @@ mkCertificationMintingPolicy
       certificationTokensMinted :: Ledger.Value
       certificationTokensMinted = Value.singleton (Ledger.ownCurrencySymbol sc) certificationTokenName (-1)
       certificationTokenName = certificationTokenNameInValue certificationValue (Ledger.ownCurrencySymbol sc)
+      captiveTokensMinted :: Ledger.Value
+      captiveTokensMinted = captiveTokenValue (Ledger.ownCurrencySymbol sc) (-1)
       correctMinting =
         traceIfFalse
           "incorrect minted amount"
-          (minted == certificationTokensMinted)
+          (minted == certificationTokensMinted <> captiveTokensMinted)
       repaysCopyCreator = paysAdaInValueToAddr txInfo certificationValue repayAddr
       (certificationValue, repayAddr, certExp, _, narWidth) =
         case getAllScriptInputsWithDatum @CertificationCopyingParameters sc of
           [(output, _, CertificationCopyingParameters payToAddr expiry' replications' narWidth')] ->
             (Ledger.txOutValue output, payToAddr, expiry', replications', narWidth')
           _ -> traceError "can only destroy one at a time"
+
+{-# INLINEABLE withinInterval #-}
+withinInterval :: Integer -> Ledger.TxInfo -> Bool
+withinInterval interval txInfo = case width (Ledger.txInfoValidRange txInfo) of
+  Nothing -> False
+  Just ms -> ms <= interval
+
+{-# INLINEABLE stateTokenValue #-}
+stateTokenValue :: Value.CurrencySymbol -> Ledger.Value
+stateTokenValue cs = Value.singleton cs (Value.TokenName "CertificationAuthority") 1
+
+{-# INLINEABLE valueCarriesStateToken #-}
+valueCarriesStateToken :: Value.CurrencySymbol -> Ledger.Value -> Bool
+valueCarriesStateToken cs v = assetClassValueOf v (assetClass cs (Value.TokenName "CertificationAuthority")) == 1
+
+{-# INLINEABLE captiveTokenValue #-}
+captiveTokenValue :: Value.CurrencySymbol -> Integer -> Ledger.Value
+captiveTokenValue cs = Value.singleton cs (Value.TokenName "CaptiveToken")
+
+{-# INLINEABLE valueCarriesCaptiveToken #-}
+valueCarriesCaptiveToken :: Value.CurrencySymbol -> Ledger.Value -> Bool
+valueCarriesCaptiveToken cs v = assetClassValueOf v (assetClass cs (Value.TokenName "CaptiveToken")) == 1
+
+{-# INLINEABLE valueCarriesCertificationToken #-}
+valueCarriesCertificationToken :: Value.CurrencySymbol -> Value.TokenName -> Ledger.Value -> Bool
+valueCarriesCertificationToken cs tok v = assetClassValueOf v (assetClass cs tok) == 1
 
 {-# INLINEABLE certificationTokenNameInValue #-}
 certificationTokenNameInValue :: Ledger.Value -> Ledger.CurrencySymbol -> Ledger.TokenName
@@ -193,16 +209,19 @@ paysAdaInValueToAddr txInfo rv addr =
 validateContinuingCertificationCopyingParameters ::
   Ledger.ScriptContext ->
   CertificationCopyingParameters ->
-  Ledger.Value ->
+  Ledger.TokenName ->
   (Ledger.TxOut, b, CertificationCopyingParameters) ->
   Bool
-validateContinuingCertificationCopyingParameters sc pt certificationToken (output, _, dat) =
+validateContinuingCertificationCopyingParameters sc pt certificationTokenName (output, _, dat) =
   traceIfFalse
     "copy output is not continuing"
     (Ledger.toValidatorHash (Ledger.txOutAddress output) == Just (Ledger.ownHash sc))
     && traceIfFalse
-      "incorrect state token output value"
-      (Ledger.txOutValue output == certificationToken)
+      "output does not carry certification token"
+      (valueCarriesCertificationToken (Ledger.ownCurrencySymbol sc) certificationTokenName (Ledger.txOutValue output))
+    && traceIfFalse
+      "output does not carry captive token"
+      (valueCarriesCaptiveToken (Ledger.ownCurrencySymbol sc) (Ledger.txOutValue output))
     && traceIfFalse
       "pricetracking copy incorrect"
       (dat == pt)
