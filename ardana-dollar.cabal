@@ -82,6 +82,7 @@ common deps
     , plutus-extra
     , plutus-ledger
     , plutus-ledger-api
+    , plutus-numeric
     , plutus-tx
     , plutus-tx-plugin
     , plutus-use-cases
