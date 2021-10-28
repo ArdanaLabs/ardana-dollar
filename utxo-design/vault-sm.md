@@ -38,11 +38,10 @@ data VaultState = VaultState
 
 - `new.interestTimestamp >= old.interestTimestamp`.
 - `new.interestTimestamp = ivTo (txInfoValidRange _)`.
-- `new ≡ old { interest = newInterest }`,
   where
   ```haskell
-  newInterest :: Natural
-  newInterest =
+  interest' :: Natural
+  interest' =
     2^(
       (new.interestTimestamp - old.interestTimestamp)
       * adminState.interestRate
@@ -110,6 +109,7 @@ oracleHash :: TokenName
 - `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
 - `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
 - Interest algorithm must be applied.
+- `new.interest = interest'`.
 
 ### AddBorrowAct
 
@@ -134,6 +134,7 @@ oracleHash :: TokenName
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
 - `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (new.borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
 - Interest algorithm must be applied.
+- `new.interest = interest'`.
 
 ### RepayBorrowAct
 
@@ -149,8 +150,8 @@ adminStateHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- `new.interest = max(old.interest + assetClassValueOf txInfoMint dUSD, 0)`.
-- `new.borrowPrincipal = max(min(old.borrowPrincipal + old.interest + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)`.
+- `new.interest = max(interest' + assetClassValueOf txInfoMint dUSD, 0)`.
+- `new.borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)`.
 - `assetClassValueOf txInfoMint dUSD < 0`.
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
 - Interest algorithm must be applied.
