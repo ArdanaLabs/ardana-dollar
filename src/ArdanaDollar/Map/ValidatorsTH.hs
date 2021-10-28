@@ -29,7 +29,7 @@ import ArdanaDollar.Map.Types (
   PointerCS (PointerCS),
   Redeemer,
  )
-import ArdanaDollar.Map.Validators qualified as V
+import ArdanaDollar.Map.Validator qualified as V
 
 {-# INLINEABLE nodeValidPolicy #-}
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy

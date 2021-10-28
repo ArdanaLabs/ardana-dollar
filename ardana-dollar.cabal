@@ -133,7 +133,7 @@ library
     ArdanaDollar.Map.MapTerms
     ArdanaDollar.Map.Types
     ArdanaDollar.Map.TestUtils
-    ArdanaDollar.Map.Validators
+    ArdanaDollar.Map.Validator
     ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain

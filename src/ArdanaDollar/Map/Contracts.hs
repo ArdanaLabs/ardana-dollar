@@ -58,7 +58,7 @@ import ArdanaDollar.Map.Types (
   TokenRedeemer (..),
  )
 import ArdanaDollar.Map.Types qualified as T
-import ArdanaDollar.Map.Validators qualified as V
+import ArdanaDollar.Map.Validator qualified as V
 import ArdanaDollar.Utils qualified as Utils
 
 type Tpl = (Ledger.TxOutRef, Ledger.ChainIndexTxOut)

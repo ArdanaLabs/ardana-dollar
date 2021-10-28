@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module ArdanaDollar.Map.Validators (
+module ArdanaDollar.Map.Validator (
   mkValidator,
   mkNodeValidPolicy,
   tokenName,
