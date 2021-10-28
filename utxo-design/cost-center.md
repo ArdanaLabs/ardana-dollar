@@ -23,7 +23,7 @@ data CostCenterRedeemer = CostCenterRedeemer
 
 To unlock a UTXO locked with this datum:
 
-- There must be a `treasuryState :: TreasuryState` accompanied by
-  a certification token for `treasuryStateToken` with the name `treasuryStateHash`.
+- There must be a `treasuryState :: TreasuryState` with a corresponding certification
+  token for `treasuryStateToken` with the name `treasuryStateHash`.
 - `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
 - `treasuryState.ownerAuthToken` must be minted or burned.

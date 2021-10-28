@@ -20,8 +20,8 @@ data DUSDRedeemer = DUSDRedeemer
 ```
 
 Rules when minting >= 0:
-- There must be a `treasuryState :: TreasuryState` certified with
-  a token with the name `treasuryStateHash`.
+- There must be a `treasuryState :: TreasuryState` with a corresponding certification
+  token for `treasuryStateToken` with the name `treasuryStateHash`.
 - `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
 - The token `treasuryState.dUSDPermissionToken` must be available in the transaction.
 

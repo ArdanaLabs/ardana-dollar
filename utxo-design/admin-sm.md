@@ -39,8 +39,8 @@ data AdminMPRedeemer = AdminMPRedeemer
   }
 ```
 
-- There must be a `treasuryState :: TreasuryState` certified with
-  a token with the name `treasuryStateHash`.
+- There must be a `treasuryState :: TreasuryState` with a corresponding certification
+  token for `treasuryStateToken` with the name `treasuryStateHash`.
 - `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
 - `treasuryState.ownerAuthToken` must be minted or burned.
 - `timestamp ≡ ivFrom $ txInfoValidRange _`
@@ -66,8 +66,8 @@ data AdminMPRedeemer = AdminMPRedeemer
 treasuryStateHash :: TokenName
 ```
 
-- There must be a `treasuryState :: TreasuryState` certified with
-  a token with the name `treasuryStateHash`.
+- There must be a `treasuryState :: TreasuryState` with a corresponding certification
+  token for `treasuryStateToken` with the name `treasuryStateHash`.
 - `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
 - `treasuryState.ownerAuthToken` must be minted or burned.
 
