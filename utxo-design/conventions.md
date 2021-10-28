@@ -101,6 +101,8 @@ of the relevant minting policy.
 
 ### Minting policy
 
+**NB:** The `CertifiedDatum` needs to be in `txInfoData`.
+
 ```haskell
 type CertTokenMPRedeemer = [AssetClass]
 ```
@@ -113,13 +115,15 @@ data CertifiedDatum = CertifiedDatum
   , unCertifiedDatum :: Datum
   }
 
--- **Must** use sha2_256
-certHash :: CertifiedDatum a -> BuiltinByteString
+instance UnsafeFromData CertifiedDatum where
+
+certHash :: CertifiedDatum a -> TxInfo -> BuiltinByteString
+certHash d info = findDatumHash (coerce $ unsafeFromBuiltinData d) info
 
 correpondsToInput :: TxInfo -> TokenName -> AssetClass -> TxOut -> Bool
 correpondsToInput info (TokenName name) token input =
   uncurry (valueOf . txOutValue input) (unAssetClass token) > 0
-  && certHash certDatum == name
+  && certHash certDatum info == name
   where
     certDatum =
       CertifiedDatum
@@ -131,8 +135,8 @@ correpondsToInput info (TokenName name) token input =
 The `AssetClass`es we test against come from the redeemer
 for the minting policy script.
 
-- If an `x` and `y` can be found such that `correpondsToInput _ token x y ≡ true`,
-  then minting is allowed.
+- If an `x` asset class from the list and `y` input can be found such that
+  `correpondsToInput _ token x y ≡ true`, then minting is allowed.
 - Minting is also allowed if we already have an instance of the token,
   i.e. you can duplicate it.
 - Burning is always allowed.
