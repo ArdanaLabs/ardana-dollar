@@ -32,8 +32,8 @@ import Control.Monad (void)
 
 import ArdanaDollar.Map.Contracts (address)
 import ArdanaDollar.Map.Endpoints
+import ArdanaDollar.Map.TestUtils
 import ArdanaDollar.Map.Types as Types
-import ArdanaDollar.Map.Utils
 import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
 import Test.Tasty
 

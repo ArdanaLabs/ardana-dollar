@@ -132,7 +132,7 @@ library
     ArdanaDollar.Map.Endpoints
     ArdanaDollar.Map.MapTerms
     ArdanaDollar.Map.Types
-    ArdanaDollar.Map.Utils
+    ArdanaDollar.Map.TestUtils
     ArdanaDollar.Map.Validators
     ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
