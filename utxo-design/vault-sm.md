@@ -83,7 +83,7 @@ but repeated multiplication is a viable alternative.
 
 Purpose: Allow the user to add collateral.
 
-- `old ≡ new`
+- `new ≡ old { userAuthToken = new.userAuthToken }`
 - For each token, there must be just as much in the new UTXO as
   there is in the old UTXO.
 - `assetClassValueOf txInfoMint dUSD ≡ 0`.
@@ -109,7 +109,14 @@ oracleHash :: TokenName
 - `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
 - `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
 - Interest algorithm must be applied.
-- `new.interest = interest'`.
+- ```haskell
+  new ≡ old
+    { interest = interest'
+    , borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)
+    , interestTimestamp = new.interestTimestamp
+    , userAuthToken = new.userAuthToken
+    }
+  ```
 
 ### AddBorrowAct
 
@@ -129,12 +136,18 @@ oracleHash :: TokenName
 - There must be an `oracleDatum :: OracleDatum` ceritifed with a certification
   token for `adminState.oracleToken` with the name `oracleHash`.
 - `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
-- `new.borrowPrincipal = old.borrowPrincipal + assetClassValueOf txInfoMint dUSD`.
 - `assetClassValueOf txInfoMint dUSD > 0`.
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
 - `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (new.borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
 - Interest algorithm must be applied.
-- `new.interest = interest'`.
+- ```haskell
+  new ≡ old
+    { interest = interest'
+    , borrowPrincipal = old.borrowPrincipal + assetClassValueOf txInfoMint dUSD
+    , interestTimestamp = new.interestTimestamp
+    , userAuthToken = new.userAuthToken
+    }
+  ```
 
 ### RepayBorrowAct
 
@@ -150,8 +163,14 @@ adminStateHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- `new.interest = max(interest' + assetClassValueOf txInfoMint dUSD, 0)`.
-- `new.borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)`.
 - `assetClassValueOf txInfoMint dUSD < 0`.
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
 - Interest algorithm must be applied.
+- ```haskell
+  new ≡ old
+    { interest = max(interest' + assetClassValueOf txInfoMint dUSD, 0)
+    , borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)
+    , interestTimestamp = new.interestTimestamp
+    , userAuthToken = new.userAuthToken
+    }
+  ```
