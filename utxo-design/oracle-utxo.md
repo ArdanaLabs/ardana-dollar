@@ -8,6 +8,6 @@ data OracleDatum
   -- will likely need both.
   , certTokenExpiration :: POSIXTime
   , timestamp :: POSIXTime
-    extra :: Data -- Can be anything
+    extra :: BuiltinData -- Can be anything
   }
 ```

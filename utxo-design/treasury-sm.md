@@ -27,7 +27,7 @@ data TreasuryState = TreasuryState
   , dUSDPermissionToken :: AssetClass
   -- This is useful if the minting policy for `ownerAuthToken`
   -- wants to store extra data in the state.
-  , extra :: Data
+  , extra :: BuiltinData
   }
 ```
 
