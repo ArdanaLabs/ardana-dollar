@@ -1,5 +1,10 @@
 # dUSD minting policy
 
+```haskell
+dUSD :: AssetClass
+dUSD = AssetClass (dUSDMP, "dUSD")
+```
+
 Parameters:
 ```haskell
 data DUSDParameters = DUSDParameters
@@ -13,8 +18,6 @@ data DUSDRedeemer = DUSDRedeemer
   { treasuryStateHash :: TokenName
   }
 ```
-
-`dUSD` itself as an empty token name.
 
 Rules when minting >= 0:
 - There must be a `treasuryState :: TreasuryState` certified with
