@@ -7,9 +7,7 @@ Note: the treasury scripts will not be updated as part of version 2 or any futur
 Parameterized by:
 ```haskell
 data TreasuryParams = TreasuryParams
-  { targetCurrency :: ByteString -- fiat currency identifier
-  , danaAssetClass :: AssetClass
-  , oneShotUtxo :: TxOutRef
+  { oneShotUtxo :: TxOutRef
   }
 ```
 
