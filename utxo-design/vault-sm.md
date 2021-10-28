@@ -142,7 +142,6 @@ Purpose: Allow the user to repay a borrow
 Arguments:
 ```haskell
 adminStateHash :: TokenName
-oracleHash :: TokenName
 ```
 
 - There must be an `adminState :: AdminState` certified with a certification
@@ -150,12 +149,8 @@ oracleHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- There must be an `oracleDatum :: OracleDatum` ceritifed with a certification
-  token for `adminState.oracleToken` with the name `oracleHash`.
-- `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
 - `new.interest = max(old.interest + assetClassValueOf txInfoMint dUSD, 0)`.
 - `new.borrowPrincipal = max(min(old.borrowPrincipal + old.interest + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)`.
 - `assetClassValueOf txInfoMint dUSD < 0`.
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
-- `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (new.borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
 - Interest algorithm must be applied.
