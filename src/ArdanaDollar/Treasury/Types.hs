@@ -7,8 +7,7 @@ module ArdanaDollar.Treasury.Types (
   Treasuring,
   Treasury (..),
   TreasuryStateTokenParams (..),
-  TreasuryUpgradeContractTokenParams (..),
-  TreasuryDatum (..),
+  TreasuryState (..),
   TreasuryAction (..),
   TreasuryDepositParams (..),
   TreasurySpendParams (..),
@@ -16,7 +15,6 @@ module ArdanaDollar.Treasury.Types (
   NewContract (..),
   prepareTreasurySpendParams,
   isInitialDatum,
-  calculateCostCenterValueOf,
   danaAssetClass,
   danaCurrency,
   danaTokenName,
@@ -38,6 +36,7 @@ import Data.OpenApi.Schema qualified as OpenApi
 
 --------------------------------------------------------------------------------
 
+import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Constraints (TxConstraints)
 import Ledger.Constraints qualified as Constraints
@@ -46,46 +45,45 @@ import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Address (pubKeyHashAddress, scriptHashAddress)
 import Plutus.V1.Ledger.Contexts qualified as Contexts
 import PlutusTx qualified
+import PlutusTx.Natural (Natural)
 import PlutusTx.Prelude
-import PlutusTx.UniqueMap qualified as UniqueMap
 import Schema (ToSchema)
 
 --------------------------------------------------------------------------------
 
 data Treasuring
 instance Scripts.ValidatorTypes Treasuring where
-  type DatumType Treasuring = TreasuryDatum
+  type DatumType Treasuring = TreasuryState
   type RedeemerType Treasuring = TreasuryAction
 
 data Treasury = Treasury
   { treasury'peggedCurrency :: BuiltinByteString
-  , treasury'stateTokenSymbol :: Value.AssetClass
+  , treasury'danaAssetClass :: Value.AssetClass
+  , treasury'stateTokenAssetClass :: Value.AssetClass
   , treasury'stateTokenParams :: TreasuryStateTokenParams
-  , treasury'upgradeTokenSymbol :: Value.AssetClass
-  , treasury'upgradeTokenParams :: TreasuryUpgradeContractTokenParams
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
 data TreasuryStateTokenParams = TreasuryStateTokenParams
-  { stateToken :: !Value.TokenName
-  , initialOutput :: !Contexts.TxOutRef
+  { stateTokenName :: !Value.TokenName
+  , oneShotUtxo :: !Contexts.TxOutRef
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
 
-data TreasuryUpgradeContractTokenParams = TreasuryUpgradeContractTokenParams
-  { upgradeToken'initialOwner :: !Ledger.PubKeyHash
-  , upgradeToken'peggedCurrency :: !BuiltinByteString
-  , upgradeToken'initialOutput :: !Contexts.TxOutRef
-  }
-  deriving stock (Prelude.Eq, Generic, Prelude.Show)
-  deriving anyclass (FromJSON, ToJSON, OpenApi.ToSchema)
-
-data TreasuryDatum = TreasuryDatum
-  { auctionDanaAmount :: !Integer
-  , currentContract :: !Ledger.ValidatorHash
-  , costCenters :: !(UniqueMap.Map BuiltinByteString Value.Value)
+data TreasuryState = TreasuryState
+  { certTokenStart :: Natural
+  , certTokenBase :: Natural
+  , certTokenExpiration :: POSIXTime
+  , refreshInterval :: POSIXTime
+  , validRangeSize :: POSIXTime
+  , timestamp :: POSIXTime
+  , ownerAuthToken :: Value.AssetClass
+  , dUSDPermissionToken :: Value.AssetClass
+  , -- This is useful if the minting policy for `ownerAuthToken`
+    -- wants to store extra data in the state.
+    extra :: PlutusTx.BuiltinData
   }
   deriving stock (Prelude.Eq, Generic, Prelude.Show)
   deriving anyclass (FromJSON, ToJSON)
@@ -119,11 +117,8 @@ data TreasurySpendEndpointParams d = TreasurySpendEndpointParams
 
 data TreasuryAction
   = BorrowForAuction
-  | DepositFundsWithCostCenter !TreasuryDepositParams
-  | SpendFundsFromCostCenter !TreasurySpendParams
-  | AllowMint !Value.AssetClass
-  | AllowBurn
-  | InitiateUpgrade !NewContract
+  | RefreshAct
+  | UpdateAct
   deriving stock (Prelude.Eq, Prelude.Show)
 
 newtype NewContract = NewContract {unNewContract :: Ledger.ValidatorHash}
@@ -132,9 +127,17 @@ newtype NewContract = NewContract {unNewContract :: Ledger.ValidatorHash}
   deriving anyclass (FromJSON, ToJSON, ToSchema)
 
 -- instances
-instance Eq TreasuryDatum where
-  (TreasuryDatum ada1 cc1 ccs1) == (TreasuryDatum ada2 cc2 ccs2) =
-    ada1 == ada2 && cc1 == cc2 && ccs1 == ccs2
+instance Eq TreasuryState where
+  ts1 == ts2 =
+    (certTokenStart ts1 == certTokenStart ts2)
+      && (certTokenBase ts1 == certTokenBase ts2)
+      && (certTokenExpiration ts1 == certTokenExpiration ts2)
+      && (refreshInterval ts1 == refreshInterval ts2)
+      && (validRangeSize ts1 == validRangeSize ts2)
+      && (timestamp ts1 == timestamp ts2)
+      && (ownerAuthToken ts1 == ownerAuthToken ts2)
+      && (dUSDPermissionToken ts1 == dUSDPermissionToken ts2)
+      && (extra ts1 == extra ts2)
 
 -- helper functions
 prepareTreasurySpendParams ::
@@ -174,13 +177,8 @@ prepareTreasurySpendParams params =
       (Nothing, Nothing) -> Left "no beneficiary address supplied"
 
 {-# INLINEABLE isInitialDatum #-}
-isInitialDatum :: TreasuryDatum -> Bool
-isInitialDatum td = UniqueMap.null (costCenters td)
-
-{-# INLINEABLE calculateCostCenterValueOf #-}
-calculateCostCenterValueOf :: Value.AssetClass -> TreasuryDatum -> Integer
-calculateCostCenterValueOf ac TreasuryDatum {costCenters = cc} =
-  foldr (\el acc -> (el `Value.assetClassValueOf` ac) + acc) 0 (UniqueMap.elems cc)
+isInitialDatum :: TreasuryState -> Bool
+isInitialDatum _ts = True -- TODO: when is it initial?
 
 -- helper currencies (a bit debugable)
 {-# INLINEABLE danaTokenName #-}
@@ -211,10 +209,9 @@ danaAssetClass :: Value.AssetClass
 danaAssetClass = Value.AssetClass (danaCurrency, danaTokenName)
 
 PlutusTx.makeLift ''Treasury
-PlutusTx.makeIsDataIndexed ''TreasuryDatum [('TreasuryDatum, 0)]
-PlutusTx.makeLift ''TreasuryDatum
+PlutusTx.makeIsDataIndexed ''TreasuryState [('TreasuryState, 0)]
+PlutusTx.makeLift ''TreasuryState
 PlutusTx.makeLift ''TreasuryStateTokenParams
-PlutusTx.makeLift ''TreasuryUpgradeContractTokenParams
 PlutusTx.makeIsDataIndexed ''TreasuryDepositParams [('TreasuryDepositParams, 0)]
 PlutusTx.makeLift ''TreasuryDepositParams
 PlutusTx.makeIsDataIndexed ''TreasurySpendParams [('TreasurySpendParams, 0)]
@@ -222,11 +219,8 @@ PlutusTx.makeLift ''TreasurySpendParams
 PlutusTx.makeIsDataIndexed
   ''TreasuryAction
   [ ('BorrowForAuction, 0)
-  , ('DepositFundsWithCostCenter, 1)
-  , ('SpendFundsFromCostCenter, 2)
-  , ('AllowMint, 3)
-  , ('AllowBurn, 4)
-  , ('InitiateUpgrade, 5)
+  , ('RefreshAct, 1)
+  , ('UpdateAct, 2)
   ]
 PlutusTx.makeLift ''TreasuryAction
 PlutusTx.makeLift ''NewContract

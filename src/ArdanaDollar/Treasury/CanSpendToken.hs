@@ -62,7 +62,7 @@ mkCanSpendTokenMintingPolicy treasury () sc = hasCorrectInput && hasCorrectOutpu
       flip any (Contexts.txInfoInputs info) $ \input ->
         Value.assetClassValueOf
           (Contexts.txOutValue . Contexts.txInInfoResolved $ input)
-          (treasury'stateTokenSymbol treasury)
+          (treasury'stateTokenAssetClass treasury)
           == 1
 
     hasCorrectOutput :: Bool

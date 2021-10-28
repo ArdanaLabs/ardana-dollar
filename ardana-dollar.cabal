@@ -145,7 +145,6 @@ library
     ArdanaDollar.Treasury.OnChain
     ArdanaDollar.Treasury.StateToken
     ArdanaDollar.Treasury.Types
-    ArdanaDollar.Treasury.UpgradeContractToken
     ArdanaDollar.Types
     ArdanaDollar.Utils
     ArdanaDollar.Vault

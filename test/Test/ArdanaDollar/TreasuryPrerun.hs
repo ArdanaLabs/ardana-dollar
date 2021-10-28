@@ -98,7 +98,7 @@ startAdminTrace = startAdminTrace' w2 2
 treasuryStartContract' :: Contract (OutputBus Treasury) EmptySchema ContractError ()
 treasuryStartContract' = case getStartAdmin of
   Left err -> Contract.throwError $ Contract.OtherError (Text.pack err)
-  Right vh -> treasuryStartContract (vh, "USD") <* Contract.waitNSlots 5
+  Right vh -> treasuryStartContract (vh, "USD", Value.assetClass "abcd" "TODO", Value.assetClass "abcd" "TODO") <* Contract.waitNSlots 5
 
 emCfg :: EmulatorConfig
 emCfg = EmulatorConfig (Left $ Map.fromList [(w, v) | w <- knownWallets]) def def

@@ -29,8 +29,6 @@ import PlutusTx.Prelude
 
 --------------------------------------------------------------------------------
 
-import ArdanaDollar.Treasury.Types (Treasury (treasury'upgradeTokenSymbol))
-
 data MockAdmining
 instance Scripts.ValidatorTypes MockAdmining where
   type DatumType MockAdmining = ()
@@ -65,17 +63,14 @@ startAdmin i = do
 findAdmin ::
   forall (w :: Type) (s :: Row Type) (e :: Type).
   (AsContractError e) =>
-  Treasury ->
+  Value.AssetClass ->
   Ledger.Address ->
   Contract w s e (Maybe (Contexts.TxOutRef, Ledger.ChainIndexTxOut))
-findAdmin treasury address = do
+findAdmin dUSDPermissionToken address = do
   utxos <- Map.filter f <$> utxosAt address
   return $ case Map.toList utxos of
     [os] -> Just os
     _ -> Nothing
   where
-    tokenAC :: Value.AssetClass
-    tokenAC = treasury'upgradeTokenSymbol treasury
-
     f :: Ledger.ChainIndexTxOut -> Bool
-    f o = Value.assetClassValueOf (o ^. Ledger.ciTxOutValue) tokenAC == 1
+    f o = Value.assetClassValueOf (o ^. Ledger.ciTxOutValue) dUSDPermissionToken == 1
