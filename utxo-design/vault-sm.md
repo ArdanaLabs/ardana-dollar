@@ -87,6 +87,7 @@ Purpose: Allow the user to add collateral.
 - For each token, there must be just as much in the new UTXO as
   there is in the old UTXO.
 - `assetClassValueOf txInfoMint dUSD ≡ 0`.
+- `userAuthToken` must be minted or burned.
 
 ### RemoveCollateralAct
 
@@ -117,6 +118,7 @@ oracleHash :: TokenName
     , userAuthToken = new.userAuthToken
     }
   ```
+- `userAuthToken` must be minted or burned.
 
 ### AddBorrowAct
 
@@ -148,6 +150,7 @@ oracleHash :: TokenName
     , userAuthToken = new.userAuthToken
     }
   ```
+- `userAuthToken` must be minted or burned.
 
 ### RepayBorrowAct
 
@@ -174,3 +177,4 @@ adminStateHash :: TokenName
     , userAuthToken = new.userAuthToken
     }
   ```
+- `userAuthToken` must be minted or burned.
