@@ -107,8 +107,6 @@ of the relevant minting policy.
 type CertTokenMPRedeemer = [AssetClass]
 ```
 
-Each token of this policy minted must correspond to a consumed
-input in the following way:
 ```haskell
 data CertifiedDatum = CertifiedDatum
   { token :: AssetClass
