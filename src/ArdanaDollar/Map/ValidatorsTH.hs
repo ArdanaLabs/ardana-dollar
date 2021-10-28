@@ -23,6 +23,7 @@ import PlutusTx.Prelude (
 import PlutusTx.TH qualified as TH
 
 import ArdanaDollar.Map.MapTerms qualified as T
+import ArdanaDollar.Map.NodeValidPolicy qualified as P
 import ArdanaDollar.Map.Types (
   Datum,
   MapInstance,
@@ -35,7 +36,7 @@ import ArdanaDollar.Map.Validator qualified as V
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy
 nodeValidPolicy mapInstance =
   Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||Scripts.wrapMintingPolicy . V.mkNodeValidPolicy @Integer @Integer||])
+    $$(TH.compile [||Scripts.wrapMintingPolicy . P.mkNodeValidPolicy @Integer @Integer||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
 
 {-# INLINEABLE nodeValidPolicySymbol #-}

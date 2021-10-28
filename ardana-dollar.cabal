@@ -131,8 +131,10 @@ library
     ArdanaDollar.Map.Contracts
     ArdanaDollar.Map.Endpoints
     ArdanaDollar.Map.MapTerms
-    ArdanaDollar.Map.Types
+    ArdanaDollar.Map.NodeValidPolicy
     ArdanaDollar.Map.TestUtils
+    ArdanaDollar.Map.TxUtils
+    ArdanaDollar.Map.Types
     ArdanaDollar.Map.Validator
     ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
