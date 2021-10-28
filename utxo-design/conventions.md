@@ -117,6 +117,7 @@ data CertifiedDatum = CertifiedDatum
 
 instance UnsafeFromData CertifiedDatum where
 
+-- TODO: Don't use `findDatumHash`, see https://github.com/input-output-hk/plutus/issues/4167
 certHash :: CertifiedDatum a -> TxInfo -> BuiltinByteString
 certHash d info = findDatumHash (coerce $ unsafeFromBuiltinData d) info
 
