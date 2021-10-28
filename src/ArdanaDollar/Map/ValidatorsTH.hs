@@ -8,6 +8,7 @@
 module ArdanaDollar.Map.ValidatorsTH (
   inst,
   nodeValidPolicy,
+  snapshotPolicy,
   Integer2IntegerMap,
 ) where
 
@@ -24,11 +25,13 @@ import PlutusTx.TH qualified as TH
 
 import ArdanaDollar.Map.MapTerms qualified as T
 import ArdanaDollar.Map.NodeValidPolicy qualified as P
+import ArdanaDollar.Map.SnapshotPolicy qualified as S
 import ArdanaDollar.Map.Types (
   Datum,
   MapInstance,
   PointerCS (PointerCS),
   Redeemer,
+  SnapshotCS (SnapshotCS),
  )
 import ArdanaDollar.Map.Validator qualified as V
 
@@ -43,6 +46,19 @@ nodeValidPolicy mapInstance =
 nodeValidPolicySymbol :: MapInstance -> Value.CurrencySymbol
 nodeValidPolicySymbol = Ledger.scriptCurrencySymbol . nodeValidPolicy
 
+{-# INLINEABLE snapshotPolicy #-}
+snapshotPolicy :: MapInstance -> PointerCS -> Scripts.MintingPolicy
+snapshotPolicy mapInstance pointerCS =
+  Ledger.mkMintingPolicyScript $
+    $$(TH.compile [||\m p -> Scripts.wrapMintingPolicy $ S.mkSnapshotPolicy @Integer @Integer m p||])
+      `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
+      `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
+
+{-# INLINEABLE snapshotPolicySymbol #-}
+snapshotPolicySymbol :: MapInstance -> PointerCS -> Value.CurrencySymbol
+snapshotPolicySymbol mapInstance pointerCS =
+  Ledger.scriptCurrencySymbol $ snapshotPolicy mapInstance pointerCS
+
 data ValidatorTypes
 instance Scripts.ValidatorTypes ValidatorTypes where
   type DatumType ValidatorTypes = Datum Integer Integer
@@ -52,12 +68,14 @@ instance Scripts.ValidatorTypes ValidatorTypes where
 inst' ::
   MapInstance ->
   PointerCS ->
+  SnapshotCS ->
   Scripts.TypedValidator ValidatorTypes
-inst' mapInstance pointerCS =
+inst' mapInstance pointerCS snapshotCS =
   Scripts.mkTypedValidator @ValidatorTypes
     ( $$(PlutusTx.compile [||V.mkValidator @Integer @Integer||])
         `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
         `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
+        `PlutusTx.applyCode` PlutusTx.liftCode snapshotCS
     )
     $$(PlutusTx.compile [||wrap||])
   where
@@ -65,7 +83,10 @@ inst' mapInstance pointerCS =
 
 {-# INLINEABLE inst #-}
 inst :: MapInstance -> Scripts.TypedValidator ValidatorTypes
-inst mapInstance = inst' mapInstance (PointerCS $ nodeValidPolicySymbol mapInstance)
+inst mapInstance =
+  let s1 = PointerCS $ nodeValidPolicySymbol mapInstance
+      s2 = SnapshotCS $ snapshotPolicySymbol mapInstance s1
+   in inst' mapInstance s1 s2
 
 data Integer2IntegerMap
 

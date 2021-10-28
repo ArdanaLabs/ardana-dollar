@@ -53,9 +53,10 @@ import ArdanaDollar.Map.Types (
   Map (Map),
   MapInstance (MapInstance),
   Node (Node),
+  NodeValidTokenRedeemer (..),
   Pointer (Pointer),
   Redeemer (ListOp, Use),
-  TokenRedeemer (..),
+  SnapshotVersion (SnapshotVersion),
  )
 import ArdanaDollar.Map.Types qualified as T
 import ArdanaDollar.Map.Validator qualified as V
@@ -160,7 +161,7 @@ create' ac = do
       lookups =
         Constraints.typedValidatorLookups (inst' @t mapInstance)
           <> Constraints.otherScript (Scripts.validatorScript $ inst' @t mapInstance)
-      tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing) nftValue
+      tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing False (SnapshotVersion 0)) nftValue
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -178,14 +179,15 @@ insert mapInstance pair@(key, _) = do
 
   let nodes = mapLookup'nodes lkp
       zipped = zip nodes (reverse nodes)
+      map' = mapLookup'map lkp
 
   case zipped of
-    [] -> addToEmptyMap @t mapInstance (mapLookup'map lkp) pair
+    [] -> addToEmptyMap @t mapInstance map' pair
     (head', last') : _
-      | goesBefore (snd head') -> addSmallest @t mapInstance (mapLookup'map lkp) head' pair
-      | goesAfter (snd last') -> addGreatest @t mapInstance last' pair
+      | goesBefore (snd head') -> addSmallest @t mapInstance map' head' pair
+      | goesAfter (snd last') -> addGreatest @t mapInstance map' last' pair
       | otherwise -> case findPlaceInTheMiddle @t lkp key of
-        Just neighbours -> addInTheMiddle @t mapInstance neighbours pair
+        Just neighbours -> addInTheMiddle @t mapInstance map' neighbours pair
         Nothing -> throwError "Key already in the map"
   where
     goesBefore :: Node (K' t) (V' t) -> Bool
@@ -205,14 +207,15 @@ remove mapInstance key = do
 
   let nodes = mapLookup'nodes lkp
       zipped = zip nodes (reverse nodes)
+      map' = mapLookup'map lkp
 
   case zipped of
-    [(head', _)] | at (snd head') -> removeFromOneElementMap @t mapInstance (mapLookup'map lkp) head'
+    [(head', _)] | at (snd head') -> removeFromOneElementMap @t mapInstance map' head'
     (head', last') : (oneAfterHead', oneBeforeLast') : _
-      | at (snd head') -> removeSmallest @t mapInstance (mapLookup'map lkp) head' oneAfterHead'
-      | at (snd last') -> removeGreatest @t mapInstance oneBeforeLast' last'
+      | at (snd head') -> removeSmallest @t mapInstance map' head' oneAfterHead'
+      | at (snd last') -> removeGreatest @t mapInstance map' oneBeforeLast' last'
       | otherwise -> case findKeyInTheMiddle @t lkp key of
-        Just triple -> removeInTheMiddle @t mapInstance triple
+        Just triple -> removeInTheMiddle @t mapInstance map' triple
         Nothing -> throwError "Key not in the map"
     _ -> throwError "Key not in the map"
   where
@@ -283,10 +286,10 @@ removeFromOneElementMap mapInstance map' node' =
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map Nothing)
+              (MapDatum $ Map Nothing False (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -321,10 +324,10 @@ removeSmallest mapInstance map' node' next' =
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map (T.node'next $ snd node'))
+              (MapDatum $ Map (T.node'next $ snd node') False (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
               (NodeDatum $ snd next')
@@ -348,26 +351,34 @@ removeGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
+  (Tpl, Map) ->
   (Tpl, Node (K' t) (V' t)) ->
   (Tpl, Node (K' t) (V' t)) ->
   Contract w s Text ()
-removeGreatest mapInstance node' next' =
+removeGreatest mapInstance map' node' next' =
   do
     tokenAC <- T.unPointer <$> fromJust' (T.node'next $ snd node')
     let tokenRedeemer = RemoveGreatest (fst $ fst node')
 
         tokenValue = Value.assetClassValue tokenAC (-1)
+        nftValue = Value.assetClassValue (T.unMapInstance mapInstance) 1
 
-        toSpend = M.fromList [fst node', fst next']
+        toSpend = M.fromList [fst map', fst node', fst next']
 
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
               (NodeDatum (snd node'){node'next = Nothing})
               (snd (fst node') ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ snd map')
+              nftValue
+            <> Constraints.mustSpendScriptOutput
+              (fst $ fst map')
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst node')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -384,21 +395,23 @@ removeInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
+  (Tpl, Map) ->
   ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t))) ->
   Contract w s Text ()
-removeInTheMiddle mapInstance (prev, mid, next) =
+removeInTheMiddle mapInstance map' (prev, mid, next) =
   do
     tokenAC <- T.unPointer <$> fromJust' (T.node'next $ snd prev)
     let tokenRedeemer = RemoveInTheMiddle (fst $ fst prev)
 
         tokenValue = Value.assetClassValue tokenAC (-1)
+        nftValue = Value.assetClassValue (T.unMapInstance mapInstance) 1
 
-        toSpend = M.fromList [fst prev, fst mid, fst next]
+        toSpend = M.fromList [fst map', fst prev, fst mid, fst next]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
               (NodeDatum (snd prev){node'next = T.node'next (snd mid)})
@@ -406,6 +419,12 @@ removeInTheMiddle mapInstance (prev, mid, next) =
             <> Constraints.mustPayToTheScript
               (NodeDatum (snd next))
               (snd (fst next) ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ snd map')
+              nftValue
+            <> Constraints.mustSpendScriptOutput
+              (fst $ fst map')
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst prev)
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -441,13 +460,13 @@ addToEmptyMap mapInstance map' (key, value) =
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map $ Just $ Pointer tokenAC)
+              (MapDatum $ Map (Just $ Pointer tokenAC) False (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value Nothing)
+              (NodeDatum $ Node key value Nothing False)
               tokenValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -481,16 +500,16 @@ addSmallest mapInstance map' node' (key, value) =
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map $ Just $ Pointer tokenAC)
+              (MapDatum $ Map (Just $ Pointer tokenAC) False (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value nodePointer)
+              (NodeDatum $ Node key value nodePointer False)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') Nothing)
+              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') Nothing False)
               (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -508,29 +527,37 @@ addGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
+  (Tpl, Map) ->
   (Tpl, Node (K' t) (V' t)) ->
   (K' t, V' t) ->
   Contract w s Text ()
-addGreatest mapInstance node' (key, value) =
+addGreatest mapInstance map' node' (key, value) =
   do
     let tokenRedeemer = AddGreatest (fst $ fst node')
 
         tokenAC = Value.assetClass (nodeValidPolicySymbol @t mapInstance) (V.tokenName (fst $ fst node'))
         tokenValue = Value.assetClassValue tokenAC 1
+        nftValue = Value.assetClassValue (T.unMapInstance mapInstance) 1
 
-        toSpend = M.fromList [fst node']
+        toSpend = M.fromList [fst map', fst node']
 
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value Nothing)
+              (NodeDatum $ Node key value Nothing False)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') (Just $ Pointer tokenAC))
+              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') (Just $ Pointer tokenAC) False)
               (snd (fst node') ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ snd map')
+              nftValue
+            <> Constraints.mustSpendScriptOutput
+              (fst $ fst map')
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst node')
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
@@ -544,32 +571,40 @@ addInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
+  (Tpl, Map) ->
   ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t))) ->
   (K' t, V' t) ->
   Contract w s Text ()
-addInTheMiddle mapInstance (before, after) (key, value) =
+addInTheMiddle mapInstance map' (before, after) (key, value) =
   do
     let tokenRedeemer = AddInTheMiddle (fst $ fst before)
 
         tokenAC = Value.assetClass (nodeValidPolicySymbol @t mapInstance) (V.tokenName (fst $ fst before))
         tokenValue = Value.assetClassValue tokenAC 1
+        nftValue = Value.assetClassValue (T.unMapInstance mapInstance) 1
 
-        toSpend = M.fromList [fst before, fst after]
+        toSpend = M.fromList [fst map', fst before, fst after]
 
         lookups = lookups' @t mapInstance toSpend
         tx =
           Constraints.mustMintValueWithRedeemer
-            (Ledger.Redeemer $ Ledger.toBuiltinData @TokenRedeemer tokenRedeemer)
+            (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value (T.node'next $ snd before))
+              (NodeDatum $ Node key value (T.node'next $ snd before) False)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd before) (T.node'value $ snd before) (Just $ Pointer tokenAC))
+              (NodeDatum $ Node (T.node'key $ snd before) (T.node'value $ snd before) (Just $ Pointer tokenAC) False)
               (snd (fst before) ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd after) (T.node'value $ snd after) (T.node'next $ snd after))
+              (NodeDatum $ Node (T.node'key $ snd after) (T.node'value $ snd after) (T.node'next $ snd after) False)
               (snd (fst after) ^. Ledger.ciTxOutValue)
+            <> Constraints.mustPayToTheScript
+              (MapDatum $ snd map')
+              nftValue
+            <> Constraints.mustSpendScriptOutput
+              (fst $ fst map')
+              (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst before)
               (Ledger.Redeemer $ Ledger.toBuiltinData ListOp)

@@ -10,25 +10,26 @@ module ArdanaDollar.Map.NodeValidPolicy (
 import Ledger qualified
 import Ledger.Value qualified as Value
 
+import PlutusTx.AssocMap qualified as M
 import PlutusTx.IsData.Class (FromData)
 import PlutusTx.Prelude
 
 import ArdanaDollar.Map.TxUtils (
-  hasOne,
-  lookupToken,
+  inputsAt',
   mapInput',
   mapOutput',
   nodeByKey',
   nodeByPointer',
   nodeInputRef',
+  outputsAt',
   tokenName,
  )
 import ArdanaDollar.Map.Types (
   Map,
   MapInstance,
   Node,
+  NodeValidTokenRedeemer (..),
   Pointer (Pointer),
-  TokenRedeemer (..),
  )
 import ArdanaDollar.Map.Types qualified as T
 
@@ -37,97 +38,99 @@ mkNodeValidPolicy ::
   forall k v.
   (Ord k, Eq v, FromData k, FromData v) =>
   MapInstance ->
-  TokenRedeemer ->
+  NodeValidTokenRedeemer ->
   Ledger.ScriptContext ->
   Bool
-mkNodeValidPolicy inst redeemer ctx =
+mkNodeValidPolicy !inst !redeemer !ctx =
   case redeemer of
     ----
     AddToEmptyMap ->
       fromMaybe False $ do
-        (inputMap', inputMap) <- mapInput
-        (outputMap', outputMap) <- mapOutput
-        (newOutput', newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
-        let expectedTokenAC = tokenAC $ Ledger.txInInfoOutRef inputMap'
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!newOutput', !newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
+        let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef inputMap'
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
-          ( -- required token at inputs
-            hasNFT (Ledger.txInInfoResolved inputMap')
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress outputMap' == expectedAddress
-              && Ledger.txOutAddress newOutput' == expectedAddress
+              && Ledger.txOutAddress outputMap' == mapAddress
+              && Ledger.txOutAddress newOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && isNothing (T.map'head inputMap)
               -- -- correct output linking
-              && T.map'head outputMap == Just (Pointer expectedTokenAC)
+              && T.map'head outputMap == Just expectedPointer
               && outputMap `mapPointsTo` newOutput'
               && isNothing (T.node'next newOutput)
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
+              && inputMap{T.map'head = T.map'head outputMap} == outputMap
               && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 1
-              && outputsAtAddress expectedAddress == 2
-              && checkMintedAmount expectedTokenAC 1
+              && inputsAt mapAddress == 1
+              && outputsAt mapAddress == 2
+              && onlyMintsOne
           )
     ----
     AddSmallest ->
       fromMaybe False $ do
-        (inputMap', inputMap) <- mapInput
-        (outputMap', outputMap) <- mapOutput
-        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
-        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (newOutput', newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
-        let expectedTokenAC = tokenAC $ Ledger.txInInfoOutRef inputMap'
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (!newOutput', !newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
+        let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef inputMap'
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
-          ( -- required token at inputs
-            hasNFT (Ledger.txInInfoResolved inputMap')
-              && hasUs prevInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress outputMap' == expectedAddress
-              && Ledger.txOutAddress newOutput' == expectedAddress
-              && Ledger.txOutAddress prevOutput' == expectedAddress
+              && Ledger.txOutAddress outputMap' == mapAddress
+              && Ledger.txOutAddress newOutput' == mapAddress
+              && Ledger.txOutAddress prevOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && inputMap `mapPointsTo` prevInput'
               -- -- correct output linking
-              && T.map'head outputMap == Just (Pointer expectedTokenAC)
+              && T.map'head outputMap == Just expectedPointer
               && outputMap `mapPointsTo` newOutput'
               && newOutput `nodePointsTo` prevOutput'
               && T.node'key newOutput < T.node'key prevInput
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && prevInput == prevOutput
               && Ledger.txOutValue prevInput' == Ledger.txOutValue prevOutput'
+              && inputMap{T.map'head = T.map'head outputMap} == outputMap
               && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 2
-              && outputsAtAddress expectedAddress == 3
-              && checkMintedAmount expectedTokenAC 1
+              && inputsAt mapAddress == 2
+              && outputsAt mapAddress == 3
+              && onlyMintsOne
           )
     ----
     AddInTheMiddle prev ->
       fromMaybe False $ do
-        (prevInput', prevInput) <- nodeInputByRef prev
-        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
-        (newOutput', newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
-        let expectedTokenAC = tokenAC $ Ledger.txInInfoOutRef prevInput'
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- nodeInputByRef prev
+        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        (!newOutput', !newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
+        let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef prevInput'
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
-          ( -- required token at inputs
-            hasUs (Ledger.txInInfoResolved prevInput')
-              && hasUs nextInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress prevOutput' == expectedAddress
-              && Ledger.txOutAddress nextOutput' == expectedAddress
-              && Ledger.txOutAddress newOutput' == expectedAddress
+              && Ledger.txOutAddress prevOutput' == mapAddress
+              && Ledger.txOutAddress nextOutput' == mapAddress
+              && Ledger.txOutAddress newOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && prevInput `nodePointsTo` nextInput'
               -- -- correct output linking
-              && T.node'next prevOutput == Just (Pointer expectedTokenAC)
+              && T.node'next prevOutput == Just expectedPointer
               && prevOutput `nodePointsTo` newOutput'
               && newOutput `nodePointsTo` nextOutput'
               && T.node'key prevOutput < T.node'key newOutput
@@ -137,55 +140,59 @@ mkNodeValidPolicy inst redeemer ctx =
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
+              && inputMap == outputMap
+              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 2
-              && outputsAtAddress expectedAddress == 3
-              && checkMintedAmount expectedTokenAC 1
+              && inputsAt mapAddress == 3
+              && outputsAt mapAddress == 4
+              && onlyMintsOne
           )
     ----
     AddGreatest prev ->
       fromMaybe False $ do
-        (prevInput', prevInput) <- nodeInputByRef prev
-        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (newOutput', newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
-        let expectedTokenAC = tokenAC $ Ledger.txInInfoOutRef prevInput'
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- nodeInputByRef prev
+        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (!newOutput', !newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
+        let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef prevInput'
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
-          ( -- required token at inputs
-            hasUs (Ledger.txInInfoResolved prevInput')
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress prevOutput' == expectedAddress
-              && Ledger.txOutAddress newOutput' == expectedAddress
+              && Ledger.txOutAddress prevOutput' == mapAddress
+              && Ledger.txOutAddress newOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && isNothing (T.node'next prevInput)
               -- -- correct output linking
-              && T.node'next prevOutput == Just (Pointer expectedTokenAC)
+              && T.node'next prevOutput == Just expectedPointer
               && prevOutput `nodePointsTo` newOutput'
               && isNothing (T.node'next newOutput)
               && T.node'key prevOutput < T.node'key newOutput
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && prevInput{node'next = T.node'next prevOutput} == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
+              && inputMap == outputMap
+              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 1
-              && outputsAtAddress expectedAddress == 2
-              && checkMintedAmount expectedTokenAC 1
+              && inputsAt mapAddress == 2
+              && outputsAt mapAddress == 3
+              && onlyMintsOne
           )
     ----
     RemoveFromOneElementMap ->
       fromMaybe False $ do
-        (inputMap', inputMap) <- mapInput
-        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
-        (outputMap', outputMap) <- mapOutput
-        burntPointer <- T.map'head inputMap
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
-          ( -- required token at inputs
-            hasNFT (Ledger.txInInfoResolved inputMap')
-              && hasUs prevInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress outputMap' == expectedAddress
+              && Ledger.txOutAddress outputMap' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && inputMap `mapPointsTo` prevInput'
@@ -193,30 +200,28 @@ mkNodeValidPolicy inst redeemer ctx =
               -- -- correct output linking
               && isNothing (T.map'head outputMap)
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
+              && inputMap{T.map'head = T.map'head outputMap} == outputMap
               && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 2
-              && outputsAtAddress expectedAddress == 1
-              && checkMintedAmount (T.unPointer burntPointer) (-1)
+              && inputsAt mapAddress == 2
+              && outputsAt mapAddress == 1
+              && onlyBurnsOne
           )
     ----
     RemoveSmallest ->
       fromMaybe False $ do
-        (inputMap', inputMap) <- mapInput
-        (outputMap', outputMap) <- mapOutput
-        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
-        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
-        burntPointer <- T.map'head inputMap
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
-          ( -- required token at inputs
-            hasNFT (Ledger.txInInfoResolved inputMap')
-              && hasUs prevInput'
-              && hasUs nextInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress outputMap' == expectedAddress
-              && Ledger.txOutAddress nextOutput' == expectedAddress
+              && Ledger.txOutAddress outputMap' == mapAddress
+              && Ledger.txOutAddress nextOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && inputMap `mapPointsTo` prevInput'
@@ -226,30 +231,30 @@ mkNodeValidPolicy inst redeemer ctx =
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
+              && inputMap{T.map'head = T.map'head outputMap} == outputMap
               && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 3
-              && outputsAtAddress expectedAddress == 2
-              && checkMintedAmount (T.unPointer burntPointer) (-1)
+              && inputsAt mapAddress == 3
+              && outputsAt mapAddress == 2
+              && onlyBurnsOne
           )
     ----
     RemoveInTheMiddle prev ->
       fromMaybe False $ do
-        (prevInput', prevInput) <- nodeInputByRef prev
-        (currInput', currInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (nextInput', nextInput) <- T.node'next currInput >>= nodeInputByPointer
-        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
-        burntPointer <- T.node'next prevInput
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- nodeInputByRef prev
+        (!currInput', !currInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (!nextInput', !nextInput) <- T.node'next currInput >>= nodeInputByPointer
+        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
-          ( -- required token at inputs
-            hasUs (Ledger.txInInfoResolved prevInput')
-              && hasUs currInput'
-              && hasUs nextInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress prevOutput' == expectedAddress
-              && Ledger.txOutAddress nextOutput' == expectedAddress
+              && Ledger.txOutAddress prevOutput' == mapAddress
+              && Ledger.txOutAddress nextOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && prevInput `nodePointsTo` currInput'
@@ -261,25 +266,27 @@ mkNodeValidPolicy inst redeemer ctx =
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
+              && inputMap == outputMap
+              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 3
-              && outputsAtAddress expectedAddress == 2
-              && checkMintedAmount (T.unPointer burntPointer) (-1)
+              && inputsAt mapAddress == 4
+              && outputsAt mapAddress == 3
+              && onlyBurnsOne
           )
     ----
     RemoveGreatest prev ->
       fromMaybe False $ do
-        (prevInput', prevInput) <- nodeInputByRef prev
-        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        burntPointer <- T.node'next prevInput
-        let expectedAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
+        (!inputMap', !inputMap) <- mapInput
+        (!outputMap', !outputMap) <- mapOutput
+        (!prevInput', !prevInput) <- nodeInputByRef prev
+        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
-          ( -- required token at inputs
-            hasUs (Ledger.txInInfoResolved prevInput')
-              && hasUs nextInput'
+          ( -- map not locked
+            not (T.map'locked inputMap)
               -- outputs at correct address
-              && Ledger.txOutAddress prevOutput' == expectedAddress
+              && Ledger.txOutAddress prevOutput' == mapAddress
               -- input-output validation
               -- -- correct input linking
               && prevInput `nodePointsTo` nextInput'
@@ -289,73 +296,75 @@ mkNodeValidPolicy inst redeemer ctx =
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && prevInput{node'next = T.node'next prevOutput} == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
+              && inputMap == outputMap
+              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAtAddress expectedAddress == 2
-              && outputsAtAddress expectedAddress == 1
-              && checkMintedAmount (T.unPointer burntPointer) (-1)
+              && inputsAt mapAddress == 3
+              && outputsAt mapAddress == 2
+              && onlyBurnsOne
           )
   where
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 
     tokenAC :: Ledger.TxOutRef -> Ledger.AssetClass
-    tokenAC ref =
+    tokenAC !ref =
       Value.assetClass
         (Ledger.ownCurrencySymbol ctx)
         (tokenName ref)
 
-    hasUs :: Ledger.TxOut -> Bool
-    hasUs txOut = isJust $ lookupToken (Ledger.ownCurrencySymbol ctx) txOut
+    ownPointerCS :: T.PointerCS
+    ownPointerCS = T.PointerCS (Ledger.ownCurrencySymbol ctx)
 
     mapInput :: Maybe (Ledger.TxInInfo, Map)
-    mapInput = mapInput' @k @v info (Ledger.txInfoInputs info)
+    mapInput = mapInput' @k @v info inst (Ledger.txInfoInputs info)
 
     mapOutput :: Maybe (Ledger.TxOut, Map)
-    mapOutput = mapOutput' @k @v info (Ledger.txInfoOutputs info)
+    mapOutput = mapOutput' @k @v info inst (Ledger.txInfoOutputs info)
 
     nodeOutputByKey :: k -> Maybe (Ledger.TxOut, Node k v)
-    nodeOutputByKey = nodeByKey' info (Ledger.txInfoOutputs info)
+    nodeOutputByKey = nodeByKey' info ownPointerCS (Ledger.txInfoOutputs info)
 
     nodeOutputByPointer :: Pointer -> Maybe (Ledger.TxOut, Node k v)
-    nodeOutputByPointer = nodeByPointer' info (Ledger.txInfoOutputs info)
+    nodeOutputByPointer = nodeByPointer' info ownPointerCS (Ledger.txInfoOutputs info)
 
     nodeInputByPointer :: Pointer -> Maybe (Ledger.TxOut, Node k v)
-    nodeInputByPointer = nodeByPointer' info (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
+    nodeInputByPointer = nodeByPointer' info ownPointerCS (Ledger.txInInfoResolved <$> Ledger.txInfoInputs info)
 
     nodeInputByRef :: Ledger.TxOutRef -> Maybe (Ledger.TxInInfo, Node k v)
-    nodeInputByRef = nodeInputRef' info (Ledger.txInfoInputs info)
+    nodeInputByRef = nodeInputRef' info ownPointerCS (Ledger.txInfoInputs info)
 
-    hasNFT :: Ledger.TxOut -> Bool
-    hasNFT txOut = hasOne (T.unMapInstance inst) txOut
+    inputsAt :: Ledger.Address -> Integer
+    inputsAt = inputsAt' info
 
-    inputsAtAddress :: Ledger.Address -> Integer
-    inputsAtAddress address =
-      length $
-        ( \txInInfo ->
-            Ledger.txOutAddress
-              (Ledger.txInInfoResolved txInInfo)
-              == address
-        )
-          `filter` Ledger.txInfoInputs info
-
-    outputsAtAddress :: Ledger.Address -> Integer
-    outputsAtAddress address =
-      length $
-        (\txOut -> Ledger.txOutAddress txOut == address) `filter` Ledger.txInfoOutputs info
+    outputsAt :: Ledger.Address -> Integer
+    outputsAt = outputsAt' info
 
     mapPointsTo :: Map -> Ledger.TxOut -> Bool
-    mapPointsTo map' txOut =
+    mapPointsTo !map' !txOut =
       maybe
         False
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (T.unPointer pointer) == 1)
         (T.map'head map')
 
     nodePointsTo :: Node k v -> Ledger.TxOut -> Bool
-    nodePointsTo node txOut =
+    nodePointsTo !node !txOut =
       maybe
         False
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (T.unPointer pointer) == 1)
         (T.node'next node)
 
-    checkMintedAmount :: Ledger.AssetClass -> Integer -> Bool
-    checkMintedAmount ac num = Value.assetClassValueOf (Ledger.txInfoMint info) ac == num
+    expectMinting :: Integer -> Bool
+    expectMinting expected =
+      let cs = Ledger.ownCurrencySymbol ctx
+          minted = Ledger.txInfoMint info
+          tokens = maybe [] M.toList (M.lookup cs (Value.getValue minted))
+       in case tokens of
+            [(_, amt)] -> amt == expected
+            _ -> False
+
+    onlyMintsOne :: Bool
+    onlyMintsOne = expectMinting 1
+
+    onlyBurnsOne :: Bool
+    onlyBurnsOne = expectMinting (-1)

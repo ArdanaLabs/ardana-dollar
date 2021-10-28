@@ -32,7 +32,8 @@ import ArdanaDollar.Map.Types (
   MapInstance,
   Node (Node),
   PointerCS,
-  Redeemer (ListOp, Use),
+  Redeemer (CreateSnapshotToken, ListOp, Use),
+  SnapshotCS,
  )
 import ArdanaDollar.Map.Types qualified as T
 
@@ -42,23 +43,25 @@ mkValidator ::
   (Ord k, FromData k, FromData v, Eq v) =>
   MapInstance ->
   PointerCS ->
+  SnapshotCS ->
   Datum k v ->
   Redeemer ->
   Ledger.ScriptContext ->
   Bool
-mkValidator inst pointerCS datum redeemer ctx =
+mkValidator inst pointerCS snapshotCS datum redeemer ctx =
   case redeemer of
     Use -> validateUseRedeemer
-    ListOp -> burnsXorMintsOneToken
+    ListOp -> nodePolicyFires
+    CreateSnapshotToken -> snapshotPolicyFires
   where
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
 
     mapOutput :: Maybe (Ledger.TxOut, Map)
-    mapOutput = mapOutput' @k @v info (Ledger.getContinuingOutputs ctx)
+    mapOutput = mapOutput' @k @v info inst (Ledger.getContinuingOutputs ctx)
 
     nodeOutput :: k -> Maybe (Ledger.TxOut, Node k v)
-    nodeOutput = nodeByKey' info (Ledger.getContinuingOutputs ctx)
+    nodeOutput = nodeByKey' info pointerCS (Ledger.getContinuingOutputs ctx)
 
     hasNFT :: Ledger.TxOut -> Bool
     hasNFT = hasOne (T.unMapInstance inst)
@@ -88,16 +91,30 @@ mkValidator inst pointerCS datum redeemer ctx =
                 && outputHasNFT
                 && inputMap == outputMap
             )
-      NodeDatum inputNode@(Node key _ _) -> fromMaybe False $ do
+      NodeDatum inputNode@(Node key _ _ locked) -> fromMaybe False $ do
         i <- inputToken
         o <- outputToken key
-        (_, outputNode) <- nodeOutput key
-        return (i == o && inputNode{node'value = T.node'value outputNode} == outputNode)
+        (outputNode', outputNode) <- nodeOutput key
+        return $
+          if locked
+            then
+              inputNode == outputNode
+                && Just (Ledger.txOutValue outputNode')
+                  == (Ledger.txOutValue . Ledger.txInInfoResolved <$> Ledger.findOwnInput ctx)
+            else
+              inputNode{node'value = T.node'value outputNode} == outputNode
+                && i == o
+      _ -> False
 
-    burnsXorMintsOneToken :: Bool
-    burnsXorMintsOneToken =
+    snapshotPolicyFires :: Bool
+    snapshotPolicyFires = mintingPolicyFires (T.unSnapshotCS snapshotCS)
+
+    nodePolicyFires :: Bool
+    nodePolicyFires = mintingPolicyFires (T.unPointerCS pointerCS)
+
+    mintingPolicyFires :: Value.CurrencySymbol -> Bool
+    mintingPolicyFires expected =
       let flattened = Value.flattenValue (Ledger.txInfoMint info)
-          f = (\(cs, _, _) -> cs == T.unPointerCS pointerCS) `filter` flattened
-       in case f of
-            [(_, _, amt)] -> amt == 1 || amt == -1
-            _ -> False
+       in case (\(cs, _, _) -> cs == expected) `filter` flattened of
+            _ : _ -> True
+            [] -> False
