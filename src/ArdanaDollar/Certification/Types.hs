@@ -12,8 +12,8 @@ import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger (
   Address,
-  POSIXTime,
   DatumHash,
+  POSIXTime,
  )
 import PlutusTx qualified
 import PlutusTx.Prelude (
@@ -41,18 +41,18 @@ instance Eq ProliferationParameters where
       && minReplications' a == minReplications' b
       && narrowIntervalWidth' a == narrowIntervalWidth' b
 
-data Certification = Certification {
-    minReplications         :: Integer
-  , certificationExpiry     :: POSIXTime
-  , narrowIntervalWidth     :: Integer
-  , certificatiedDatumHash  :: DatumHash
+data Certification = Certification
+  { minReplications :: Integer
+  , certificationExpiry :: POSIXTime
+  , narrowIntervalWidth :: Integer
+  , certifiedDatumHash :: DatumHash
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 PlutusTx.makeIsDataIndexed ''Certification [('Certification, 0)]
 
-data CertificationMintingRedeemer =
-  Initialise
+data CertificationMintingRedeemer
+  = Initialise
   | Certify Address Certification
   | CopyCertificationToken Address DatumHash
   | DestroyCertificationToken DatumHash

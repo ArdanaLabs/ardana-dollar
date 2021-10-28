@@ -1,8 +1,8 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Certification.OnChain (
@@ -14,14 +14,14 @@ module ArdanaDollar.Certification.OnChain (
 import ArdanaDollar.Certification.Types
 import ArdanaDollar.Utils (getAllScriptInputsWithDatum, getContinuingScriptOutputsWithDatum)
 import Ledger (
-  DatumHash(..),
+  DatumHash (..),
   TxOutRef,
   member,
   ownCurrencySymbol,
   txInInfoOutRef,
   txInfoInputs,
-  txOutValue,
   txInfoOutputs,
+  txOutValue,
  )
 import Ledger qualified
 import Ledger.Typed.Scripts qualified as Scripts
@@ -61,7 +61,7 @@ mkCertificationMintingPolicy
   _
   (Certify adaReturnAddress Certification {..})
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-         correctMinting
+    correctMinting
       && outputCarriesCertificationAuthorityToken
       && continuingCertificationsAreValid
       && atLeastOneCertificationProduced
@@ -69,10 +69,11 @@ mkCertificationMintingPolicy
       minted :: Ledger.Value
       minted = Ledger.txInfoMint txInfo
       certificationTokenName :: Value.TokenName
-      certificationTokenName = let DatumHash name = certificatiedDatumHash in Value.TokenName name
+      certificationTokenName = let DatumHash name = certifiedDatumHash in Value.TokenName name
       certificationTokensMinted :: Ledger.Value
-      certificationTokensMinted = let DatumHash name = certificatiedDatumHash
-                                   in Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName name) numCertifications
+      certificationTokensMinted =
+        let DatumHash name = certifiedDatumHash
+         in Value.singleton (Ledger.ownCurrencySymbol sc) (Value.TokenName name) numCertifications
       captiveTokensMinted :: Ledger.Value
       captiveTokensMinted = captiveTokenValue (Ledger.ownCurrencySymbol sc) numCertifications
       certificationOutput :: ProliferationParameters
@@ -96,14 +97,14 @@ mkCertificationMintingPolicy
       outputCarriesCertificationAuthorityToken :: Bool
       outputCarriesCertificationAuthorityToken =
         let outputValue = mconcat (txOutValue <$> txInfoOutputs txInfo)
-        in traceIfFalse
-            "CertificationAuthorityToken not present"
-            (valueCarriesCertificationAuthorityToken (ownCurrencySymbol sc) outputValue)
+         in traceIfFalse
+              "CertificationAuthorityToken not present"
+              (valueCarriesCertificationAuthorityToken (ownCurrencySymbol sc) outputValue)
 mkCertificationMintingPolicy
   _
   (CopyCertificationToken adaReturnAddress (DatumHash certificationTokenNameBS))
   sc@Ledger.ScriptContext {scriptContextTxInfo = txInfo} =
-         correctMinting
+    correctMinting
       && repaysCopyCreator
       && createsAtLeastNCopies
       && continuingCertificationsAreValid
@@ -117,7 +118,7 @@ mkCertificationMintingPolicy
       captiveTokensMinted :: Ledger.Value
       captiveTokensMinted = captiveTokenValue (Ledger.ownCurrencySymbol sc) (numCertifications - 1)
       proliferatedParameters :: ProliferationParameters
-      proliferatedParameters = p { adaReturnAddress' = adaReturnAddress }
+      proliferatedParameters = p {adaReturnAddress' = adaReturnAddress}
       correctMinting :: Bool
       correctMinting =
         traceIfFalse

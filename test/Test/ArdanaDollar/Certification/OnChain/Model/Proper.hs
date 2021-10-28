@@ -60,21 +60,23 @@ instance Proper CertificationModel where
     deriving (Show)
   data Property CertificationModel
     = InitialiseContext
---    | HasOneShotUTXOInput
---    | HasCertificationAuthorityTokenInOutput
+    | --    | HasOneShotUTXOInput
+      --    | HasCertificationAuthorityTokenInOutput
 
-    | CertificationContext
+      CertificationContext
     | CopyCertificationTokenContext
     | DestroyCertificationTokenContext
     deriving stock (Enum, Eq, Ord, Bounded, Show)
 
-  logic = All
-    [ ExactlyOne (Var <$> [InitialiseContext, CertificationContext, CopyCertificationTokenContext, DestroyCertificationTokenContext])
---    , Some (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput]) :->: Var InitialiseContext
-    ]
---  expect = All
---    [ Var InitialiseContext :->: All (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput])
---    ]
+  logic =
+    All
+      [ ExactlyOne (Var <$> [InitialiseContext, CertificationContext, CopyCertificationTokenContext, DestroyCertificationTokenContext])
+      --    , Some (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput]) :->: Var InitialiseContext
+      ]
+
+  --  expect = All
+  --    [ Var InitialiseContext :->: All (Var <$> [HasOneShotUTXOInput,HasCertificationAuthorityTokenInOutput])
+  --    ]
   satisfiesProperty = flip satisfiesProperty'
   genModel = genModel' . Set.toList
 
