@@ -113,7 +113,7 @@ oracleHash :: TokenName
 
 ### AddBorrowAct
 
-Purpose: Allow the user to repay a borrow
+Purpose: Allow the user to borrow dUSD.
 
 Arguments:
 ```haskell
