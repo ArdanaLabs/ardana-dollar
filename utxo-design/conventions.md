@@ -90,8 +90,8 @@ machine, reading it naively would create immense contention, as it
 can only ever be used once per block.
 
 We solve this problem by not reading the state directly
-in a script, but by requiring that the consumer supply it
-in the redeemer. The state then needs to be checked for validity,
+in a script, but by requiring that the consumer supply it.
+The state then needs to be checked for validity,
 and that is done by having a minting policy, the *certification tokens* of which
 contain the hash of the state in the name of the token itself.
 
