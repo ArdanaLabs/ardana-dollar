@@ -2,18 +2,20 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-specialise #-}
 
-module ArdanaDollar.Certification.Types (
+module ArdanaDollar.ExponentialMint.Types (
   ProliferationParameters (..),
-  CertificationMintingRedeemer (..),
-  Certification (..),
+  ExponentialMintingRedeemer (..),
+  ExponentialMint (..),
 ) where
 
 import Data.Aeson qualified as JSON
 import GHC.Generics (Generic)
 import Ledger (
   Address,
-  DatumHash,
   POSIXTime,
+ )
+import Ledger.Value (
+  TokenName,
  )
 import PlutusTx qualified
 import PlutusTx.Prelude (
@@ -26,7 +28,7 @@ import Prelude qualified as Haskell
 data ProliferationParameters = ProliferationParameters
   { adaReturnAddress' :: Address
   , minReplications' :: Integer
-  , certificationExpiry' :: POSIXTime
+  , canBeDestroyedAtTime' :: POSIXTime
   , narrowIntervalWidth' :: Integer
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
@@ -37,25 +39,25 @@ instance Eq ProliferationParameters where
   {-# INLINEABLE (==) #-}
   (==) a b =
     adaReturnAddress' a == adaReturnAddress' b
-      && certificationExpiry' a == certificationExpiry' b
+      && canBeDestroyedAtTime' a == canBeDestroyedAtTime' b
       && minReplications' a == minReplications' b
       && narrowIntervalWidth' a == narrowIntervalWidth' b
 
-data Certification = Certification
+data ExponentialMint = ExponentialMint
   { minReplications :: Integer
-  , certificationExpiry :: POSIXTime
+  , canBeDestroyedAtTime :: POSIXTime
   , narrowIntervalWidth :: Integer
-  , certifiedDatumHash :: DatumHash
+  , seedTokenName :: TokenName
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''Certification [('Certification, 0)]
+PlutusTx.makeIsDataIndexed ''ExponentialMint [('ExponentialMint, 0)]
 
-data CertificationMintingRedeemer
+data ExponentialMintingRedeemer
   = Initialise
-  | Certify Address Certification
-  | CopyCertificationToken Address DatumHash
-  | DestroyCertificationToken DatumHash
+  | SeedExponentiallyMintableToken Address ExponentialMint
+  | CopyExponentiallyMintableToken Address TokenName
+  | DestroyExponentiallyMintableToken TokenName
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
   deriving anyclass (JSON.FromJSON, JSON.ToJSON)
-PlutusTx.makeIsDataIndexed ''CertificationMintingRedeemer [('Initialise, 0), ('Certify, 1), ('CopyCertificationToken, 2), ('DestroyCertificationToken, 3)]
+PlutusTx.makeIsDataIndexed ''ExponentialMintingRedeemer [('Initialise, 0), ('SeedExponentiallyMintableToken, 1), ('CopyExponentiallyMintableToken, 2), ('DestroyExponentiallyMintableToken, 3)]

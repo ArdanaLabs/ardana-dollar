@@ -4,8 +4,8 @@ import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
 
 import Test.ArdanaDollar.BufferAuctionTraceTest (bufferTraceTests)
-import Test.ArdanaDollar.Certification.OnChain.Model.Proper
 import Test.ArdanaDollar.DanaStakePoolTest
+import Test.ArdanaDollar.ExponentialMint.OnChain.Model.Proper
 import Test.ArdanaDollar.MapTest
 import Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
 import Test.ArdanaDollar.TreasuryTraceTest (treasuryTraceTests)
