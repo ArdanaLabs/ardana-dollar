@@ -81,7 +81,7 @@ mkUpgradeContractTokenMintingPolicy params () sc =
             , txOutValue = v
             } ->
               isScriptAddress addr
-                && v `valueSubsetOf` forgeValue 1
+                && forgeValue 1 `valueSubsetOf` v
                 && Value.assetClassValueOf v upgradeTokenAssetClass == 1
 
     forgeValue :: Integer -> Value.Value
@@ -91,7 +91,7 @@ mkUpgradeContractTokenMintingPolicy params () sc =
     isSigned = upgradeToken'initialOwner params `elem` signatories
 
     isCorrectlyForging :: Bool
-    isCorrectlyForging = Contexts.txInfoMint info `valueSubsetOf` forgeValue 2
+    isCorrectlyForging = forgeValue 2 `valueSubsetOf` Contexts.txInfoMint info
 
     isScriptAddress :: Ledger.Address -> Bool
     isScriptAddress =

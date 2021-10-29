@@ -12,7 +12,7 @@ module ArdanaDollar.DanaStakePool.Contracts (
   querySelf,
 ) where
 
-import Prelude
+import Prelude hiding (init, last)
 
 import Plutus.Contract
 import PlutusTx
@@ -28,6 +28,7 @@ import Control.Lens ((^.))
 import Control.Monad.Except
 import Data.Functor ((<&>))
 import Data.Kind
+import Data.List.NonEmpty (init, last, nonEmpty)
 import Data.Map qualified as Map
 import Data.Monoid (Last (Last))
 import Data.Row
@@ -92,9 +93,9 @@ globalUtxo ::
 globalUtxo nft = do
   utxos <- Map.filter hasNft <$> utxosAt (spAddress nft)
   found <- concat <$> forM (Map.toList utxos) own
-  if length found == 1
-    then return $ head found
-    else throwError "not global utxo"
+  case found of
+    [h] -> return h
+    _ -> throwError "not global utxo"
   where
     own e@(_, o) =
       datumForOffchain o <&> \case
@@ -174,37 +175,39 @@ initializeUser nft = do
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
 deposit :: forall (s :: Row Type) (w :: Type). NFTAssetClass -> Integer -> Contract w s Text ()
-deposit nft amount = do
-  utxo <- head <$> ownUtxos nft
-  global <- globalUtxo nft
+deposit nft amount =
+  ownUtxos nft >>= \case
+    [] -> throwError "Cannot find user's UTxOs"
+    (utxo : _) -> do
+      global <- globalUtxo nft
 
-  let danaAmount = Value.assetClassValue danaAsset amount
+      let danaAmount = Value.assetClassValue danaAsset amount
 
-      oldBalance = userData'balance $ snd utxo
-      newBalance = oldBalance <> Balance danaAmount PlutusTx.Prelude.mempty
-      oldGlobalData = snd global
-      newGlobalData = addTotalStake oldGlobalData danaAmount
-      oldUserData = snd utxo
-      newUserData = oldUserData {userData'balance = newBalance}
-      oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
-      newGlobalValue = oldGlobalValue
+          oldBalance = userData'balance $ snd utxo
+          newBalance = oldBalance <> Balance danaAmount PlutusTx.Prelude.mempty
+          oldGlobalData = snd global
+          newGlobalData = addTotalStake oldGlobalData danaAmount
+          oldUserData = snd utxo
+          newUserData = oldUserData {userData'balance = newBalance}
+          oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
+          newGlobalValue = oldGlobalValue
 
-      toSpend = Map.fromList [fst global, fst utxo]
+          toSpend = Map.fromList [fst global, fst utxo]
 
-      lookups =
-        Constraints.typedValidatorLookups (spInst nft)
-          <> Constraints.otherScript (spValidator nft)
-          <> Constraints.unspentOutputs toSpend
-      tx =
-        Constraints.mustPayToTheScript (UserDatum newUserData) (balanceToUserValue nft newBalance)
-          <> Constraints.mustPayToTheScript (GlobalDatum newGlobalData) newGlobalValue
-          <> spendWithConstRedeemer DepositOrWithdraw toSpend
+          lookups =
+            Constraints.typedValidatorLookups (spInst nft)
+              <> Constraints.otherScript (spValidator nft)
+              <> Constraints.unspentOutputs toSpend
+          tx =
+            Constraints.mustPayToTheScript (UserDatum newUserData) (balanceToUserValue nft newBalance)
+              <> Constraints.mustPayToTheScript (GlobalDatum newGlobalData) newGlobalValue
+              <> spendWithConstRedeemer DepositOrWithdraw toSpend
 
-  if positive (balance'stake newBalance)
-    then do
-      ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
-    else throwError "Negative balance not acceptable"
+      if positive (balance'stake newBalance)
+        then do
+          ledgerTx <- submitTxConstraintsWith lookups tx
+          void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+        else throwError "Negative balance not acceptable"
 
 withdraw :: forall (s :: Row Type). NFTAssetClass -> Integer -> Contract (Last Datum) s Text ()
 withdraw nft amount = deposit nft (Numeric.negate amount)
@@ -306,42 +309,47 @@ distributeRewards nft _ = do
       oldGlobalValue = snd (fst global) ^. Ledger.ciTxOutValue
       totalReward = oldGlobalValue <> Numeric.negate (nftToken nft)
       sorted = sortBy (\(_, d1) (_, d2) -> compare (userData'id d1) (userData'id d2)) utxos
-      txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted)
-  if
-      | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
-      | totalStakeGlobal == PlutusTx.Prelude.mempty -> logInfo @String $ "total stake is zero"
-      | totalReward == PlutusTx.Prelude.mempty -> logInfo @String $ "no rewards"
-      | null utxos -> throwError "no user utxos"
-      | otherwise ->
-        do
-          logInfo @String $ "found utxos" <> show (length sorted) <> show sorted
-          distributeRewardsTrigger nft
-          txs
-          distributeRewardsUser nft totalReward False (last sorted)
+  case nonEmpty sorted of
+    Nothing -> throwError "No UTxOs"
+    Just sorted' -> do
+      let txs = mapM_ (distributeRewardsUser nft totalReward True) (init sorted')
+      if
+          | totalStakeUtxo /= totalStakeGlobal -> throwError "not all utxos provided"
+          | totalStakeGlobal == PlutusTx.Prelude.mempty -> logInfo @String $ "total stake is zero"
+          | totalReward == PlutusTx.Prelude.mempty -> logInfo @String $ "no rewards"
+          | null utxos -> throwError "no user utxos"
+          | otherwise ->
+            do
+              logInfo @String $ "found utxos" <> show (length sorted) <> show sorted
+              distributeRewardsTrigger nft
+              txs
+              distributeRewardsUser nft totalReward False (last sorted')
 
 withdrawRewards :: forall (s :: Row Type). NFTAssetClass -> () -> Contract (Last Datum) s Text ()
-withdrawRewards nft _ = do
-  self <- Ledger.pubKeyHash <$> ownPubKey
-  utxo <- head <$> ownUtxos nft
+withdrawRewards nft _ =
+  ownUtxos nft >>= \case
+    [] -> throwError "Could not find user's UTxOs"
+    (utxo : _) -> do
+      self <- Ledger.pubKeyHash <$> ownPubKey
 
-  let oldBalance = userData'balance $ snd utxo
-      newBalance = Balance (balance'stake oldBalance) PlutusTx.Prelude.mempty
-      oldUserData = snd utxo
-      newUserData = oldUserData{userData'balance = newBalance}
+      let oldBalance = userData'balance $ snd utxo
+          newBalance = Balance (balance'stake oldBalance) PlutusTx.Prelude.mempty
+          oldUserData = snd utxo
+          newUserData = oldUserData{userData'balance = newBalance}
 
-      toSpend = Map.fromList [fst utxo]
+          toSpend = Map.fromList [fst utxo]
 
-      lookups =
-        Constraints.typedValidatorLookups (spInst nft)
-          <> Constraints.otherScript (spValidator nft)
-          <> Constraints.unspentOutputs toSpend
-      tx =
-        Constraints.mustPayToTheScript (UserDatum newUserData) (balanceToUserValue nft newBalance)
-          <> Constraints.mustPayToPubKey self (balance'reward oldBalance)
-          <> spendWithConstRedeemer WithdrawRewards toSpend
+          lookups =
+            Constraints.typedValidatorLookups (spInst nft)
+              <> Constraints.otherScript (spValidator nft)
+              <> Constraints.unspentOutputs toSpend
+          tx =
+            Constraints.mustPayToTheScript (UserDatum newUserData) (balanceToUserValue nft newBalance)
+              <> Constraints.mustPayToPubKey self (balance'reward oldBalance)
+              <> spendWithConstRedeemer WithdrawRewards toSpend
 
-  ledgerTx <- submitTxConstraintsWith lookups tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      ledgerTx <- submitTxConstraintsWith lookups tx
+      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
 
 queryUser :: forall (s :: Row Type). NFTAssetClass -> Ledger.PubKeyHash -> Contract (Last [UserData]) s Text ()
 queryUser nft pkh = do

@@ -9,22 +9,26 @@ module ArdanaDollar.Treasury.OnChain (
 import Ledger qualified
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Contexts qualified as Contexts
+import Plutus.V1.Ledger.Value.Extra (valueSubsetOf)
 import PlutusTx.Prelude
 import PlutusTx.UniqueMap qualified as UniqueMap
 
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.Types
-import ArdanaDollar.Utils (datumForOnchain, validateDatumImmutable)
+import ArdanaDollar.Utils (allNonEmpty, datumForOnchain, validateDatumImmutable)
+
+--------------------------------------------------------------------------------
 
 {-# INLINEABLE mkTreasuryValidator #-}
 mkTreasuryValidator ::
   Treasury ->
+  Value.AssetClass ->
   TreasuryDatum ->
   TreasuryAction ->
   Contexts.ScriptContext ->
   Bool
-mkTreasuryValidator treasury td redeemer ctx =
+mkTreasuryValidator treasury canSpendAC td redeemer ctx =
   traceIfFalse "treasury token missing from input" (hasTreasuryToken ownInput)
     && traceIfFalse "treasury token missing from output" (hasTreasuryToken ownOutput)
     && traceIfFalse "upgrade token missing from input" (hasUpgradeToken ownInput)
@@ -34,11 +38,17 @@ mkTreasuryValidator treasury td redeemer ctx =
       DepositFundsWithCostCenter params ->
         validateAuctionDanaAmountUnchanged td ctx
           && validateCurrentContractUnchanged td ctx
-          && validateDepositFunds params td ownInput ownOutput ctx
+          && validateDepositFunds td ownInput ownOutput ctx params
+      SpendFundsFromCostCenter params ->
+        validateAuctionDanaAmountUnchanged td ctx
+          && validateCurrentContractUnchanged td ctx
+          && validateSpendFunds td ownInput ownOutput canSpendAC ctx params
       InitiateUpgrade nc ->
         validateAuctionDanaAmountUnchanged td ctx
           && validateCostCentersUnchanged td ctx
           && validateUpgrade nc treasury td ownOutput ctx
+      AllowMint ac ->
+        any (hasToken ac) (Ledger.txInfoOutputs . Contexts.scriptContextTxInfo $ ctx)
       _ -> False -- TODO: rest of the validators
   where
     ownInput :: Ledger.TxOut
@@ -60,6 +70,7 @@ mkTreasuryValidator treasury td redeemer ctx =
     hasToken :: Value.AssetClass -> Ledger.TxOut -> Bool
     hasToken ac o = Value.assetClassValueOf (Ledger.txOutValue o) ac == 1
 
+------------------------------ HELPER VALIDATORS -------------------------------
 {-# INLINEABLE validateAuctionDanaAmountUnchanged #-}
 validateAuctionDanaAmountUnchanged :: TreasuryDatum -> Contexts.ScriptContext -> Bool
 validateAuctionDanaAmountUnchanged =
@@ -99,39 +110,30 @@ validateDatumFieldUnchanged errMsg getter td ctx =
     outputDatum :: Maybe TreasuryDatum
     outputDatum = datumForOnchain info ownOutput
 
-{-# INLINEABLE validateDepositFunds #-}
-validateDepositFunds ::
-  TreasuryDepositParams ->
+{-# INLINEABLE isCostCenterChangeListed #-}
+
+{- | Check if deposit is correctly listed in the cost centers map and
+    that the operation does not change other cost centers in any way
+-}
+isCostCenterChangeListed ::
   TreasuryDatum ->
-  Ledger.TxOut ->
-  Ledger.TxOut ->
-  Contexts.ScriptContext ->
+  TreasuryDatum ->
+  BuiltinByteString ->
+  (Value.Value -> Value.Value -> Bool) ->
   Bool
-validateDepositFunds params td ownInput ownOutput ctx =
-  traceIfFalse "deposit is not positive" isDepositPositive
-    && traceIfFalse "deposit tries withdrawing funds" isDeposited
-    && case outputDatum of
-      Nothing -> traceError "cannot find output datum"
-      Just td' -> isDepositListed td'
+isCostCenterChangeListed oldDatum newDatum costCenterName sameCostCenterCheck =
+  let oldCostCenters = costCenters oldDatum
+      newCostCenters = costCenters newDatum
+
+      oldDatumAsset = costCenterValue oldCostCenters
+      newDatumAsset = costCenterValue newCostCenters
+
+      otherCostCentersImmutable =
+        otherCostCenters oldCostCenters == otherCostCenters newCostCenters
+      assetValueSameCostCenterChanged = sameCostCenterCheck oldDatumAsset newDatumAsset
+   in traceIfFalse "modifies other cost centers" otherCostCentersImmutable
+        && traceIfFalse "is not listed" assetValueSameCostCenterChanged
   where
-    deposit :: Value.Value
-    deposit = treasuryDeposit'value params
-
-    costCenterName :: BuiltinByteString
-    costCenterName = treasuryDeposit'costCenter params
-
-    info :: Contexts.TxInfo
-    info = Contexts.scriptContextTxInfo ctx
-
-    inputValue :: Value.Value
-    inputValue = Ledger.txOutValue ownInput
-
-    outputValue :: Value.Value
-    outputValue = Ledger.txOutValue ownOutput
-
-    outputDatum :: Maybe TreasuryDatum
-    outputDatum = datumForOnchain info ownOutput
-
     otherCostCenters ::
       UniqueMap.Map BuiltinByteString Value.Value ->
       UniqueMap.Map BuiltinByteString Value.Value
@@ -140,27 +142,120 @@ validateDepositFunds params td ownInput ownOutput ctx =
     costCenterValue :: UniqueMap.Map BuiltinByteString Value.Value -> Value.Value
     costCenterValue = fromMaybe mempty . UniqueMap.lookup costCenterName
 
-    isDepositPositive :: Bool
-    isDepositPositive = all (\(_, _, i) -> i > 0) (Value.flattenValue deposit)
+---------------------------------- VALIDATORS ----------------------------------
+{-# INLINEABLE validateDepositFunds #-}
+validateDepositFunds ::
+  TreasuryDatum ->
+  Ledger.TxOut ->
+  Ledger.TxOut ->
+  Contexts.ScriptContext ->
+  TreasuryDepositParams ->
+  Bool
+validateDepositFunds
+  td
+  ownInput
+  ownOutput
+  ctx
+  TreasuryDepositParams
+    { treasuryDeposit'value = deposit
+    , treasuryDeposit'costCenter = costCenterName
+    } =
+    traceIfFalse "deposit is not positive" isDepositPositive
+      && traceIfFalse "deposit tries withdrawing funds" isDeposited
+      && case outputDatum of
+        Nothing -> traceError "cannot find output datum"
+        Just td' ->
+          isCostCenterChangeListed
+            td
+            td'
+            costCenterName
+            (\old new -> old <> deposit == new)
+    where
+      info :: Contexts.TxInfo
+      info = Contexts.scriptContextTxInfo ctx
 
-    isDeposited :: Bool
-    isDeposited = inputValue <> deposit == outputValue
+      inputValue :: Value.Value
+      inputValue = Ledger.txOutValue ownInput
 
-    {- Check if deposit is correctly listed in the cost centers map and
-    that the operation does not change other cost centers in any way -}
-    isDepositListed :: TreasuryDatum -> Bool
-    isDepositListed newDatum =
-      let oldCostCenters = costCenters td
-          newCostCenters = costCenters newDatum
+      outputValue :: Value.Value
+      outputValue = Ledger.txOutValue ownOutput
 
-          oldDatumAsset = costCenterValue oldCostCenters
-          newDatumAsset = costCenterValue newCostCenters
+      outputDatum :: Maybe TreasuryDatum
+      outputDatum = datumForOnchain info ownOutput
 
-          otherCostCentersImmutable =
-            otherCostCenters oldCostCenters == otherCostCenters newCostCenters
-          assetValueSameCostCenterChanged = oldDatumAsset <> deposit == newDatumAsset
-       in traceIfFalse "deposit modifies other cost centers" otherCostCentersImmutable
-            && traceIfFalse "deposit is not listed" assetValueSameCostCenterChanged
+      isDepositPositive :: Bool
+      isDepositPositive = allNonEmpty (\(_, _, i) -> i > 0) (Value.flattenValue deposit)
+
+      isDeposited :: Bool
+      isDeposited = inputValue <> deposit == outputValue
+
+{-# INLINEABLE validateSpendFunds #-}
+validateSpendFunds ::
+  TreasuryDatum ->
+  Ledger.TxOut ->
+  Ledger.TxOut ->
+  Value.AssetClass ->
+  Contexts.ScriptContext ->
+  TreasurySpendParams ->
+  Bool
+validateSpendFunds
+  td
+  ownInput
+  ownOutput
+  canSpendAC
+  ctx
+  TreasurySpendParams
+    { treasurySpend'value = spending
+    , treasurySpend'costCenter = costCenterName
+    , treasurySpend'beneficiary = beneficiary
+    } =
+    traceIfFalse "spending is not positive" isSpendingPositive
+      && traceIfFalse "spending tries depositing funds" isSpent
+      && traceIfFalse "spending is not paying to the beneficiary" isPayingBeneficiary
+      && traceIfFalse "missing CanSpend token from input" (not . null $ canSpendInputs)
+      && case outputDatum of
+        Nothing -> traceError "cannot find output datum"
+        Just td' ->
+          isCostCenterChangeListed
+            td
+            td'
+            costCenterName
+            (\old new -> old == new <> spending)
+    where
+      info :: Contexts.TxInfo
+      info = Contexts.scriptContextTxInfo ctx
+
+      inputValue :: Value.Value
+      inputValue = Ledger.txOutValue ownInput
+
+      outputValue :: Value.Value
+      outputValue = Ledger.txOutValue ownOutput
+
+      outputDatum :: Maybe TreasuryDatum
+      outputDatum = datumForOnchain info ownOutput
+
+      canSpendValue :: Value.Value
+      canSpendValue = Value.assetClassValue canSpendAC 1
+
+      beneficiaryOutputs :: [Ledger.TxOut]
+      beneficiaryOutputs =
+        [ o | o <- Ledger.txInfoOutputs info, Ledger.txOutAddress o == beneficiary
+        ]
+
+      canSpendInputs :: [Ledger.TxOut]
+      canSpendInputs =
+        [ o | i <- Ledger.txInfoInputs info, let o = Ledger.txInInfoResolved i, canSpendValue `valueSubsetOf` Ledger.txOutValue o
+        ]
+
+      isSpendingPositive :: Bool
+      isSpendingPositive = allNonEmpty (\(_, _, i) -> i > 0) (Value.flattenValue spending)
+
+      isSpent :: Bool
+      isSpent = inputValue == outputValue <> spending
+
+      isPayingBeneficiary :: Bool
+      isPayingBeneficiary = flip any beneficiaryOutputs $
+        \Contexts.TxOut {txOutValue = v} -> spending `valueSubsetOf` v
 
 {-# INLINEABLE validateUpgrade #-}
 validateUpgrade ::

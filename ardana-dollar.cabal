@@ -11,7 +11,7 @@ version:       0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
-license: NONE
+license:
 license-files: LICENSE
 author:        Your name
 maintainer:    Your email
@@ -71,6 +71,7 @@ common deps
     , bytestring
     , containers
     , data-default
+    , foldl
     , freer-extras
     , lens
     , mtl
@@ -96,8 +97,12 @@ common test-deps
     , freer-simple
     , hedgehog
     , lens
+    , minisat-solver
     , optparse-applicative  ^>=0.16
+    , pretty
+    , pretty-show
     , QuickCheck
+    , safe
     , silently
     , streaming
     , tagged
@@ -106,6 +111,7 @@ common test-deps
     , tasty-hunit
     , tasty-plutus
     , tasty-quickcheck
+    , transformers
 
 library
   import:          lang
@@ -122,9 +128,17 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
+    ArdanaDollar.Map.Contracts
+    ArdanaDollar.Map.Endpoints
+    ArdanaDollar.Map.MapTerms
+    ArdanaDollar.Map.Types
+    ArdanaDollar.Map.Utils
+    ArdanaDollar.Map.Validators
+    ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
+    ArdanaDollar.Treasury.CanSpendToken
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain
@@ -147,9 +161,12 @@ test-suite ardana-dollar-test
     Hedgehog.Gen.ArdanaDollar
     Hedgehog.Gen.Extra
     Hedgehog.Gen.Plutus
+    Proper.Plutus
     TastyDefaultMain
     Test.ArdanaDollar.BufferAuctionTraceTest
     Test.ArdanaDollar.DanaStakePoolTest
+    Test.ArdanaDollar.MapTest
+    Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
     Test.ArdanaDollar.TreasuryPrerun
     Test.ArdanaDollar.TreasuryTraceTest
     Test.ArdanaDollar.TreasuryValidatorTest
@@ -176,8 +193,8 @@ executable ardana-pab
     , ardana-dollar
     , data-default
     , freer-simple
+    , openapi3
     , plutus-extra
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
-    , openapi3

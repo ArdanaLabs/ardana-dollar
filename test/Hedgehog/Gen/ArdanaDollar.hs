@@ -10,13 +10,25 @@ module Hedgehog.Gen.ArdanaDollar (
   danaGlobalData,
   danaDatum,
   danaRedeemer,
+  oracleMintingParams,
+  oracleValidatorParams,
+  priceTracking,
   treasury,
   treasuryAction,
   treasuryStateTokenParams,
+  treasuryUpgradeContractTokenParams,
   treasuryCostCenters,
   treasuryDatum,
   treasuryDepositParams,
   treasurySpendParams,
+  onchainMapMapInstance,
+  onchainMapPointer,
+  onchainMapMap,
+  onchainMapNode,
+  onchainMapDatum,
+  onchainTokenRedeemer,
+  onchainRedeemer,
+  newContract,
 ) where
 
 import Control.Monad (replicateM)
@@ -29,14 +41,19 @@ import Hedgehog.Range qualified as Range
 import Prelude
 
 import Hedgehog.Gen.Plutus (
+  address,
   assetClass,
   builtinByteString,
+  currencySymbol,
+  positiveValue,
   pubKeyHash,
+  pubKeyWithHash,
   tokenName,
   txOutRef,
   validatorHash,
   value,
  )
+import Ledger.Generators qualified as LGen
 import Ledger.Value qualified as Value
 import PlutusTx.Prelude qualified as P
 import PlutusTx.UniqueMap qualified as UniqueMap
@@ -53,6 +70,20 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
   Redeemer (..),
   TraversalState (..),
   UserData (..),
+ )
+import ArdanaDollar.Map.Types qualified as OnchainMap (
+  Datum (..),
+  Map (..),
+  MapInstance (..),
+  Node (..),
+  Pointer (..),
+  Redeemer (..),
+  TokenRedeemer (..),
+ )
+import ArdanaDollar.PriceOracle.OnChain qualified as PriceOracle (
+  OracleMintingParams (..),
+  OracleValidatorParams (..),
+  PriceTracking (..),
  )
 import ArdanaDollar.Treasury.Types qualified as Treasury (
   NewContract (..),
@@ -125,6 +156,22 @@ danaRedeemer =
     , DanaStakePool.InitializeUser
     ]
 
+oracleMintingParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleMintingParams
+oracleMintingParams = uncurry PriceOracle.OracleMintingParams <$> pubKeyWithHash
+
+oracleValidatorParams :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.OracleValidatorParams
+oracleValidatorParams = do
+  cs <- currencySymbol
+  (pk, pkh) <- pubKeyWithHash
+  pc <- peggedCurrency
+  pure $
+    PriceOracle.OracleValidatorParams
+      { PriceOracle.oracleValidatorParams'oracleMintingCurrencySymbol = cs
+      , PriceOracle.oracleValidatorParams'operator = pk
+      , PriceOracle.oracleValidatorParams'operatorPkh = pkh
+      , PriceOracle.oracleValidatorParams'peggedCurrency = pc
+      }
+
 peggedCurrency :: forall (m :: Type -> Type). MonadGen m => m P.BuiltinByteString
 peggedCurrency =
   Gen.frequency
@@ -134,6 +181,13 @@ peggedCurrency =
     , (1, pure "PLN")
     , (1, builtinByteString (Range.singleton 3))
     ]
+
+priceTracking :: forall (m :: Type -> Type). MonadGen m => m PriceOracle.PriceTracking
+priceTracking =
+  PriceOracle.PriceTracking
+    <$> uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) integer
+    <*> uniqueMap (Range.linear 0 10) assetClass integer
+    <*> (LGen.genSlotConfig >>= LGen.genPOSIXTime)
 
 treasury :: forall (m :: Type -> Type). MonadGen m => m Treasury.Treasury
 treasury =
@@ -148,10 +202,10 @@ treasuryAction =
   Gen.choice
     [ pure Treasury.BorrowForAuction
     , Treasury.DepositFundsWithCostCenter <$> treasuryDepositParams
-    , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
-    , pure Treasury.AllowMint
+    , Treasury.SpendFundsFromCostCenter <$> treasurySpendParams
+    , Treasury.AllowMint <$> assetClass
     , pure Treasury.AllowBurn
-    , Treasury.InitiateUpgrade <$> (Treasury.NewContract <$> validatorHash)
+    , Treasury.InitiateUpgrade <$> newContract
     ]
 
 treasuryStateTokenParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryStateTokenParams
@@ -165,7 +219,7 @@ treasuryUpgradeContractTokenParams =
     <*> txOutRef
 
 treasuryCostCenters :: forall (m :: Type -> Type). MonadGen m => m (UniqueMap.Map P.BuiltinByteString Value.Value)
-treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
+treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) positiveValue
 
 treasuryDatum :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDatum
 treasuryDatum = Treasury.TreasuryDatum <$> integer <*> validatorHash <*> treasuryCostCenters
@@ -176,7 +230,48 @@ treasuryDepositParams =
 
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
-  Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
+  Treasury.TreasurySpendParams
+    <$> value
+    <*> builtinByteString (Range.constant 0 128)
+    <*> address
+
+onchainMapMapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
+onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass
+
+onchainMapPointer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Pointer
+onchainMapPointer = OnchainMap.Pointer <$> assetClass
+
+onchainMapMap :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Map
+onchainMapMap = OnchainMap.Map <$> Gen.maybe onchainMapPointer
+
+onchainMapNode :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Node Integer Integer)
+onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMapPointer
+
+onchainMapDatum :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Datum Integer Integer)
+onchainMapDatum =
+  Gen.choice
+    [ OnchainMap.MapDatum <$> onchainMapMap
+    , OnchainMap.NodeDatum <$> onchainMapNode
+    ]
+
+onchainRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Redeemer
+onchainRedeemer = Gen.element [OnchainMap.Use, OnchainMap.ListOp]
+
+onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.TokenRedeemer
+onchainTokenRedeemer =
+  Gen.choice
+    [ pure OnchainMap.AddToEmptyMap
+    , pure OnchainMap.AddSmallest
+    , OnchainMap.AddInTheMiddle <$> txOutRef
+    , OnchainMap.AddGreatest <$> txOutRef
+    , pure OnchainMap.RemoveFromOneElementMap
+    , pure OnchainMap.RemoveSmallest
+    , OnchainMap.RemoveInTheMiddle <$> txOutRef
+    , OnchainMap.RemoveGreatest <$> txOutRef
+    ]
+
+newContract :: forall (m :: Type -> Type). MonadGen m => m Treasury.NewContract
+newContract = Treasury.NewContract <$> validatorHash
 
 uniqueMap ::
   forall (m :: Type -> Type) (k :: Type) (v :: Type).
