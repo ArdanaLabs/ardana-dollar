@@ -1,3 +1,5 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Hedgehog.Gen.Plutus (
   address,
   assetClass,
@@ -13,6 +15,7 @@ module Hedgehog.Gen.Plutus (
   txOutRef,
   validatorHash,
   positiveValue,
+  natural,
   value,
   subvalue,
 ) where
@@ -34,6 +37,8 @@ import Plutus.V1.Ledger.Crypto (PubKey (..), PubKeyHash (..))
 import Plutus.V1.Ledger.Tx (TxOutRef (..))
 import Plutus.V1.Ledger.TxId (TxId (..))
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
+import PlutusTx.Natural (Natural, nat)
+import PlutusTx.Numeric qualified as Numeric ((*), (+))
 
 builtinByteString ::
   forall (m :: Type -> Type).
@@ -92,6 +97,28 @@ validatorHash = Scripts.ValidatorHash <$> builtinByteString (Range.singleton 32)
 
 positiveValue :: forall (m :: Type -> Type). MonadGen m => m Value.Value
 positiveValue = mconcat <$> Gen.list (Range.linear 1 32) positiveSingletonValue
+
+natural :: forall (m :: Type -> Type). MonadGen m => m Natural
+natural = do
+  d1 <- ([nat|1000|] Numeric.*) <$> digit
+  d2 <- ([nat|100|] Numeric.*) <$> digit
+  d3 <- ([nat|10|] Numeric.*) <$> digit
+  d4 <- digit
+  pure $ d1 Numeric.+ d2 Numeric.+ d3 Numeric.+ d4
+  where
+    digit =
+      Gen.element
+        [ [nat|0|]
+        , [nat|1|]
+        , [nat|2|]
+        , [nat|3|]
+        , [nat|4|]
+        , [nat|5|]
+        , [nat|6|]
+        , [nat|7|]
+        , [nat|8|]
+        , [nat|9|]
+        ]
 
 value :: forall (m :: Type -> Type). MonadGen m => m Value.Value
 value = mconcat <$> Gen.list (Range.linear 0 32) singletonValue

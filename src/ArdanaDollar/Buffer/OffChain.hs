@@ -44,7 +44,7 @@ import ArdanaDollar.Treasury.Types (
   Treasuring,
   Treasury,
   TreasuryAction (..),
-  TreasuryDatum,
+  TreasuryState,
   danaAssetClass,
  )
 import ArdanaDollar.Utils (datumForOffchain, safeDivMod)
@@ -88,13 +88,13 @@ startBuffer treasury (initialDebt, initialSurplus) = do
 
 -- Auction usage contract
 data BufferTreasuryAuctionArgs = BufferTreasuryAuctionArgs
-  { treasuryDatum :: TreasuryDatum
+  { treasuryState :: TreasuryState
   , bufferDatum :: BufferDatum
   , treasuryOutput :: Ledger.ChainIndexTxOut
   , bufferOutput :: Ledger.ChainIndexTxOut
   , txLookups :: Constraints.ScriptLookups BufferAuctioning
   , txConstraintsCtr ::
-      TreasuryDatum ->
+      TreasuryState ->
       Value.Value ->
       BufferDatum ->
       Value.Value ->
@@ -120,11 +120,11 @@ debtAuction treasury danaAmount = do
             <> Value.assetClassValue dUSDAsset dusdPrice
             <> negate danaValue
         bufferValue = bufferOutput args ^. Ledger.ciTxOutValue
-        td = treasuryDatum args
+        ts = treasuryState args
         bd = bufferDatum args
 
         tx =
-          txConstraintsCtr args td treasuryValue bd bufferValue (MkDebtBid danaAmount)
+          txConstraintsCtr args ts treasuryValue bd bufferValue (MkDebtBid danaAmount)
             <> Constraints.mustPayToPubKey pkh danaValue
     ledgerTx <- submitTxConstraintsWith (txLookups args) tx
     awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -142,7 +142,7 @@ surplusAuction treasury dusdAmount = do
   logInfo @String $ printf "User %s has called surplusAuction " (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
   flip (maybe $ return ()) maybeArgs $ \args -> do
-    let td = treasuryDatum args
+    let ts = treasuryState args
         bd = bufferDatum args
     case dusdAmount `safeDivMod` currentSurplusAuctionPrice bd of -- [DANA], surplus is dUSD or DANA?
       Nothing -> return ()
@@ -155,7 +155,7 @@ surplusAuction treasury dusdAmount = do
             bufferValue = bufferOutput args ^. Ledger.ciTxOutValue
 
             tx =
-              txConstraintsCtr args td treasuryValue bd bufferValue (MkSurplusBid dusdAmount)
+              txConstraintsCtr args ts treasuryValue bd bufferValue (MkSurplusBid dusdAmount)
                 <> Constraints.mustPayToPubKey pkh dusdValue
          in if danaRem /= 0
               then
@@ -177,7 +177,7 @@ bufferTreasuryAuction treasury = do
   case (treasuryUtxo, bufferUtxo) of
     (Nothing, _) -> logError @String "no treasury utxo at the script address" >> return Nothing
     (_, Nothing) -> logError @String "no buffer utxo at the script address" >> return Nothing
-    (Just (toref, to, td), Just (boref, bo, bd)) -> do
+    (Just (toref, to, ts), Just (boref, bo, bd)) -> do
       let treasuryHash = Ledger.validatorHash $ treasuryValidator treasury
           bufferHash = Ledger.validatorHash $ bufferValidator treasury danaAssetClass
 
@@ -188,16 +188,16 @@ bufferTreasuryAuction treasury = do
               , Constraints.otherScript (treasuryValidator treasury)
               , Constraints.unspentOutputs (Map.fromList [(toref, to), (boref, bo)])
               ]
-          txCtr = \td' tv bd' bv br ->
+          txCtr = \ts' tv bd' bv br ->
             mconcat
               [ Constraints.mustSpendScriptOutput toref (toRedeemer @Treasuring BorrowForAuction)
               , Constraints.mustSpendScriptOutput boref (toRedeemer @BufferAuctioning br)
-              , Constraints.mustPayToOtherScript treasuryHash (toDatum @Treasuring td') tv
+              , Constraints.mustPayToOtherScript treasuryHash (toDatum @Treasuring ts') tv
               , Constraints.mustPayToOtherScript bufferHash (toDatum @BufferAuctioning bd') bv
               ]
       return . Just $
         BufferTreasuryAuctionArgs
-          { treasuryDatum = td
+          { treasuryState = ts
           , bufferDatum = bd
           , treasuryOutput = to
           , bufferOutput = bo

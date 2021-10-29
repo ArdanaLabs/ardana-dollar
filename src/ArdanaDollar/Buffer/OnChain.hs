@@ -15,7 +15,7 @@ import PlutusTx.Prelude
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Buffer.Types
-import ArdanaDollar.Treasury.Types (Treasury (treasury'stateTokenSymbol))
+import ArdanaDollar.Treasury.Types (Treasury (treasury'stateTokenAssetClass))
 import ArdanaDollar.Utils (safeDivide, safeRemainder, validateDatumImmutable)
 
 {-# INLINEABLE mkBufferValidator #-}
@@ -59,7 +59,7 @@ mkBufferValidator treasury treasuryAddr danaAC dusdAsset bd redeemer ctx =
 
     hasTreasuryToken :: Ledger.TxOut -> Bool
     hasTreasuryToken o =
-      Value.assetClassValueOf (Ledger.txOutValue o) (treasury'stateTokenSymbol treasury) == 1
+      Value.assetClassValueOf (Ledger.txOutValue o) (treasury'stateTokenAssetClass treasury) == 1
 
 {-# INLINEABLE validateDebtAuction #-}
 validateDebtAuction ::

@@ -19,7 +19,6 @@ import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.Treasury.Types (
   Treasury (..),
   TreasuryStateTokenParams (..),
-  TreasuryUpgradeContractTokenParams (..),
   danaAssetClass,
  )
 import ArdanaDollar.Vault (dUSDAsset)
@@ -92,22 +91,16 @@ noTreasuryTest =
 
       case orefs of
         [] -> logErrorAndThrow "Could not find UTXO"
-        ((oref, pkh) : _) -> do
+        ((oref, _pkh) : _) -> do
           let mockTreasury =
                 Treasury
                   { treasury'peggedCurrency = "USD"
-                  , treasury'stateTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token1")
+                  , treasury'danaAssetClass = danaAssetClass
+                  , treasury'stateTokenAssetClass = Value.assetClass Ada.adaSymbol (TokenName "Token1")
                   , treasury'stateTokenParams =
                       TreasuryStateTokenParams
-                        { stateToken = TokenName "Token2"
-                        , initialOutput = oref
-                        }
-                  , treasury'upgradeTokenSymbol = Value.assetClass Ada.adaSymbol (TokenName "Token3")
-                  , treasury'upgradeTokenParams =
-                      TreasuryUpgradeContractTokenParams
-                        { upgradeToken'initialOwner = pkh
-                        , upgradeToken'peggedCurrency = "USD"
-                        , upgradeToken'initialOutput = oref
+                        { stateTokenName = TokenName "Token2"
+                        , oneShotUtxo = oref
                         }
                   }
           cTreasuryUserId <- activateContractWallet (knownWallet 1) (bufferAuctionContract @() @ContractError mockTreasury)

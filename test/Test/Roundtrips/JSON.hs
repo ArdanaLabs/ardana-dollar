@@ -40,8 +40,7 @@ jsonRoundtripTests =
         "Treasury"
         [ testJsonLaws "Treasury" treasury
         , testJsonLaws "TreasuryStateTokenParams" treasuryStateTokenParams
-        , testJsonLaws "TreasuryUpgradeContractTokenParams" treasuryUpgradeContractTokenParams
-        , testJsonLaws "TreasuryDatum" treasuryDatum
+        , testJsonLaws "TreasuryState" treasuryState
         , testJsonLaws "TreasuryDepositParams" treasuryDepositParams
         , testJsonLaws "TreasurySpendParams" treasurySpendParams
         , testJsonLaws "NewContract" newContract

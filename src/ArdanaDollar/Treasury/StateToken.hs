@@ -30,7 +30,7 @@ import PlutusTx.Prelude
 --------------------------------------------------------------------------------
 
 import ArdanaDollar.Treasury.Types (
-  TreasuryDatum,
+  TreasuryState,
   TreasuryStateTokenParams (..),
   isInitialDatum,
  )
@@ -67,7 +67,7 @@ mkTreasuryStateTokenMintingPolicy params () sc =
   where
     stateTokenAssetClass :: Value.AssetClass
     stateTokenAssetClass =
-      Value.assetClass (Ledger.ownCurrencySymbol sc) (stateToken params)
+      Value.assetClass (Ledger.ownCurrencySymbol sc) (stateTokenName params)
 
     forgeValue :: Value.Value
     forgeValue = Value.assetClassValue stateTokenAssetClass 1
@@ -77,7 +77,7 @@ mkTreasuryStateTokenMintingPolicy params () sc =
 
     hasCorrectInput :: Bool
     hasCorrectInput = flip any (Contexts.txInfoInputs info) $ \input ->
-      Contexts.txInInfoOutRef input == initialOutput params
+      Contexts.txInInfoOutRef input == oneShotUtxo params
 
     hasCorrectOutput :: Bool
     hasCorrectOutput =
@@ -103,7 +103,7 @@ mkTreasuryStateTokenMintingPolicy params () sc =
 
     isCorrectDatum :: Ledger.Datum -> Bool
     isCorrectDatum (Ledger.Datum d) =
-      maybeEmpty isInitialDatum (PlutusTx.fromBuiltinData @TreasuryDatum d)
+      maybeEmpty isInitialDatum (PlutusTx.fromBuiltinData @TreasuryState d)
 
     maybeEmpty :: (a -> Bool) -> Maybe a -> Bool
     maybeEmpty cond = \case

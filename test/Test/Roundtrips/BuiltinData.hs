@@ -39,7 +39,7 @@ builtinDataRoundtripTests =
         [builtinDataPartialIsomorphism "PriceTracking" priceTracking]
     , testGroup
         "Treasury"
-        [ builtinDataPartialIsomorphism "TreasuryDatum" treasuryDatum
+        [ builtinDataPartialIsomorphism "TreasuryState" treasuryState
         , builtinDataPartialIsomorphism "TreasuryDepositParams" treasuryDepositParams
         , builtinDataPartialIsomorphism "TreasuryAction" treasuryAction
         , builtinDataPartialIsomorphism "NewContract" newContract

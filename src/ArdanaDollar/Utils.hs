@@ -252,8 +252,8 @@ validateDatumImmutable ::
   datum ->
   Contexts.ScriptContext ->
   Bool
-validateDatumImmutable td ctx =
-  traceIfFalse "datum has changed" (Just td == outputDatum)
+validateDatumImmutable ts ctx =
+  traceIfFalse "datum has changed" (Just ts == outputDatum)
   where
     info :: Contexts.TxInfo
     info = Contexts.scriptContextTxInfo ctx
