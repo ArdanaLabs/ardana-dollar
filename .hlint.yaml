@@ -59,6 +59,10 @@
   - {name: Data.List.last, within: [], message: "partial function"}
   - {name: 'Data.List.!!', within: [], message: "partial function"}
   - {name: Data.List.genericIndex, within: [], message: "partial function"}
+  - {name: Prelude.tail, within: [], message: "partial function"}
+  - {name: Prelude.init, within: [], message: "partial function"}
+  - {name: Prelude.last, within: [], message: "partial function"}
+  - {name: 'Prelude.!!', within: [], message: "partial function"}
 
   - {name: minimum, within: [], message: "partial function"}
   - {name: minimumBy, within: [], message: "partial function"}
@@ -66,13 +70,21 @@
   - {name: maximumBy, within: [], message: "partial function"}
 
   - {name: GHC.Enum.pred, within: [], message: "partial function"}
-  - {name: GHC.Enum.suc, within: [], message: "partial function"}
+  - {name: GHC.Enum.succ, within: [], message: "partial function"}
   - {name: GHC.Enum.toEnum, within: [], message: "partial function"}
   - {name: GHC.Enum.fromEnum, within: []} # Does not do what you think it does.
   - {name: GHC.Enum.enumFrom, within: []} # Does not do what you think it does, depending on the type.
   - {name: GHC.Enum.enumFromThen, within: []} # Does not do what you think it does, depending on the type.
   - {name: GHC.Enum.enumFromTo, within: []} # Does not do what you think it does, depending on the type.
   - {name: GHC.Enum.enumFromThenTo, within: []} # Does not do what you think it does, depending on the type.
+  - {name: Prelude.pred, within: [], message: "partial function"}
+  - {name: Prelude.succ, within: [], message: "partial function"}
+  - {name: Prelude.toEnum, within: [], message: "partial function"}
+  - {name: Prelude.fromEnum, within: []} # Does not do what you think it does.
+  - {name: Prelude.enumFrom, within: []} # Does not do what you think it does, depending on the type.
+  - {name: Prelude.enumFromThen, within: []} # Does not do what you think it does, depending on the type.
+  - {name: Prelude.enumFromTo, within: []} # Does not do what you think it does, depending on the type.
+  - {name: Prelude.enumFromThenTo, within: []} # Does not do what you think it does, depending on the type.
 
   - {name: either, within: [], message: "confusing; just use a case-match."}
 
@@ -100,6 +112,10 @@
   - {name: System.IO.putStr, within: []}
   - {name: System.IO.putStrLn, within: []}
   - {name: System.IO.print, within: []}
+  - {name: Prelude.putChar, within: []}
+  - {name: Prelude.putStr, within: []}
+  - {name: Prelude.putStrLn, within: []}
+  - {name: Prelude.print, within: []}
 
   # Don't use string for command-line input either.
   - {name: System.IO.getChar, within: []}
@@ -108,11 +124,20 @@
   - {name: System.IO.interact, within: []}
   - {name: System.IO.readIO, within: []}
   - {name: System.IO.readLn, within: []}
+  - {name: Prelude.getChar, within: []}
+  - {name: Prelude.getLine, within: []}
+  - {name: Prelude.getContents, within: []} # Does lazy IO.
+  - {name: Prelude.interact, within: []}
+  - {name: Prelude.readIO, within: []}
+  - {name: Prelude.readLn, within: []}
 
   # Don't use strings to interact with files
   - {name: System.IO.readFile, within: []}
   - {name: System.IO.writeFile, within: []}
   - {name: System.IO.appendFile, within: []}
+  - {name: Prelude.readFile, within: []}
+  - {name: Prelude.writeFile, within: []}
+  - {name: Prelude.appendFile, within: []}
 
   # Can succeed in dev, but fail in prod, because of encoding guessing
   # It's also Lazy IO.
@@ -136,6 +161,7 @@
 - warn: {name: "Avoid partial read", lhs: read, rhs: Text.Read.readMaybe, note: "partial function"}
 - warn: {name: "Avoid unless", lhs: unless, rhs: when . not, note: "confusing"}
 - warn: {name: "Avoid head", lhs: Data.List.head, rhs: listToMaybe, note: "partial function"}
+- warn: {name: "Avoid head", lhs: Prelude.head, rhs: listToMaybe, note: "partial function"}
 - warn:
     name: "Avoid using nub because of time complexity"
     lhs: nub

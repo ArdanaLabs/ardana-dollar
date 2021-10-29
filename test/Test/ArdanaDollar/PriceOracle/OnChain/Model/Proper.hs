@@ -300,6 +300,7 @@ instance Proper PriceOracleModel where
       )
     ]
 
+{- HLINT ignore modelDatum' "Avoid restricted function" -}
 modelDatum' :: Maybe TestDatumParameters -> BuiltinData
 modelDatum' Nothing = toBuiltinData ()
 modelDatum' (Just TestDatumParameters {..}) =
