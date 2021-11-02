@@ -240,3 +240,7 @@ check whether some `AssetClass` has been minted or burned, i.e.
 if the value in `txInfoMint` corresponding to this key is non-zero.
 This gives us proof that this user-chosen script ran and validated
 the transaction.
+
+## Common cost centers
+
+`CostCenterDatum "vault"` contains the `dUSD` gained from users repaying their interest.

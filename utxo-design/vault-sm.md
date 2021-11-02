@@ -10,6 +10,7 @@ data VaultParams = VaultParams
   { dUSD :: AssetClass
   , adminStateToken :: CurrencySymbol
   , treasuryStateToken :: CurrencySymbol
+  , costCenterHash :: ValidatorHash
   }
 ```
 
@@ -166,13 +167,15 @@ adminStateHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- `assetClassValueOf txInfoMint dUSD < 0`.
+- `assetClassValueOf txInfoMint dUSD <= 0`.
 - `assetClassValueOf newValue collateralCurrency ≡ assetClassValueOf oldValue collateralCurrency`.
 - Interest algorithm must be applied.
+- `new.interest ≡ 0 || new.borrowPrincipal == old.borrowPrincipal`.
 - ```haskell
+  let reward = flip assetClassValueOf dUSD . foldMap txOutValue . filter (\o -> o.txOutAddress == costCenterHash && findDatum _ o.txOutDatumHash == CostCenterDatum "vault") $ txInfoOutputs in
   new ≡ old
-    { interest = max(interest' + assetClassValueOf txInfoMint dUSD, 0)
-    , borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)
+    { interest = max(interest' - reward, 0)
+    , borrowPrincipal = max(old.borrowPrincipal + assetClassValueOf (txInfoMint _) dUSD, 0)
     , interestTimestamp = new.interestTimestamp
     , userAuthToken = new.userAuthToken
     }
