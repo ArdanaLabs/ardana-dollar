@@ -58,7 +58,7 @@ common lang
 
   ghc-options:
     -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
-    -Wmissing-export-lists -Werror -Wincomplete-record-updates
+    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas -Wincomplete-record-updates
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
     -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
