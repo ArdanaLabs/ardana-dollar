@@ -24,6 +24,7 @@ myAll :: (a -> Bool) -> [a] -> Bool
 myAll _ [] = True
 myAll f (x : xs) = f x && myAll f xs
 
+{-# HLINT ignore myFoldValues #-}
 {-# INLINEABLE myFoldValues #-}
 myFoldValues :: [Value.Value] -> Value.Value
 myFoldValues [] = mempty

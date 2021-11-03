@@ -202,11 +202,11 @@ mkValidator inst pointerCS datum redeemer ctx =
                 && outputHasNFT
                 && inputMap == outputMap
             )
-      NodeDatum inputNode@(Node key _ _) -> fromMaybe False $ do
+      NodeDatum (Node key _ next) -> fromMaybe False $ do
         i <- inputToken
         o <- outputToken key
         (_, outputNode) <- nodeOutput key
-        return (i == o && inputNode{node'value = T.node'value outputNode} == outputNode)
+        return (i == o && Node key (T.node'value outputNode) next == outputNode)
 
     burnsXorMintsOneToken :: Bool
     burnsXorMintsOneToken =
@@ -216,6 +216,7 @@ mkValidator inst pointerCS datum redeemer ctx =
             [(_, _, amt)] -> amt == 1 || amt == -1
             _ -> False
 
+{-# HLINT ignore mkNodeValidPolicy #-}
 {-# INLINEABLE mkNodeValidPolicy #-}
 mkNodeValidPolicy ::
   forall k v.
@@ -317,7 +318,7 @@ mkNodeValidPolicy inst redeemer ctx =
               && T.node'key prevOutput < T.node'key newOutput
               && T.node'key newOutput < T.node'key nextOutput
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
-              && prevInput{node'next = T.node'next prevOutput} == prevOutput
+              && Node (T.node'key prevInput) (T.node'value prevInput) (T.node'next prevOutput) == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
@@ -349,7 +350,7 @@ mkNodeValidPolicy inst redeemer ctx =
               && isNothing (T.node'next newOutput)
               && T.node'key prevOutput < T.node'key newOutput
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
-              && prevInput{node'next = T.node'next prevOutput} == prevOutput
+              && Node (T.node'key prevInput) (T.node'value prevInput) (T.node'next prevOutput) == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               -- quantative checks
               && inputsAtAddress expectedAddress == 1
@@ -441,7 +442,7 @@ mkNodeValidPolicy inst redeemer ctx =
               -- -- correct output linking
               && prevOutput `nodePointsTo` nextOutput'
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
-              && prevInput{node'next = T.node'next prevOutput} == prevOutput
+              && Node (T.node'key prevInput) (T.node'value prevInput) (T.node'next prevOutput) == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
@@ -471,7 +472,7 @@ mkNodeValidPolicy inst redeemer ctx =
               -- -- correct output linking
               && isNothing (T.node'next prevOutput)
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
-              && prevInput{node'next = T.node'next prevOutput} == prevOutput
+              && Node (T.node'key prevInput) (T.node'value prevInput) (T.node'next prevOutput) == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               -- quantative checks
               && inputsAtAddress expectedAddress == 2
