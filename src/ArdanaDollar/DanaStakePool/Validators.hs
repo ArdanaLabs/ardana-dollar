@@ -1,5 +1,4 @@
 {-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -fno-specialize #-}
 
 module ArdanaDollar.DanaStakePool.Validators (
   rewardHelper,
@@ -16,9 +15,31 @@ import PlutusTx.Ratio qualified as R
 import ArdanaDollar.DanaStakePool.Types
 import ArdanaDollar.Utils (datumForOnchain)
 
+-- TODO: All the my* functions are because their counterparts in `plutus-tx` for
+-- some unknown reason cause the PlutusTx compiler to err. Perhaps our version
+-- of the plugin is too old?
+
+{-# INLINEABLE myAll #-}
+myAll :: (a -> Bool) -> [a] -> Bool
+myAll _ [] = True
+myAll f (x : xs) = f x && myAll f xs
+
+{-# HLINT ignore myFoldValues #-}
+{-# INLINEABLE myFoldValues #-}
+myFoldValues :: [Value.Value] -> Value.Value
+myFoldValues [] = mempty
+myFoldValues (x : xs) = x <> myFoldValues xs
+
+-- INLINEABLE isn't enough
+{-# INLINE myElem #-}
+myElem :: Eq a => a -> [a] -> Bool
+myElem x (x' : _) | x == x' = True
+myElem x (_ : xs) = myElem x xs
+myElem _ [] = False
+
 {-# INLINEABLE positive #-}
 positive :: Ledger.Value -> Bool
-positive v = all (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
+positive v = myAll (>= 0) $ (\(_, _, i) -> i) <$> Value.flattenValue v
 
 {-# INLINEABLE userTxOutValid #-}
 userTxOutValid :: Value.AssetClass -> Ledger.TxInfo -> Ledger.TxOut -> Bool
@@ -49,7 +70,7 @@ rewardHelper danaAsset totalStake totalReward stake =
 reward :: Integer -> Value.Value -> Integer -> Value.Value
 reward totalStake totalReward userStake =
   let ratio = userStake R.% totalStake
-   in fold $
+   in myFoldValues $
         (\(cs, tn, v) -> Value.singleton cs tn (R.truncate (ratio * fromInteger v)))
           <$> Value.flattenValue totalReward
 
@@ -85,7 +106,11 @@ mkUserInitProofPolicy nftAC _ ctx =
         && traceIfFalse "incorrect id assigned to user UTXO"
            (userData'id uOutData == globalData'count gInData)
         && traceIfFalse "global datum unexpected change"
-           (gOutData == gInData{globalData'count = globalData'count gInData + 1})
+           -- Plutus doesn't support updating records...
+           (gOutData ==
+             let GlobalData totalStake count locked traversal = gInData in
+             GlobalData totalStake (count + 1) locked traversal
+           )
         && traceIfFalse "rewards changed"
            (Ledger.txOutValue gInTxOut == Ledger.txOutValue gOutTxOut)
         && traceIfFalse "no nft at input"
@@ -201,7 +226,7 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     isSigned :: UserData -> Bool
-    isSigned dat = userData'pkh dat `elem` Ledger.txInfoSignatories info
+    isSigned dat = userData'pkh dat `myElem` Ledger.txInfoSignatories info
 
     isValid :: Ledger.TxOut -> Bool
     isValid txOut = userTxOutValid (unUserInitProofAssetClass userInitProofAC) info txOut
@@ -265,7 +290,9 @@ mkValidator danaAC nftAC userInitProofAC datum redeemer ctx =
       Nothing -> PlutusTx.Prelude.traceError "user missing"
 
     danaOnly :: Value.Value -> Bool
-    danaOnly value = ((\(cs, tn, _) -> (cs, tn)) <$> Value.flattenValue value) == [Value.unAssetClass $ unDanaAssetClass danaAC]
+    danaOnly value = case Value.flattenValue value of
+      [(cs, tn, _)] -> (cs, tn) == (Value.unAssetClass . unDanaAssetClass $ danaAC)
+      _ -> False
 
     distributionOk :: GlobalData -> GlobalData -> Value.Value -> Value.Value -> Bool
     distributionOk gInData gOutData totalRewardBeforeT totalRewardAfterT =
