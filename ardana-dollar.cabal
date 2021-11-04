@@ -198,3 +198,12 @@ executable ardana-pab
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
+
+executable ardana-dollar-sizes
+  import:         lang
+  import:         deps
+  main-is:        Sizes.hs
+  hs-source-dirs: util
+  build-depends:
+    , ardana-dollar
+    , serialise
