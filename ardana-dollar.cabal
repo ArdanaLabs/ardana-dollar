@@ -204,7 +204,6 @@ executable ardana-dollar-sizes
   import:         deps
   main-is:        Sizes.hs
   hs-source-dirs: util
-  ghc-options:    -O0
   build-depends:
     , ardana-dollar
     , serialise
