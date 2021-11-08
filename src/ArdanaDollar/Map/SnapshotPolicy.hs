@@ -17,6 +17,7 @@ import PlutusTx.Prelude
 import ArdanaDollar.Map.TxUtils (
   hasOne,
   inputsAt',
+  isLocked,
   lookupToken,
   mapInput',
   mapOutput',
@@ -29,6 +30,7 @@ import ArdanaDollar.Map.TxUtils (
   snapshotPermOutput',
  )
 import ArdanaDollar.Map.Types (
+  LockState (..),
   Map (..),
   MapInstance,
   MapSnapshot (..),
@@ -69,14 +71,17 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
 
       !start' <- T.map'head inputMap
       !end' <- T.Pointer <$> lookupToken (T.unPointerCS pointerCS) lastOutput'
-      let expectedSnapshotPerm = T.SnapshotPerm start' end' (T.map'nextVersion inputMap)
+
+      let currSnapshot = T.map'nextVersion inputMap
+          expectedSnapshotPerm = T.SnapshotPerm start' end' currSnapshot
       !outputSnapshotPerm' <- snapshotPermOutput expectedSnapshotPerm
 
       let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
 
       return
         ( -- map not locked
-          not (T.map'locked inputMap)
+          not (isLocked $ T.map'lockState inputMap)
+            && not (isLocked $ T.node'lockState lastInput)
             -- outputs at correct address
             && Ledger.txOutAddress outputMap' == mapAddress
             && Ledger.txOutAddress lastOutput' == mapAddress
@@ -87,9 +92,9 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
             && isNothing (T.node'next lastInput)
             -- -- correct output linking
             -- -- equality checks wrt Ledger.Value and (key, value) pairs
-            && inputMap{T.map'locked = True, T.map'nextVersion = incrementSV (T.map'nextVersion inputMap)} == outputMap
+            && inputMap{T.map'lockState = LockedFor currSnapshot, T.map'nextVersion = incrementSV currSnapshot} == outputMap
             && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
-            && lastInput == lastOutput
+            && lastInput{T.node'lockState = LockedFor currSnapshot} == lastOutput
             && Ledger.txOutValue (Ledger.txInInfoResolved lastInput') == Ledger.txOutValue lastOutput'
             -- quantative checks
             && inputsAt mapAddress == 2
@@ -136,9 +141,9 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
             && leftNodeInput `nodePointsTo` Ledger.txInInfoResolved rightNodeInput'
             -- -- correct output linking
             -- -- equality checks wrt Ledger.Value and (key, value) pairs
-            && leftNodeInput == leftNodeOutput
+            && leftNodeInput{T.node'lockState = LockedFor v} == leftNodeOutput
             && Ledger.txOutValue (Ledger.txInInfoResolved leftNodeInput') == Ledger.txOutValue leftNodeOutput'
-            && rightNodeInput == rightNodeOutput
+            && rightNodeInput{T.node'lockState = LockedFor v} == rightNodeOutput
             && Ledger.txOutValue (Ledger.txInInfoResolved rightNodeInput') == Ledger.txOutValue rightNodeOutput'
             -- quantative checks
             && inputsAt mapAddress == 3
@@ -176,7 +181,7 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
             -- -- correct input linking
             -- -- correct output linking
             -- -- equality checks wrt Ledger.Value and (key, value) pairs
-            && nodeInput {T.node'locked = True} == nodeOutput
+            && nodeInput == nodeOutput
             && Ledger.txOutValue (Ledger.txInInfoResolved nodeInput') == Ledger.txOutValue nodeOutput'
             -- quantative checks
             && inputsAt mapAddress == 2

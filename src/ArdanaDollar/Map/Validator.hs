@@ -20,6 +20,7 @@ import PlutusTx.Prelude
 import ArdanaDollar.Map.TxUtils (
   hasOne,
   hasOne',
+  isLocked,
   lookupToken,
   lookupToken',
   mapOutput',
@@ -91,12 +92,12 @@ mkValidator inst pointerCS snapshotCS datum redeemer ctx =
                 && outputHasNFT
                 && inputMap == outputMap
             )
-      NodeDatum inputNode@(Node key _ _ locked) -> fromMaybe False $ do
+      NodeDatum inputNode@(Node key _ _ lock) -> fromMaybe False $ do
         i <- inputToken
         o <- outputToken key
         (outputNode', outputNode) <- nodeOutput key
         return $
-          if locked
+          if isLocked lock
             then
               inputNode == outputNode
                 && Just (Ledger.txOutValue outputNode')

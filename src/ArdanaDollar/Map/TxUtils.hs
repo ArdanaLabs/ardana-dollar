@@ -20,6 +20,7 @@ module ArdanaDollar.Map.TxUtils (
   snapshotPermInputByRef',
   nodeSnapshotOutput',
   tokenName,
+  isLocked,
 ) where
 
 import Ledger qualified
@@ -30,6 +31,7 @@ import PlutusTx.Prelude
 
 import ArdanaDollar.Map.Types (
   Datum (MapDatum, MapSnapshotDatum, NodeDatum, NodeSnapshotDatum, SnapshotPermDatum),
+  LockState (..),
   Map,
   MapInstance (..),
   MapSnapshot (..),
@@ -263,3 +265,9 @@ outputsAt' :: Ledger.TxInfo -> Ledger.Address -> Integer
 outputsAt' !info !address =
   length $
     (\txOut -> Ledger.txOutAddress txOut == address) `filter` Ledger.txInfoOutputs info
+
+{-# INLINEABLE isLocked #-}
+isLocked :: LockState -> Bool
+isLocked lockState = case lockState of
+  Unlocked -> False
+  LockedFor _ -> True

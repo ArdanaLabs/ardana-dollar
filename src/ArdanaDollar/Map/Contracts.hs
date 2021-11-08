@@ -50,6 +50,7 @@ import ArdanaDollar.Map.MapTerms (
  )
 import ArdanaDollar.Map.Types (
   Datum (MapDatum, NodeDatum),
+  LockState (Unlocked),
   Map (Map),
   MapInstance (MapInstance),
   Node (Node),
@@ -161,7 +162,7 @@ create' ac = do
       lookups =
         Constraints.typedValidatorLookups (inst' @t mapInstance)
           <> Constraints.otherScript (Scripts.validatorScript $ inst' @t mapInstance)
-      tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing False (SnapshotVersion 0)) nftValue
+      tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing Unlocked (SnapshotVersion 0)) nftValue
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
   void $ awaitTxConfirmed $ Ledger.txId ledgerTx
@@ -289,7 +290,7 @@ removeFromOneElementMap mapInstance map' node' =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map Nothing False (T.map'nextVersion $ snd map'))
+              (MapDatum $ Map Nothing Unlocked (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -327,7 +328,7 @@ removeSmallest mapInstance map' node' next' =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map (T.node'next $ snd node') False (T.map'nextVersion $ snd map'))
+              (MapDatum $ Map (T.node'next $ snd node') Unlocked (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
               (NodeDatum $ snd next')
@@ -463,10 +464,10 @@ addToEmptyMap mapInstance map' (key, value) =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map (Just $ Pointer tokenAC) False (T.map'nextVersion $ snd map'))
+              (MapDatum $ Map (Just $ Pointer tokenAC) Unlocked (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value Nothing False)
+              (NodeDatum $ Node key value Nothing Unlocked)
               tokenValue
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -503,13 +504,13 @@ addSmallest mapInstance map' node' (key, value) =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (MapDatum $ Map (Just $ Pointer tokenAC) False (T.map'nextVersion $ snd map'))
+              (MapDatum $ Map (Just $ Pointer tokenAC) Unlocked (T.map'nextVersion $ snd map'))
               nftValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value nodePointer False)
+              (NodeDatum $ Node key value nodePointer Unlocked)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') Nothing False)
+              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') Nothing Unlocked)
               (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustSpendScriptOutput
               (fst $ fst map')
@@ -547,10 +548,10 @@ addGreatest mapInstance map' node' (key, value) =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value Nothing False)
+              (NodeDatum $ Node key value Nothing Unlocked)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') (Just $ Pointer tokenAC) False)
+              (NodeDatum $ Node (T.node'key $ snd node') (T.node'value $ snd node') (Just $ Pointer tokenAC) Unlocked)
               (snd (fst node') ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript
               (MapDatum $ snd map')
@@ -591,13 +592,13 @@ addInTheMiddle mapInstance map' (before, after) (key, value) =
             (Ledger.Redeemer $ Ledger.toBuiltinData @NodeValidTokenRedeemer tokenRedeemer)
             tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node key value (T.node'next $ snd before) False)
+              (NodeDatum $ Node key value (T.node'next $ snd before) Unlocked)
               tokenValue
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd before) (T.node'value $ snd before) (Just $ Pointer tokenAC) False)
+              (NodeDatum $ Node (T.node'key $ snd before) (T.node'value $ snd before) (Just $ Pointer tokenAC) Unlocked)
               (snd (fst before) ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript
-              (NodeDatum $ Node (T.node'key $ snd after) (T.node'value $ snd after) (T.node'next $ snd after) False)
+              (NodeDatum $ Node (T.node'key $ snd after) (T.node'value $ snd after) (T.node'next $ snd after) Unlocked)
               (snd (fst after) ^. Ledger.ciTxOutValue)
             <> Constraints.mustPayToTheScript
               (MapDatum $ snd map')

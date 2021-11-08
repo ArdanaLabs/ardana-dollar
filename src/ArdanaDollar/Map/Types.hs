@@ -19,6 +19,7 @@ module ArdanaDollar.Map.Types (
   SnapshotVersion (..),
   SnapshotPerm (..),
   SnapshotPointer (..),
+  LockState (..),
 ) where
 
 import PlutusTx qualified
@@ -47,9 +48,12 @@ newtype SnapshotVersion = SnapshotVersion
   {unSnapshotVersion :: Integer}
   deriving newtype (Haskell.Eq, Haskell.Show)
 
+data LockState = Unlocked | LockedFor !SnapshotVersion
+  deriving stock (Haskell.Eq, Haskell.Show, Generic)
+
 data Map = Map
   { map'head :: !(Maybe Pointer)
-  , map'locked :: !Bool
+  , map'lockState :: !LockState
   , map'nextVersion :: !SnapshotVersion
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
@@ -58,7 +62,7 @@ data Node k v = Node
   { node'key :: !k
   , node'value :: !v
   , node'next :: !(Maybe Pointer)
-  , node'locked :: Bool
+  , node'lockState :: !LockState
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
@@ -130,11 +134,18 @@ instance Eq SnapshotVersion where
   {-# INLINEABLE (==) #-}
   x == y = unSnapshotVersion x == unSnapshotVersion y
 
+instance Eq LockState where
+  {-# INLINEABLE (==) #-}
+  x == y = case (x, y) of
+    (Unlocked, Unlocked) -> True
+    (LockedFor v1, LockedFor v2) -> v1 == v2
+    (_, _) -> False
+
 instance Eq Map where
   {-# INLINEABLE (==) #-}
   x == y =
     map'head x == map'head y
-      && map'locked x == map'locked y
+      && map'lockState x == map'lockState y
       && map'nextVersion x == map'nextVersion y
 
 instance (Eq k, Eq v) => Eq (Node k v) where
@@ -143,7 +154,7 @@ instance (Eq k, Eq v) => Eq (Node k v) where
     node'key x == node'key y
       && node'value x == node'value y
       && node'next x == node'next y
-      && node'locked x == node'locked y
+      && node'lockState x == node'lockState y
 
 instance Eq MapSnapshot where
   {-# INLINEABLE (==) #-}
@@ -176,6 +187,11 @@ PlutusTx.makeIsDataIndexed ''MapInstance [('MapInstance, 0)]
 PlutusTx.makeIsDataIndexed ''Pointer [('Pointer, 0)]
 PlutusTx.makeIsDataIndexed ''SnapshotPointer [('SnapshotPointer, 0)]
 PlutusTx.makeIsDataIndexed ''SnapshotVersion [('SnapshotVersion, 0)]
+PlutusTx.makeIsDataIndexed
+  ''LockState
+  [ ('Unlocked, 0)
+  , ('LockedFor, 1)
+  ]
 
 PlutusTx.makeIsDataIndexed ''Map [('Map, 0)]
 PlutusTx.makeIsDataIndexed ''Node [('Node, 0)]

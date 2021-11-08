@@ -16,6 +16,7 @@ import PlutusTx.Prelude
 
 import ArdanaDollar.Map.TxUtils (
   inputsAt',
+  isLocked,
   mapInput',
   mapOutput',
   nodeByKey',
@@ -53,7 +54,7 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.map'lockState inputMap)
               -- outputs at correct address
               && Ledger.txOutAddress outputMap' == mapAddress
               && Ledger.txOutAddress newOutput' == mapAddress
@@ -84,7 +85,8 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.map'lockState inputMap)
+              && not (isLocked $ T.node'lockState prevInput)
               -- outputs at correct address
               && Ledger.txOutAddress outputMap' == mapAddress
               && Ledger.txOutAddress newOutput' == mapAddress
@@ -110,8 +112,6 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     AddInTheMiddle prev ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
         (!prevInput', !prevInput) <- nodeInputByRef prev
         (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
         (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
@@ -121,7 +121,8 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.node'lockState prevInput)
+              && not (isLocked $ T.node'lockState nextInput)
               -- outputs at correct address
               && Ledger.txOutAddress prevOutput' == mapAddress
               && Ledger.txOutAddress nextOutput' == mapAddress
@@ -140,18 +141,14 @@ mkNodeValidPolicy !inst !redeemer !ctx =
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
-              && inputMap == outputMap
-              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAt mapAddress == 3
-              && outputsAt mapAddress == 4
+              && inputsAt mapAddress == 2
+              && outputsAt mapAddress == 3
               && onlyMintsOne
           )
     ----
     AddGreatest prev ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
         (!prevInput', !prevInput) <- nodeInputByRef prev
         (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
         (!newOutput', !newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
@@ -159,7 +156,7 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.node'lockState prevInput)
               -- outputs at correct address
               && Ledger.txOutAddress prevOutput' == mapAddress
               && Ledger.txOutAddress newOutput' == mapAddress
@@ -174,11 +171,9 @@ mkNodeValidPolicy !inst !redeemer !ctx =
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && prevInput{node'next = T.node'next prevOutput} == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
-              && inputMap == outputMap
-              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAt mapAddress == 2
-              && outputsAt mapAddress == 3
+              && inputsAt mapAddress == 1
+              && outputsAt mapAddress == 2
               && onlyMintsOne
           )
     ----
@@ -190,7 +185,7 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.map'lockState inputMap)
               -- outputs at correct address
               && Ledger.txOutAddress outputMap' == mapAddress
               -- input-output validation
@@ -218,7 +213,8 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.map'lockState inputMap)
+              && not (isLocked $ T.node'lockState prevInput)
               -- outputs at correct address
               && Ledger.txOutAddress outputMap' == mapAddress
               && Ledger.txOutAddress nextOutput' == mapAddress
@@ -241,8 +237,6 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     RemoveInTheMiddle prev ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
         (!prevInput', !prevInput) <- nodeInputByRef prev
         (!currInput', !currInput) <- T.node'next prevInput >>= nodeInputByPointer
         (!nextInput', !nextInput) <- T.node'next currInput >>= nodeInputByPointer
@@ -251,7 +245,8 @@ mkNodeValidPolicy !inst !redeemer !ctx =
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.node'lockState prevInput)
+              && not (isLocked $ T.node'lockState nextInput)
               -- outputs at correct address
               && Ledger.txOutAddress prevOutput' == mapAddress
               && Ledger.txOutAddress nextOutput' == mapAddress
@@ -266,25 +261,21 @@ mkNodeValidPolicy !inst !redeemer !ctx =
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
               && nextInput == nextOutput
               && Ledger.txOutValue nextInput' == Ledger.txOutValue nextOutput'
-              && inputMap == outputMap
-              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAt mapAddress == 4
-              && outputsAt mapAddress == 3
+              && inputsAt mapAddress == 3
+              && outputsAt mapAddress == 2
               && onlyBurnsOne
           )
     ----
     RemoveGreatest prev ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
         (!prevInput', !prevInput) <- nodeInputByRef prev
         (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
         (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
-            not (T.map'locked inputMap)
+            not (isLocked $ T.node'lockState prevInput)
               -- outputs at correct address
               && Ledger.txOutAddress prevOutput' == mapAddress
               -- input-output validation
@@ -296,11 +287,9 @@ mkNodeValidPolicy !inst !redeemer !ctx =
               -- -- equality checks wrt Ledger.Value and (key, value) pairs
               && prevInput{node'next = T.node'next prevOutput} == prevOutput
               && Ledger.txOutValue (Ledger.txInInfoResolved prevInput') == Ledger.txOutValue prevOutput'
-              && inputMap == outputMap
-              && Ledger.txOutValue (Ledger.txInInfoResolved inputMap') == Ledger.txOutValue outputMap'
               -- quantative checks
-              && inputsAt mapAddress == 3
-              && outputsAt mapAddress == 2
+              && inputsAt mapAddress == 2
+              && outputsAt mapAddress == 1
               && onlyBurnsOne
           )
   where
