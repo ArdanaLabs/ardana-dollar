@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
+{-# HLINT ignore #-}
+
 import ArdanaDollar.Vault (vaultValidator)
 import ArdanaDollar.Map.Types (MapInstance(MapInstance))
 import ArdanaDollar.Map.ValidatorsTH (nodeValidPolicy)
@@ -11,12 +13,15 @@ import Plutus.V1.Ledger.Scripts (Validator(Validator), MintingPolicy(MintingPoli
 import Data.Aeson qualified as Aeson
 import Data.Maybe (fromJust)
 import Prelude
-import Codec.Serialise (serialise)
+import Codec.Serialise (serialise, Serialise)
 import PlutusTx qualified
 import PlutusTx.Prelude (BuiltinData, check)
 import PlutusTx.IsData.Class (UnsafeFromData, unsafeFromBuiltinData)
 import Data.ByteString.Lazy qualified as B
+import Data.ByteString qualified as SB
 import Ledger.Typed.Scripts qualified as Scripts
+import Cardano.Binary qualified as CBOR
+import Cardano.Api qualified as C
 
 dummyAssetClass :: AssetClass
 dummyAssetClass = AssetClass
@@ -97,13 +102,22 @@ emptyValidator' = mkValidatorScript $
   where
     wrap = myWrapValidator @EmptyDatum @EmptyRedeemer @MyScriptContext
 
+getSize :: Serialise a => a -> Int
+getSize x =
+  let
+    bs = B.toStrict . serialise $ x
+    -- HACK FIXME: this needs to be PlutusScriptV2, but we need a newer cardano-node source for that.
+    script = fromJust $ C.deserialiseFromRawBytes (C.proxyToAsType undefined) bs :: C.PlutusScript C.PlutusScriptV1
+  in
+  SB.length . CBOR.serialize' $ script
+
 main :: IO ()
 main = do
   let (Validator vs) = vaultValidator dummyPubKeyHash
   let (MintingPolicy ns) = nodeValidPolicy (MapInstance dummyAssetClass)
   let (Validator es) = emptyValidator
   let (Validator es') = emptyValidator'
-  putStrLn $ "vaultValidator: " <> (show . B.length . serialise $ vs)
-  putStrLn $ "nodeValidPolicy: " <> (show . B.length . serialise $ ns)
-  putStrLn $ "emptyValidator: " <> (show . B.length . serialise $ es)
-  putStrLn $ "emptyValidator': " <> (show . B.length . serialise $ es')
+  putStrLn $ "vaultValidator: " <> (show . getSize $ vs)
+  putStrLn $ "nodeValidPolicy: " <> (show . getSize $ ns)
+  putStrLn $ "emptyValidator: " <> (show . getSize $ es)
+  putStrLn $ "emptyValidator': " <> (show . getSize $ es')

@@ -63,6 +63,7 @@ common lang
     -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
     -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
     -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-identities
+    -Wwarn=unrecognised-pragmas
 
 common deps
   build-depends:
@@ -207,3 +208,5 @@ executable ardana-dollar-sizes
   build-depends:
     , ardana-dollar
     , serialise
+    , cardano-binary
+    , cardano-api
