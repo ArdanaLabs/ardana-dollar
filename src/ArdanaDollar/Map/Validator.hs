@@ -32,7 +32,7 @@ import ArdanaDollar.Map.Types (
   MapInstance,
   Node (Node),
   PointerCS,
-  Redeemer (CreateSnapshotToken, ListOp, Use),
+  Redeemer (ListOp, SnapshotOp, Use),
   SnapshotCS,
  )
 import ArdanaDollar.Map.Types qualified as T
@@ -52,7 +52,7 @@ mkValidator inst pointerCS snapshotCS datum redeemer ctx =
   case redeemer of
     Use -> validateUseRedeemer
     ListOp -> nodePolicyFires
-    CreateSnapshotToken -> snapshotPolicyFires
+    SnapshotOp -> snapshotPolicyFires
   where
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx

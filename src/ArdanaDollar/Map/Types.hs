@@ -96,7 +96,7 @@ data Datum k v
 data Redeemer
   = Use
   | ListOp
-  | CreateSnapshotToken
+  | SnapshotOp
   deriving stock (Haskell.Show, Haskell.Eq, Generic)
 
 data NodeValidTokenRedeemer
@@ -195,7 +195,7 @@ PlutusTx.makeIsDataIndexed
   ''Redeemer
   [ ('Use, 0)
   , ('ListOp, 1)
-  , ('CreateSnapshotToken, 2)
+  , ('SnapshotOp, 2)
   ]
 
 PlutusTx.makeIsDataIndexed
