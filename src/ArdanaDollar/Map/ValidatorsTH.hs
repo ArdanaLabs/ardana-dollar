@@ -32,7 +32,9 @@ import ArdanaDollar.Map.Types (
   PointerCS (PointerCS),
   Redeemer,
   SnapshotCS (SnapshotCS),
+  UnlockCS (UnlockCS),
  )
+import ArdanaDollar.Map.UnlockPolicy qualified as U
 import ArdanaDollar.Map.Validator qualified as V
 
 {-# INLINEABLE nodeValidPolicy #-}
@@ -59,6 +61,20 @@ snapshotPolicySymbol :: MapInstance -> PointerCS -> Value.CurrencySymbol
 snapshotPolicySymbol mapInstance pointerCS =
   Ledger.scriptCurrencySymbol $ snapshotPolicy mapInstance pointerCS
 
+{-# INLINEABLE unlockPolicy #-}
+unlockPolicy :: MapInstance -> PointerCS -> SnapshotCS -> Scripts.MintingPolicy
+unlockPolicy mapInstance pointerCS snapshotCS =
+  Ledger.mkMintingPolicyScript $
+    $$(TH.compile [||\m p u -> Scripts.wrapMintingPolicy $ U.mkUnlockPolicy m p u||])
+      `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
+      `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
+      `PlutusTx.applyCode` PlutusTx.liftCode snapshotCS
+
+{-# INLINEABLE unlockPolicySymbol #-}
+unlockPolicySymbol :: MapInstance -> PointerCS -> SnapshotCS -> Value.CurrencySymbol
+unlockPolicySymbol mapInstance pointerCS snapshotCS =
+  Ledger.scriptCurrencySymbol $ unlockPolicy mapInstance pointerCS snapshotCS
+
 data ValidatorTypes
 instance Scripts.ValidatorTypes ValidatorTypes where
   type DatumType ValidatorTypes = Datum Integer Integer
@@ -69,13 +85,15 @@ inst' ::
   MapInstance ->
   PointerCS ->
   SnapshotCS ->
+  UnlockCS ->
   Scripts.TypedValidator ValidatorTypes
-inst' mapInstance pointerCS snapshotCS =
+inst' mapInstance pointerCS snapshotCS unlockCS =
   Scripts.mkTypedValidator @ValidatorTypes
     ( $$(PlutusTx.compile [||V.mkValidator @Integer @Integer||])
         `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
         `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
         `PlutusTx.applyCode` PlutusTx.liftCode snapshotCS
+        `PlutusTx.applyCode` PlutusTx.liftCode unlockCS
     )
     $$(PlutusTx.compile [||wrap||])
   where
@@ -84,9 +102,10 @@ inst' mapInstance pointerCS snapshotCS =
 {-# INLINEABLE inst #-}
 inst :: MapInstance -> Scripts.TypedValidator ValidatorTypes
 inst mapInstance =
-  let s1 = PointerCS $ nodeValidPolicySymbol mapInstance
-      s2 = SnapshotCS $ snapshotPolicySymbol mapInstance s1
-   in inst' mapInstance s1 s2
+  let !s1 = PointerCS $ nodeValidPolicySymbol mapInstance
+      !s2 = SnapshotCS $ snapshotPolicySymbol mapInstance s1
+      !s3 = UnlockCS $ unlockPolicySymbol mapInstance s1 s2
+   in inst' mapInstance s1 s2 s3
 
 data Integer2IntegerMap
 

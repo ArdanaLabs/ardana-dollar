@@ -33,8 +33,9 @@ import ArdanaDollar.Map.Types (
   MapInstance,
   Node (Node),
   PointerCS,
-  Redeemer (ListOp, SnapshotOp, Use),
+  Redeemer (ListOp, SnapshotOp, UnlockOp, Use),
   SnapshotCS,
+  UnlockCS,
  )
 import ArdanaDollar.Map.Types qualified as T
 
@@ -45,15 +46,17 @@ mkValidator ::
   MapInstance ->
   PointerCS ->
   SnapshotCS ->
+  UnlockCS ->
   Datum k v ->
   Redeemer ->
   Ledger.ScriptContext ->
   Bool
-mkValidator inst pointerCS snapshotCS datum redeemer ctx =
+mkValidator inst pointerCS snapshotCS unlockCS datum redeemer ctx =
   case redeemer of
     Use -> validateUseRedeemer
     ListOp -> nodePolicyFires
     SnapshotOp -> snapshotPolicyFires
+    UnlockOp -> unlockPolicyFires
   where
     info :: Ledger.TxInfo
     info = Ledger.scriptContextTxInfo ctx
@@ -109,6 +112,9 @@ mkValidator inst pointerCS snapshotCS datum redeemer ctx =
 
     snapshotPolicyFires :: Bool
     snapshotPolicyFires = mintingPolicyFires (T.unSnapshotCS snapshotCS)
+
+    unlockPolicyFires :: Bool
+    unlockPolicyFires = mintingPolicyFires (T.unUnlockCS unlockCS)
 
     nodePolicyFires :: Bool
     nodePolicyFires = mintingPolicyFires (T.unPointerCS pointerCS)

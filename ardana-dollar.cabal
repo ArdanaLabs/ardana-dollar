@@ -133,6 +133,7 @@ library
     ArdanaDollar.Map.MapTerms
     ArdanaDollar.Map.NodeValidPolicy
     ArdanaDollar.Map.SnapshotPolicy
+    ArdanaDollar.Map.UnlockPolicy
     ArdanaDollar.Map.TestUtils
     ArdanaDollar.Map.TxUtils
     ArdanaDollar.Map.Types

@@ -20,6 +20,8 @@ module ArdanaDollar.Map.Types (
   SnapshotPerm (..),
   SnapshotPointer (..),
   LockState (..),
+  UnlockCS (..),
+  UnlockTokenRedeemer (..),
 ) where
 
 import PlutusTx qualified
@@ -43,6 +45,8 @@ newtype SnapshotPointer = SnapshotPointer {unSnapshotPointer :: Ledger.AssetClas
 newtype PointerCS = PointerCS {unPointerCS :: Ledger.CurrencySymbol}
 
 newtype SnapshotCS = SnapshotCS {unSnapshotCS :: Ledger.CurrencySymbol}
+
+newtype UnlockCS = UnlockCS {unUnlockCS :: Ledger.CurrencySymbol}
 
 newtype SnapshotVersion = SnapshotVersion
   {unSnapshotVersion :: Integer}
@@ -101,6 +105,7 @@ data Redeemer
   = Use
   | ListOp
   | SnapshotOp
+  | UnlockOp
   deriving stock (Haskell.Show, Haskell.Eq, Generic)
 
 data NodeValidTokenRedeemer
@@ -119,6 +124,11 @@ data SnapshotTokenRedeemer
   | SplitSnapshot !Ledger.TxOutRef !Ledger.TxOutRef !Ledger.TxOutRef
   | MakeSnapshot !Ledger.TxOutRef !Ledger.TxOutRef
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
+
+data UnlockTokenRedeemer
+  = InitiateUnlock
+  | MergeUnlock
+  | MakeUnlock
 
 -- instances
 
@@ -181,6 +191,7 @@ instance Eq SnapshotPerm where
 
 PlutusTx.makeLift ''PointerCS
 PlutusTx.makeLift ''SnapshotCS
+PlutusTx.makeLift ''UnlockCS
 PlutusTx.makeLift ''MapInstance
 
 PlutusTx.makeIsDataIndexed ''MapInstance [('MapInstance, 0)]
@@ -212,6 +223,7 @@ PlutusTx.makeIsDataIndexed
   [ ('Use, 0)
   , ('ListOp, 1)
   , ('SnapshotOp, 2)
+  , ('UnlockOp, 3)
   ]
 
 PlutusTx.makeIsDataIndexed
@@ -231,4 +243,11 @@ PlutusTx.makeIsDataIndexed
   [ ('InitiateSnapshot, 0)
   , ('SplitSnapshot, 1)
   , ('MakeSnapshot, 2)
+  ]
+
+PlutusTx.makeIsDataIndexed
+  ''UnlockTokenRedeemer
+  [ ('InitiateUnlock, 0)
+  , ('MergeUnlock, 1)
+  , ('MakeUnlock, 2)
   ]
