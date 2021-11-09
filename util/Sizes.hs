@@ -8,7 +8,7 @@ import ArdanaDollar.Map.Types (MapInstance(MapInstance))
 import ArdanaDollar.Map.ValidatorsTH (nodeValidPolicy)
 import Plutus.V1.Ledger.Value (AssetClass(AssetClass))
 import Plutus.V1.Ledger.Api (CurrencySymbol(CurrencySymbol), TokenName(TokenName), PubKeyHash(PubKeyHash), ScriptContext)
-import Plutus.V2.Ledger.Api (mkValidatorScript)
+import Plutus.V2.Ledger.Api (TxOutRef, mkValidatorScript)
 import Plutus.V1.Ledger.Scripts (Validator(Validator), MintingPolicy(MintingPolicy))
 import Data.Aeson qualified as Aeson
 import Data.Maybe (fromJust)
@@ -16,7 +16,7 @@ import Prelude
 import Codec.Serialise (serialise, Serialise)
 import PlutusTx qualified
 import PlutusTx.Prelude (BuiltinData, check)
-import PlutusTx.IsData.Class (UnsafeFromData, unsafeFromBuiltinData)
+import PlutusTx.IsData.Class (ToData, toBuiltinData, FromData, UnsafeFromData, unsafeFromBuiltinData)
 import Data.ByteString.Lazy qualified as B
 import Data.ByteString qualified as SB
 import Ledger.Typed.Scripts qualified as Scripts
@@ -102,6 +102,52 @@ emptyValidator' = mkValidatorScript $
   where
     wrap = myWrapValidator @EmptyDatum @EmptyRedeemer @MyScriptContext
 
+newtype Spooky a = Spooky BuiltinData
+  deriving newtype (FromData, UnsafeFromData, ToData)
+
+unSpooky :: UnsafeFromData a => Spooky a -> a
+unSpooky = unsafeFromBuiltinData . toBuiltinData
+
+data SpookyTxOutRef' = SpookyTxOutRef
+  { spookyTxOutRefId :: Spooky () -- placeholder
+  , spookyTxOutRefIdx :: Spooky Integer
+  }
+
+type SpookyTxOutRef = Spooky SpookyTxOutRef'
+
+PlutusTx.makeIsDataIndexed ''SpookyTxOutRef' [('SpookyTxOutRef,0)]
+
+data SpookyScriptPurpose' = SpookyMinting (Spooky ()) | SpookySpending (Spooky TxOutRef) | SpookyRewarding (Spooky ()) | SpookyCertifying (Spooky ())
+
+type SpookyScriptPurpose = Spooky SpookyScriptPurpose'
+
+PlutusTx.makeIsDataIndexed ''SpookyScriptPurpose' [('SpookyMinting,0), ('SpookySpending,1), ('SpookyRewarding,2), ('SpookyCertifying,3)]
+
+data SpookyScriptContext' = SpookyScriptContext
+  { spookyScriptContextTxInfo :: Spooky (), spookyScriptContextPurpose :: SpookyScriptPurpose }
+
+type SpookyScriptContext = Spooky SpookyScriptContext'
+
+PlutusTx.makeIsDataIndexed ''SpookyScriptContext' [('SpookyScriptContext,0)]
+
+mkSpookyValidator ::
+  EmptyDatum ->
+  EmptyRedeemer ->
+  SpookyScriptContext ->
+  Bool
+mkSpookyValidator _ _ ctx =
+  case (unSpooky . spookyScriptContextPurpose . unSpooky) ctx of
+    SpookySpending _ -> True
+    _ -> False
+
+spookyValidator :: Validator
+spookyValidator = mkValidatorScript $
+  PlutusTx.applyCode
+    $$(PlutusTx.compile [||wrap||] )
+    $$(PlutusTx.compile [||mkSpookyValidator||] )
+  where
+    wrap = myWrapValidator @EmptyDatum @EmptyRedeemer @SpookyScriptContext
+
 getSize :: Serialise a => a -> Int
 getSize x =
   let
@@ -121,3 +167,4 @@ main = do
   putStrLn $ "nodeValidPolicy: " <> (show . getSize $ ns)
   putStrLn $ "emptyValidator: " <> (show . getSize $ es)
   putStrLn $ "emptyValidator': " <> (show . getSize $ es')
+  putStrLn $ "spookyValidator: " <> (show . getSize $ spookyValidator)
