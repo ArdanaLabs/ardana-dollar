@@ -79,7 +79,7 @@ common deps
     , playground-common
     , plutus-contract
     , plutus-core
-    , plutus-extra
+    --, plutus-extra
     , plutus-ledger
     , plutus-ledger-api
     , plutus-tx
@@ -109,7 +109,7 @@ common test-deps
     , tasty
     , tasty-hedgehog
     , tasty-hunit
-    , tasty-plutus
+    --, tasty-plutus
     , tasty-quickcheck
     , transformers
 
@@ -194,7 +194,7 @@ executable ardana-pab
     , data-default
     , freer-simple
     , openapi3
-    , plutus-extra
+    --, plutus-extra
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
