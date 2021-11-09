@@ -9,7 +9,7 @@ import ArdanaDollar.Map.ValidatorsTH (nodeValidPolicy)
 import Plutus.V1.Ledger.Value (AssetClass(AssetClass))
 import Plutus.V1.Ledger.Api (CurrencySymbol(CurrencySymbol), TokenName(TokenName), PubKeyHash(PubKeyHash), ScriptContext)
 import Plutus.V2.Ledger.Api (TxOutRef, mkValidatorScript)
-import Plutus.V1.Ledger.Scripts (Validator(Validator), MintingPolicy(MintingPolicy))
+import Plutus.V1.Ledger.Scripts (Validator)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (fromJust)
 import Prelude
@@ -159,12 +159,8 @@ getSize x =
 
 main :: IO ()
 main = do
-  let (Validator vs) = vaultValidator dummyPubKeyHash
-  let (MintingPolicy ns) = nodeValidPolicy (MapInstance dummyAssetClass)
-  let (Validator es) = emptyValidator
-  let (Validator es') = emptyValidator'
-  putStrLn $ "vaultValidator: " <> (show . getSize $ vs)
-  putStrLn $ "nodeValidPolicy: " <> (show . getSize $ ns)
-  putStrLn $ "emptyValidator: " <> (show . getSize $ es)
-  putStrLn $ "emptyValidator': " <> (show . getSize $ es')
+  putStrLn $ "vaultValidator: " <> (show . getSize $ vaultValidator dummyPubKeyHash)
+  putStrLn $ "nodeValidPolicy: " <> (show . getSize $ nodeValidPolicy (MapInstance dummyAssetClass))
+  putStrLn $ "emptyValidator: " <> (show . getSize $ emptyValidator)
+  putStrLn $ "emptyValidator': " <> (show . getSize $ emptyValidator')
   putStrLn $ "spookyValidator: " <> (show . getSize $ spookyValidator)
