@@ -58,7 +58,7 @@ common lang
 
   ghc-options:
     -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
-    -Wmissing-export-lists -Werror -Wincomplete-record-updates
+    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas -Wincomplete-record-updates
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
     -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
@@ -142,6 +142,7 @@ library
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
+    ArdanaDollar.Treasury.CanSpendToken
     ArdanaDollar.Treasury.Endpoints
     ArdanaDollar.Treasury.OffChain
     ArdanaDollar.Treasury.OnChain
@@ -201,3 +202,12 @@ executable ardana-pab
     , plutus-ledger-api
     , plutus-pab
     , prettyprinter
+
+executable ardana-dollar-sizes
+  import:         lang
+  import:         deps
+  main-is:        Sizes.hs
+  hs-source-dirs: util
+  build-depends:
+    , ardana-dollar
+    , serialise

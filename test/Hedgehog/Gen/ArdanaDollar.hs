@@ -41,9 +41,11 @@ import Hedgehog.Range qualified as Range
 import Prelude
 
 import Hedgehog.Gen.Plutus (
+  address,
   assetClass,
   builtinByteString,
   currencySymbol,
+  positiveValue,
   pubKeyHash,
   pubKeyWithHash,
   tokenName,
@@ -201,8 +203,8 @@ treasuryAction =
   Gen.choice
     [ pure Treasury.BorrowForAuction
     , Treasury.DepositFundsWithCostCenter <$> treasuryDepositParams
-    , Treasury.SpendFundsFromCostCenter <$> builtinByteString (Range.constant 0 128)
-    , pure Treasury.AllowMint
+    , Treasury.SpendFundsFromCostCenter <$> treasurySpendParams
+    , Treasury.AllowMint <$> assetClass
     , pure Treasury.AllowBurn
     , Treasury.InitiateUpgrade <$> newContract
     ]
@@ -218,7 +220,7 @@ treasuryUpgradeContractTokenParams =
     <*> txOutRef
 
 treasuryCostCenters :: forall (m :: Type -> Type). MonadGen m => m (UniqueMap.Map P.BuiltinByteString Value.Value)
-treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) value
+treasuryCostCenters = uniqueMap (Range.linear 0 10) (builtinByteString (Range.constant 0 128)) positiveValue
 
 treasuryDatum :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasuryDatum
 treasuryDatum = Treasury.TreasuryDatum <$> integer <*> validatorHash <*> treasuryCostCenters
@@ -229,7 +231,10 @@ treasuryDepositParams =
 
 treasurySpendParams :: forall (m :: Type -> Type). MonadGen m => m Treasury.TreasurySpendParams
 treasurySpendParams =
-  Treasury.TreasurySpendParams <$> value <*> builtinByteString (Range.constant 0 128) <*> pubKeyHash
+  Treasury.TreasurySpendParams
+    <$> value
+    <*> builtinByteString (Range.constant 0 128)
+    <*> address
 
 onchainMapMapInstance :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.MapInstance
 onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass

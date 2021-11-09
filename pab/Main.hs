@@ -4,14 +4,6 @@ module Main (main) where
 
 --------------------------------------------------------------------------------
 
-import Data.Kind (Type)
-import Data.Semigroup qualified as Semigroup
-import GHC.Generics (Generic)
-import System.IO (hSetEncoding, stderr, stdout, utf8)
-import Prelude
-
---------------------------------------------------------------------------------
-
 import Control.Monad (void, when, (>=>))
 import Control.Monad.Freer (Eff, interpret)
 import Control.Monad.Freer.Error qualified as Error
@@ -23,18 +15,25 @@ import Data.Aeson (
  )
 import Data.Default (Default (def))
 import Data.Foldable (traverse_)
+import Data.Kind (Type)
 import Data.List (intercalate)
 import Data.Map qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.OpenApi.Schema qualified as OpenApi
+import Data.Semigroup qualified as Semigroup
 import Data.Text qualified as Text (unpack)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
 import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
 import Data.Vector (Vector)
+import GHC.Generics (Generic)
+import System.IO (hSetEncoding, stderr, stdout, utf8)
+import Prelude
 
 --------------------------------------------------------------------------------
 
 import Ledger qualified
+import Ledger.Crypto qualified as Crypto
 import Playground.Contract (FormSchema, FunctionSchema)
 import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
@@ -53,7 +52,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
-import Wallet.Emulator.Wallet (knownWallet)
+import Wallet.Emulator.Wallet (knownWallet, walletPubKey)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -61,7 +60,11 @@ import Wallet.Emulator.Wallet qualified as Wallet
 import ArdanaDollar.Buffer.Endpoints
 import ArdanaDollar.MockAdmin (startAdmin)
 import ArdanaDollar.Treasury.Endpoints
-import ArdanaDollar.Treasury.Types (Treasury, TreasuryDepositParams (..))
+import ArdanaDollar.Treasury.Types (
+  Treasury,
+  TreasuryDepositParams (..),
+  TreasurySpendEndpointParams (..),
+ )
 import ArdanaDollar.Vault
 
 import Plutus.PAB.OutputBus
@@ -120,8 +123,8 @@ pabSimulation = do
   Simulator.waitNSlots 5
   balancesMap2 <- Simulator.currentBalances
   let simulatorBalance = balancesMap2 Map.\\ balancesMap1
-  adminValidatorHash <- case head (Map.toList simulatorBalance) of
-    (Wallet.ScriptEntity scr, _) -> return scr
+  adminValidatorHash <- case listToMaybe (Map.toList simulatorBalance) of
+    Just (Wallet.ScriptEntity scr, _) -> return scr
     _ -> Error.throwError $ OtherError "Could not find admin script hash"
 
   -- Treasury
@@ -152,6 +155,26 @@ pabSimulation = do
   logBlueString $ "Deposited currently: " <> show queriedCosts
   logCurrentBalances_
   Simulator.waitNSlots 20
+
+  logBlueString "Spend funds in cost centers"
+  _ <-
+    Simulator.callEndpointOnInstance cTreasuryUserId "spendFromCostCenter" $
+      TreasurySpendEndpointParams
+        { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
+        , treasurySpendEndpoint'costCenter = "TestCostCenter1"
+        , treasurySpendEndpoint'pubKey = Nothing
+        , treasurySpendEndpoint'validator = Just (adminValidatorHash, ())
+        }
+  _ <- Simulator.waitNSlots 10
+  _ <-
+    Simulator.callEndpointOnInstance cTreasuryUserId "spendFromCostCenter" $
+      TreasurySpendEndpointParams
+        { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
+        , treasurySpendEndpoint'costCenter = "TestCostCenter1"
+        , treasurySpendEndpoint'pubKey = Just . Crypto.pubKeyHash . walletPubKey $ knownWallet 1
+        , treasurySpendEndpoint'validator = Nothing :: Maybe (Ledger.ValidatorHash, ())
+        }
+  _ <- Simulator.waitNSlots 10
 
   -- Start buffer
   logBlueString "Start buffer contract"
@@ -211,7 +234,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> Builtin.endpointsToSchemas @VaultSchema
     MockAdmin _ -> Builtin.endpointsToSchemas @EmptySchema
     TreasuryStart _ -> Builtin.endpointsToSchemas @EmptySchema
-    TreasuryContract _ -> Builtin.endpointsToSchemas @TreasurySchema
+    TreasuryContract _ -> Builtin.endpointsToSchemas @(TreasurySchema ())
     BufferStart _ _ -> Builtin.endpointsToSchemas @EmptySchema
     BufferContract _ -> Builtin.endpointsToSchemas @BufferSchema
 
@@ -220,7 +243,7 @@ instance HasDefinitions ArdanaContracts where
     VaultContract -> SomeBuiltin vaultContract
     MockAdmin i -> SomeBuiltin (startAdmin @() @ContractError i)
     TreasuryStart vh -> SomeBuiltin (treasuryStartContract (vh, "USD"))
-    TreasuryContract t -> SomeBuiltin (treasuryContract @ContractError t)
+    TreasuryContract t -> SomeBuiltin (treasuryContract @() @ContractError t)
     BufferStart t prices -> SomeBuiltin (bufferStartContract @() @ContractError t prices)
     BufferContract t -> SomeBuiltin (bufferAuctionContract @() @ContractError t)
 

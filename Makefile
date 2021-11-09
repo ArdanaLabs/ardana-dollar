@@ -17,7 +17,7 @@ usage:
 	@echo "  hoogle              -- Start local hoogle"
 	@echo "  build               -- Run cabal v2-build"
 	@echo "  test                -- Run cabal v2-test"
-	@echo "  costing             -- Run cost-estimation benchmark"
+	@echo "  print-sizes         -- Print sizes of scripts"
 	@echo "  coverage            -- Generate a coverage report of the tests"
 	@echo "  ghci                -- Run stack ghci"
 	@echo "  format              -- Apply source code formatting with fourmolu"
@@ -101,3 +101,6 @@ requires_nix_shell:
 
 dot2png:
 	find ./docs/diagrams -name "*.dot" | xargs -I '{}' dot -Tpng '{}' -o '{}.png'
+
+print-sizes: requires_nix_shell
+	cabal run ardana-dollar-sizes
