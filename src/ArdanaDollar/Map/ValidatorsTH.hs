@@ -41,7 +41,7 @@ import ArdanaDollar.Map.Validator qualified as V
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy
 nodeValidPolicy mapInstance =
   Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||Scripts.wrapMintingPolicy . P.mkNodeValidPolicy @Integer @Integer||])
+    $$(TH.compile [||Scripts.wrapMintingPolicy . P.mkNodeValidPolicy||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
 
 {-# INLINEABLE nodeValidPolicySymbol #-}
@@ -52,7 +52,7 @@ nodeValidPolicySymbol = Ledger.scriptCurrencySymbol . nodeValidPolicy
 snapshotPolicy :: MapInstance -> PointerCS -> Scripts.MintingPolicy
 snapshotPolicy mapInstance pointerCS =
   Ledger.mkMintingPolicyScript $
-    $$(TH.compile [||\m p -> Scripts.wrapMintingPolicy $ S.mkSnapshotPolicy @Integer @Integer m p||])
+    $$(TH.compile [||\m p -> Scripts.wrapMintingPolicy $ S.mkSnapshotPolicy m p||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
       `PlutusTx.applyCode` PlutusTx.liftCode pointerCS
 
