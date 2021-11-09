@@ -61,20 +61,20 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
   case redeemer of
     ----
     InitiateSnapshot last -> fromMaybe False $ do
-      (!inputMap', !inputMap) <- mapInput
-      (!outputMap', !outputMap) <- mapOutput
+      (inputMap', inputMap) <- mapInput
+      (outputMap', outputMap) <- mapOutput
 
-      (!lastInput', !lastInput) <- nodeInputByRef last
-      (!lastOutput', !lastOutput) <- nodeOutputByKey (T.node'key lastInput)
+      (lastInput', lastInput) <- nodeInputByRef last
+      (lastOutput', lastOutput) <- nodeOutputByKey (T.node'key lastInput)
 
-      (!outputMapSnapshot', !outputMapSnapshot) <- mapSnapshotOutput
+      (outputMapSnapshot', outputMapSnapshot) <- mapSnapshotOutput
 
-      !start' <- T.map'head inputMap
-      !end' <- T.Pointer <$> lookupToken (T.unPointerCS pointerCS) lastOutput'
+      start' <- T.map'head inputMap
+      end' <- T.Pointer <$> lookupToken (T.unPointerCS pointerCS) lastOutput'
 
       let currSnapshot = T.map'nextVersion inputMap
           expectedSnapshotPerm = T.SnapshotPerm start' end' currSnapshot
-      !outputSnapshotPerm' <- snapshotPermOutput expectedSnapshotPerm
+      outputSnapshotPerm' <- snapshotPermOutput expectedSnapshotPerm
 
       let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
 
@@ -112,13 +112,13 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
         )
     ----
     SplitSnapshot snapshotTokenRef leftNodeRef rightNodeRef -> fromMaybe False $ do
-      (!leftNodeInput', !leftNodeInput) <- nodeInputByRef leftNodeRef
-      (!leftNodeOutput', !leftNodeOutput) <- nodeOutputByKey (T.node'key leftNodeInput)
+      (leftNodeInput', leftNodeInput) <- nodeInputByRef leftNodeRef
+      (leftNodeOutput', leftNodeOutput) <- nodeOutputByKey (T.node'key leftNodeInput)
 
-      (!rightNodeInput', !rightNodeInput) <- nodeInputByRef rightNodeRef
-      (!rightNodeOutput', !rightNodeOutput) <- nodeOutputByKey (T.node'key rightNodeInput)
+      (rightNodeInput', rightNodeInput) <- nodeInputByRef rightNodeRef
+      (rightNodeOutput', rightNodeOutput) <- nodeOutputByKey (T.node'key rightNodeInput)
 
-      (!snapshotPermInput', !snapshotPermInput) <- snapshotPermInputByRef snapshotTokenRef
+      (snapshotPermInput', snapshotPermInput) <- snapshotPermInputByRef snapshotTokenRef
 
       l <- lookupToken (unPointerCS pointerCS) leftNodeOutput'
       r <- lookupToken (unPointerCS pointerCS) rightNodeOutput'
@@ -156,10 +156,10 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
         )
     ----
     MakeSnapshot snapshotTokenRef nodeRef -> fromMaybe False $ do
-      (!nodeInput', !nodeInput) <- nodeInputByRef nodeRef
-      (!nodeOutput', !nodeOutput) <- nodeOutputByKey (T.node'key nodeInput)
+      (nodeInput', nodeInput) <- nodeInputByRef nodeRef
+      (nodeOutput', nodeOutput) <- nodeOutputByKey (T.node'key nodeInput)
 
-      (!snapshotPerm', !snapshotPerm) <- snapshotPermInputByRef snapshotTokenRef
+      (snapshotPerm', snapshotPerm) <- snapshotPermInputByRef snapshotTokenRef
 
       expectedPointer <- repackage . Pointer <$> lookupToken (unPointerCS pointerCS) nodeOutput'
       let expectedNodeSnapshot =
@@ -229,7 +229,7 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
       SnapshotPointer (Value.AssetClass (Ledger.ownCurrencySymbol ctx, tn))
 
     nodePointsTo :: Node k v -> Ledger.TxOut -> Bool
-    nodePointsTo !node !txOut =
+    nodePointsTo node txOut =
       maybe
         False
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (T.unPointer pointer) == 1)

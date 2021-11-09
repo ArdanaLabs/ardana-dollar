@@ -52,21 +52,21 @@ newtype SnapshotVersion = SnapshotVersion
   {unSnapshotVersion :: Integer}
   deriving newtype (Haskell.Eq, Haskell.Show)
 
-data LockState = Unlocked | LockedFor !SnapshotVersion
+data LockState = Unlocked | LockedFor SnapshotVersion
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data Map = Map
-  { map'head :: !(Maybe Pointer)
-  , map'lockState :: !LockState
-  , map'nextVersion :: !SnapshotVersion
+  { map'head :: (Maybe Pointer)
+  , map'lockState :: LockState
+  , map'nextVersion :: SnapshotVersion
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data Node k v = Node
-  { node'key :: !k
-  , node'value :: !v
-  , node'next :: !(Maybe Pointer)
-  , node'lockState :: !LockState
+  { node'key :: k
+  , node'value :: v
+  , node'next :: (Maybe Pointer)
+  , node'lockState :: LockState
   }
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
@@ -94,11 +94,11 @@ data SnapshotPerm = SnapshotPerm
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data Datum k v
-  = MapDatum !Map
-  | NodeDatum !(Node k v)
-  | MapSnapshotDatum !MapSnapshot
-  | NodeSnapshotDatum !(NodeSnapshot k v)
-  | SnapshotPermDatum !SnapshotPerm
+  = MapDatum Map
+  | NodeDatum (Node k v)
+  | MapSnapshotDatum MapSnapshot
+  | NodeSnapshotDatum (NodeSnapshot k v)
+  | SnapshotPermDatum SnapshotPerm
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data Redeemer
@@ -111,18 +111,18 @@ data Redeemer
 data NodeValidTokenRedeemer
   = AddToEmptyMap
   | AddSmallest
-  | AddInTheMiddle !Ledger.TxOutRef
-  | AddGreatest !Ledger.TxOutRef
+  | AddInTheMiddle Ledger.TxOutRef
+  | AddGreatest Ledger.TxOutRef
   | RemoveFromOneElementMap
   | RemoveSmallest
-  | RemoveInTheMiddle !Ledger.TxOutRef
-  | RemoveGreatest !Ledger.TxOutRef
+  | RemoveInTheMiddle Ledger.TxOutRef
+  | RemoveGreatest Ledger.TxOutRef
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data SnapshotTokenRedeemer
-  = InitiateSnapshot !Ledger.TxOutRef
-  | SplitSnapshot !Ledger.TxOutRef !Ledger.TxOutRef !Ledger.TxOutRef
-  | MakeSnapshot !Ledger.TxOutRef !Ledger.TxOutRef
+  = InitiateSnapshot Ledger.TxOutRef
+  | SplitSnapshot Ledger.TxOutRef Ledger.TxOutRef Ledger.TxOutRef
+  | MakeSnapshot Ledger.TxOutRef Ledger.TxOutRef
   deriving stock (Haskell.Eq, Haskell.Show, Generic)
 
 data UnlockTokenRedeemer

@@ -47,41 +47,41 @@ import ArdanaDollar.Utils (datumForOnchain)
 {-# INLINEABLE maybeToList #-}
 maybeToList :: Maybe a -> [a]
 maybeToList Nothing = []
-maybeToList (Just !x) = [x]
+maybeToList (Just x) = [x]
 
 {-# INLINEABLE tokenName #-}
 tokenName :: Ledger.TxOutRef -> Ledger.TokenName
-tokenName !ref =
+tokenName ref =
   Value.TokenName $ consByteString (Ledger.txOutRefIdx ref) $ Ledger.getTxId (Ledger.txOutRefId ref)
 
 {-# INLINEABLE mapDatum #-}
 mapDatum :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe Map
 mapDatum info txOut = case datumForOnchain @(Datum k v) info txOut of
-  Just (MapDatum !dat) -> Just dat
+  Just (MapDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE mapSnapshotDatum #-}
 mapSnapshotDatum :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe MapSnapshot
 mapSnapshotDatum info txOut = case datumForOnchain @(Datum k v) info txOut of
-  Just (MapSnapshotDatum !dat) -> Just dat
+  Just (MapSnapshotDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE snapshotPermDatum #-}
 snapshotPermDatum :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe SnapshotPerm
 snapshotPermDatum info txOut = case datumForOnchain @(Datum k v) info txOut of
-  Just (SnapshotPermDatum !dat) -> Just dat
+  Just (SnapshotPermDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE nodeSnapshotDatum #-}
 nodeSnapshotDatum :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe (NodeSnapshot k v)
 nodeSnapshotDatum info txOut = case datumForOnchain @(Datum k v) info txOut of
-  Just (NodeSnapshotDatum !dat) -> Just dat
+  Just (NodeSnapshotDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE mapNode #-}
 mapNode :: forall k v. (FromData k, FromData v) => Ledger.TxInfo -> Ledger.TxOut -> Maybe (Node k v)
 mapNode info txOut = case datumForOnchain @(Datum k v) info txOut of
-  Just (NodeDatum !dat) -> Just dat
+  Just (NodeDatum dat) -> Just dat
   _ -> Nothing
 
 {-# INLINEABLE hasOne' #-}
@@ -252,7 +252,7 @@ snapshotPermInputByRef' info snapshotAC inputs ref =
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
 
 inputsAt' :: Ledger.TxInfo -> Ledger.Address -> Integer
-inputsAt' !info !address =
+inputsAt' info address =
   length $
     ( \txInInfo ->
         Ledger.txOutAddress
@@ -262,7 +262,7 @@ inputsAt' !info !address =
       `filter` Ledger.txInfoInputs info
 
 outputsAt' :: Ledger.TxInfo -> Ledger.Address -> Integer
-outputsAt' !info !address =
+outputsAt' info address =
   length $
     (\txOut -> Ledger.txOutAddress txOut == address) `filter` Ledger.txInfoOutputs info
 

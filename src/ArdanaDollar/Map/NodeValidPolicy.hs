@@ -42,14 +42,14 @@ mkNodeValidPolicy ::
   NodeValidTokenRedeemer ->
   Ledger.ScriptContext ->
   Bool
-mkNodeValidPolicy !inst !redeemer !ctx =
+mkNodeValidPolicy inst redeemer ctx =
   case redeemer of
     ----
     AddToEmptyMap ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
-        (!newOutput', !newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
+        (inputMap', inputMap) <- mapInput
+        (outputMap', outputMap) <- mapOutput
+        (newOutput', newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
         let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef inputMap'
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
@@ -76,11 +76,11 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     AddSmallest ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
-        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
-        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (!newOutput', !newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
+        (inputMap', inputMap) <- mapInput
+        (outputMap', outputMap) <- mapOutput
+        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (newOutput', newOutput) <- T.map'head outputMap >>= nodeOutputByPointer
         let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef inputMap'
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
@@ -112,11 +112,11 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     AddInTheMiddle prev ->
       fromMaybe False $ do
-        (!prevInput', !prevInput) <- nodeInputByRef prev
-        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
-        (!newOutput', !newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
+        (prevInput', prevInput) <- nodeInputByRef prev
+        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        (newOutput', newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
         let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef prevInput'
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
@@ -149,9 +149,9 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     AddGreatest prev ->
       fromMaybe False $ do
-        (!prevInput', !prevInput) <- nodeInputByRef prev
-        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (!newOutput', !newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
+        (prevInput', prevInput) <- nodeInputByRef prev
+        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (newOutput', newOutput) <- T.node'next prevOutput >>= nodeOutputByPointer
         let expectedPointer = Pointer $ tokenAC $ Ledger.txInInfoOutRef prevInput'
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
@@ -179,9 +179,9 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     RemoveFromOneElementMap ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
-        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        (inputMap', inputMap) <- mapInput
+        (outputMap', outputMap) <- mapOutput
+        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
@@ -205,11 +205,11 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     RemoveSmallest ->
       fromMaybe False $ do
-        (!inputMap', !inputMap) <- mapInput
-        (!outputMap', !outputMap) <- mapOutput
-        (!prevInput', !prevInput) <- T.map'head inputMap >>= nodeInputByPointer
-        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        (inputMap', inputMap) <- mapInput
+        (outputMap', outputMap) <- mapOutput
+        (prevInput', prevInput) <- T.map'head inputMap >>= nodeInputByPointer
+        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ inputMap'
         return
           ( -- map not locked
@@ -237,11 +237,11 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     RemoveInTheMiddle prev ->
       fromMaybe False $ do
-        (!prevInput', !prevInput) <- nodeInputByRef prev
-        (!currInput', !currInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (!nextInput', !nextInput) <- T.node'next currInput >>= nodeInputByPointer
-        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
-        (!nextOutput', !nextOutput) <- nodeOutputByKey (T.node'key nextInput)
+        (prevInput', prevInput) <- nodeInputByRef prev
+        (currInput', currInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (nextInput', nextInput) <- T.node'next currInput >>= nodeInputByPointer
+        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (nextOutput', nextOutput) <- nodeOutputByKey (T.node'key nextInput)
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
@@ -269,9 +269,9 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     ----
     RemoveGreatest prev ->
       fromMaybe False $ do
-        (!prevInput', !prevInput) <- nodeInputByRef prev
-        (!nextInput', !nextInput) <- T.node'next prevInput >>= nodeInputByPointer
-        (!prevOutput', !prevOutput) <- nodeOutputByKey (T.node'key prevInput)
+        (prevInput', prevInput) <- nodeInputByRef prev
+        (nextInput', nextInput) <- T.node'next prevInput >>= nodeInputByPointer
+        (prevOutput', prevOutput) <- nodeOutputByKey (T.node'key prevInput)
         let mapAddress = Ledger.txOutAddress . Ledger.txInInfoResolved $ prevInput'
         return
           ( -- map not locked
@@ -297,7 +297,7 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     info = Ledger.scriptContextTxInfo ctx
 
     tokenAC :: Ledger.TxOutRef -> Ledger.AssetClass
-    tokenAC !ref =
+    tokenAC ref =
       Value.assetClass
         (Ledger.ownCurrencySymbol ctx)
         (tokenName ref)
@@ -330,14 +330,14 @@ mkNodeValidPolicy !inst !redeemer !ctx =
     outputsAt = outputsAt' info
 
     mapPointsTo :: Map -> Ledger.TxOut -> Bool
-    mapPointsTo !map' !txOut =
+    mapPointsTo map' txOut =
       maybe
         False
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (T.unPointer pointer) == 1)
         (T.map'head map')
 
     nodePointsTo :: Node k v -> Ledger.TxOut -> Bool
-    nodePointsTo !node !txOut =
+    nodePointsTo node txOut =
       maybe
         False
         (\pointer -> Value.assetClassValueOf (Ledger.txOutValue txOut) (T.unPointer pointer) == 1)
