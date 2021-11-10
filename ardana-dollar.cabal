@@ -58,11 +58,12 @@ common lang
 
   ghc-options:
     -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
-    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas -Wincomplete-record-updates
-    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
-    -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
-    -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-identities
+    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas
+    -Wincomplete-record-updates -fno-ignore-interface-pragmas
+    -fno-omit-interface-pragmas -fobject-code -fno-strictness
+    -fplugin=RecordDotPreprocessor -fwarn-redundant-constraints
+    -fwarn-incomplete-uni-patterns -fwarn-tabs
+    -fwarn-incomplete-record-updates -fwarn-identities
 
 common deps
   build-depends:
@@ -73,6 +74,7 @@ common deps
     , data-default
     , foldl
     , freer-extras
+    , freer-simple
     , lens
     , mtl
     , openapi3
@@ -128,12 +130,20 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
-    ArdanaDollar.Map.Contracts
+    ArdanaDollar.Map.ContractUtils
     ArdanaDollar.Map.Endpoints
+    ArdanaDollar.Map.ListOpContracts
     ArdanaDollar.Map.MapTerms
+    ArdanaDollar.Map.NodeValidPolicy
+    ArdanaDollar.Map.SnapshotOpContracts
+    ArdanaDollar.Map.SnapshotPolicy
+    ArdanaDollar.Map.TestUtils
+    ArdanaDollar.Map.TxUtils
     ArdanaDollar.Map.Types
-    ArdanaDollar.Map.Utils
-    ArdanaDollar.Map.Validators
+    ArdanaDollar.Map.UnlockPermPolicy
+    ArdanaDollar.Map.UnlockPolicy
+    ArdanaDollar.Map.UseContracts
+    ArdanaDollar.Map.Validator
     ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain

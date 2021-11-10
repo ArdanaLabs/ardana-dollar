@@ -20,6 +20,9 @@ class MapTerms' t where
   type K' t :: Type
   type V' t :: Type
   nodeValidPolicy' :: MapInstance -> Scripts.MintingPolicy
+  snapshotPolicy' :: MapInstance -> Scripts.MintingPolicy
+  unlockPermPolicy' :: MapInstance -> Scripts.MintingPolicy
+  unlockPolicy' :: MapInstance -> Scripts.MintingPolicy
   inst' :: MapInstance -> Scripts.TypedValidator (ValidatorTypes' t)
 
 class

@@ -26,7 +26,7 @@ module Hedgehog.Gen.ArdanaDollar (
   onchainMapMap,
   onchainMapNode,
   onchainMapDatum,
-  onchainTokenRedeemer,
+  onchainNodeValidTokenRedeemer,
   onchainRedeemer,
   newContract,
 ) where
@@ -73,12 +73,14 @@ import ArdanaDollar.DanaStakePool.Types qualified as DanaStakePool (
  )
 import ArdanaDollar.Map.Types qualified as OnchainMap (
   Datum (..),
+  LockState (..),
   Map (..),
   MapInstance (..),
   Node (..),
+  NodeValidTokenRedeemer (..),
   Pointer (..),
   Redeemer (..),
-  TokenRedeemer (..),
+  SnapshotVersion (..),
  )
 import ArdanaDollar.PriceOracle.OnChain qualified as PriceOracle (
   OracleMintingParams (..),
@@ -241,11 +243,17 @@ onchainMapMapInstance = OnchainMap.MapInstance <$> assetClass
 onchainMapPointer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Pointer
 onchainMapPointer = OnchainMap.Pointer <$> assetClass
 
+onchainMapSnapshotVersion :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.SnapshotVersion
+onchainMapSnapshotVersion = OnchainMap.SnapshotVersion <$> integer
+
+onchainMapLockState :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.LockState
+onchainMapLockState = Gen.choice [return OnchainMap.Unlocked, OnchainMap.LockedFor <$> onchainMapSnapshotVersion]
+
 onchainMapMap :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Map
-onchainMapMap = OnchainMap.Map <$> Gen.maybe onchainMapPointer
+onchainMapMap = OnchainMap.Map <$> Gen.maybe onchainMapPointer <*> onchainMapLockState <*> onchainMapSnapshotVersion
 
 onchainMapNode :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Node Integer Integer)
-onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMapPointer
+onchainMapNode = OnchainMap.Node <$> integer <*> integer <*> Gen.maybe onchainMapPointer <*> onchainMapLockState
 
 onchainMapDatum :: forall (m :: Type -> Type). MonadGen m => m (OnchainMap.Datum Integer Integer)
 onchainMapDatum =
@@ -257,8 +265,8 @@ onchainMapDatum =
 onchainRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.Redeemer
 onchainRedeemer = Gen.element [OnchainMap.Use, OnchainMap.ListOp]
 
-onchainTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.TokenRedeemer
-onchainTokenRedeemer =
+onchainNodeValidTokenRedeemer :: forall (m :: Type -> Type). MonadGen m => m OnchainMap.NodeValidTokenRedeemer
+onchainNodeValidTokenRedeemer =
   Gen.choice
     [ pure OnchainMap.AddToEmptyMap
     , pure OnchainMap.AddSmallest

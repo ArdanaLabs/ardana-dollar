@@ -26,8 +26,10 @@ import Control.Monad (forever)
 import Data.Monoid (Last)
 import Data.Text (Text)
 
-import ArdanaDollar.Map.Contracts qualified as Contracts
+import ArdanaDollar.Map.ListOpContracts qualified as Contracts
+import ArdanaDollar.Map.SnapshotOpContracts qualified as Contracts
 import ArdanaDollar.Map.Types (MapInstance)
+import ArdanaDollar.Map.UseContracts qualified as Contracts
 import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
 
 type Key = Integer
@@ -37,6 +39,7 @@ type Schema =
   Endpoint "insert" (Key, Value)
     .\/ Endpoint "remove" Key
     .\/ Endpoint "increment" Key
+    .\/ Endpoint "createSnapshot" ()
 
 type CreateSchema =
   Endpoint "create" ()
@@ -57,4 +60,5 @@ endpoints f = do
       [ endpoint @"insert" (Contracts.insert @Integer2IntegerMap f)
       , endpoint @"remove" (Contracts.remove @Integer2IntegerMap f)
       , endpoint @"increment" (\key -> Contracts.use @Integer2IntegerMap f key (+ 1))
+      , endpoint @"createSnapshot" (const $ Contracts.createSnapshot @Integer2IntegerMap f)
       ]

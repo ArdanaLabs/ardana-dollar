@@ -52,7 +52,7 @@ builtinDataRoundtripTests =
         , builtinDataPartialIsomorphism "Datum" onchainMapDatum
         , builtinDataPartialIsomorphism "Map" onchainMapMap
         , builtinDataPartialIsomorphism "Node" onchainMapNode
-        , builtinDataPartialIsomorphism "TokenRedeemer" onchainTokenRedeemer
+        , builtinDataPartialIsomorphism "NodeValidTokenRedeemer" onchainNodeValidTokenRedeemer
         ]
     ]
 

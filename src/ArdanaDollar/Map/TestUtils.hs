@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 
-module ArdanaDollar.Map.Utils (
+module ArdanaDollar.Map.TestUtils (
   dataAndValueAtAddress,
 ) where
 
