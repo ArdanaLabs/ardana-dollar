@@ -106,7 +106,7 @@ oracleHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- There must be an `oracleDatum :: OracleDatum` ceritifed with a certification
+- There must be an `oracleDatum :: OracleDatum` certified with a certification
   token for `adminState.oracleToken` with the name `oracleHash`.
 - `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
 - `assetClassValueOf newValue collateralCurrency > oracleDatum.ratio * (borrowPrincipal + new.interest) * adminState.minCollateralRatio`.
@@ -114,7 +114,6 @@ oracleHash :: TokenName
 - ```haskell
   new ≡ old
     { interest = interest'
-    , borrowPrincipal = max(min(old.borrowPrincipal + interest' + assetClassValueOf txInfoMint dUSD, old.borrowPrincipal), 0)
     , interestTimestamp = new.interestTimestamp
     , userAuthToken = new.userAuthToken
     }
@@ -136,7 +135,7 @@ oracleHash :: TokenName
 - `adminState.active`.
 - `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
 - `adminState.collateralCurrency` must be equal to `collateralCurrency`.
-- There must be an `oracleDatum :: OracleDatum` ceritifed with a certification
+- There must be an `oracleDatum :: OracleDatum` certified with a certification
   token for `adminState.oracleToken` with the name `oracleHash`.
 - `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
 - `assetClassValueOf txInfoMint dUSD > 0`.
@@ -181,3 +180,106 @@ adminStateHash :: TokenName
     }
   ```
 - `userAuthToken` must be minted or burned.
+
+### LiquidationAct
+
+FIXME: What do we do when the ratio is below 100%?
+
+Purpose: When the collateral ratio `r` is below the minimum, but above 100%, we allow
+liquidations, where a buyer can buy `(r - 1) * k + 1` of the collateral per dUSD, until
+the minimum ratio is attained again.
+This is an auction in MakerDAO, but we went for this approach for the sake of simplicity.
+
+Arguments:
+```haskell
+adminStateHash :: TokenName
+oracleHash :: TokenName
+```
+
+- There must be an `adminState :: AdminState` certified with a certification
+  token for `adminStateToken` with the name `adminStateHash`.
+- `adminState.active`.
+- `ivTo (txInfoValidRange _) < adminState.certTokenExpiration + adminState.timestamp``
+- `adminState.collateralCurrency` must be equal to `collateralCurrency`.
+- There must be an `oracleDatum :: OracleDatum` certified with a certification
+  token for `adminState.oracleToken` with the name `oracleHash`.
+- `ivTo (txInfoValidRange _) < oracleDatum.certTokenExpiration + oracleDatum.timestamp`.
+- `assetClassValueOf txInfoMint dUSD <= 0`.
+- `assetClassValueOf newValue collateralCurrency * oracleDatum.ratio ≡ collateral'`.
+- `assetClassValueOf oldValue collateralCurrency * oracleDatum.ratio ≡ collateral`.
+- Interest algorithm must be applied.
+- `borrow = old.borrowPrincipal + interest'`.
+- `new.interest ≡ 0 || new.borrowPrincipal == old.borrowPrincipal`.
+- `let reward = flip assetClassValueOf dUSD . foldMap txOutValue . filter (\o -> o.txOutAddress == costCenterHash && findDatum _ o.txOutDatumHash == CostCenterDatum "vault") $ txInfoOutputs`
+- `reward >= old.interest - new.interest`
+- `assetClassValueOf (txInfoMint _) dUSD <= negate $ max((borrow - borrow') - (old.interest - new.interest), 0)`
+- ```haskell
+  new ≡ old
+    { interest = max(interest' - (borrow - borrow'), 0)
+    , borrowPrincipal = max(old.borrowPrincipal + assetClassValueOf (txInfoMint _) dUSD, 0)
+    , interestTimestamp = new.interestTimestamp
+    }
+  ```
+
+Math:
+```haskell
+-- TODO: Formalise
+
+liquidationTarget > 0
+1 > liquidationRate > 0
+
+dUSDToPay = borrow - borrow'
+-- `collateral` has already been divided by the oracle ratio
+collateralToReceive = collateral - collateral'
+
+x = collateral
+x' = collateral'
+y = borrow
+y' = borrow'
+k = liquidationRate
+n = minCollateralRatio + liquidationTarget
+
+x / y < minCollateralRatio
+
+x' / y' = n
+
+(x / y) < (x' / y')
+
+(x - x') / (y - y') = m
+
+m = ((x / y) - 1) * k + 1
+
+-- derived from the above
+
+x' = n * y'
+
+(x - y' * n) / (y - y') = m
+
+x / (y - y') - y' * n / (y - y') = m
+
+x - y' * n = m * (y - y')
+
+x - y' * n = m * y - m * y'
+
+x - m * y = y' * n - m * y'
+
+x - m * y = y' * n + y' * -m
+
+x - m * y = y' * (n - m)
+
+(x - m * y) / (n - m) = y'
+
+(x - (((x / y) - 1) * k + 1) * y) / (n - (((x / y) - 1) * k + 1)) = y'
+
+(x - ((x / y) - 1) * k * y - y) / (n - (((x / y) - 1) * k + 1)) = y'
+
+(x - ((x / y) - 1) * k * y - y) / (n - ((x / y) - 1) * k - 1) = y'
+
+(x - (x - y) * k - y) / (n - ((x / y) - 1) * k - 1) = y'
+
+(x - k * x + k * y - y) / (n - ((x / y) - 1) * k - 1) = y'
+
+(x - k * x + k * y - y) / (n - (x / y * k - k) - 1) = y'
+
+(x - k * x + k * y - y) / (n - x / y * k + k - 1) = y'
+```
