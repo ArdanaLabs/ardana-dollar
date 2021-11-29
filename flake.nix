@@ -77,6 +77,8 @@
               = "Hesb5GXSx0IwKSIi42ofisVELcQNX6lwHcoZcbaDiqc=";
             "https://github.com/input-output-hk/goblins"."cde90a2b27f79187ca8310b6549331e59595e7ba"
               = "z9ut0y6umDIjJIRjz9KSvKgotuw06/S8QDwOtVdGiJ0=";
+            "https://github.com/Liqwid-Labs/plutus-extra.git"."658b5ea8a5d58cb15a670dd9709e47d6029a6acb"
+              = "9vrcwZrcfRQX2LylrlwgpYOkyS7bD529jVLZesBIlKA=";
           };
         };
     in
