@@ -79,9 +79,8 @@ noTreasuryTest =
     bufferTrace :: EmulatorTrace ()
     bufferTrace = do
       walletPubKeyId <- activateContractWallet (knownWallet 2) $ do
-        pk <- Contract.ownPubKey @[(TxOutRef, Ledger.PubKeyHash)] @EmptySchema @ContractError
-        let pka = Ledger.pubKeyAddress pk
-            pkh = Ledger.pubKeyHash pk
+        pkh <- Contract.ownPubKeyHash @[(TxOutRef, Ledger.PubKeyHash)] @EmptySchema @ContractError
+        let pka = Ledger.pubKeyHashAddress pkh
         utxos <- Map.toList <$> Contract.utxosAt pka
         case utxos of
           [] -> Contract.logError @String "No UTXO found at public address"

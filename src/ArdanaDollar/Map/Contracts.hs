@@ -23,7 +23,7 @@ import Plutus.Contract (
   awaitTxConfirmed,
   logInfo,
   mapError,
-  ownPubKey,
+  ownPubKeyHash,
   submitTxConstraintsWith,
   tell,
   throwError,
@@ -124,7 +124,7 @@ mintNFT ::
   forall (s :: Row Type) (w :: Type).
   Contract w s Text Ledger.AssetClass
 mintNFT = do
-  self <- Ledger.pubKeyHash <$> ownPubKey
+  self <- ownPubKeyHash
   let nftTokenName = Value.TokenName PlutusTx.Prelude.emptyByteString
   x <-
     mapError
@@ -163,7 +163,7 @@ create' ac = do
       tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing) nftValue
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
   tell $ Last $ Just mapInstance
 
@@ -243,7 +243,7 @@ use mapInstance key update = do
         logInfo @String $ "Map: use entry"
 
         ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-        void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+        void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
     _ -> return ()
 
 lookups' ::
@@ -298,7 +298,7 @@ removeFromOneElementMap mapInstance map' node' =
     logInfo @String $ "Map: remove from one element map"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -342,7 +342,7 @@ removeSmallest mapInstance map' node' next' =
     logInfo @String $ "Map: remove smallest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -378,7 +378,7 @@ removeGreatest mapInstance node' next' =
     logInfo @String $ "Map: remove greatest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -419,7 +419,7 @@ removeInTheMiddle mapInstance (prev, mid, next) =
     logInfo @String $ "Map: remove in the middle"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addToEmptyMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -456,7 +456,7 @@ addToEmptyMap mapInstance map' (key, value) =
     logInfo @String $ "Map: add to empty map"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -502,7 +502,7 @@ addSmallest mapInstance map' node' (key, value) =
     logInfo @String $ "Map: add smallest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -538,7 +538,7 @@ addGreatest mapInstance node' (key, value) =
     logInfo @String $ "Map: add greatest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -580,7 +580,7 @@ addInTheMiddle mapInstance (before, after) (key, value) =
     logInfo @String $ "Map: add in the middle"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 findPlaceInTheMiddle ::
   forall t.
