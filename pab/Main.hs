@@ -24,16 +24,15 @@ import Data.Semigroup qualified as Semigroup
 import Data.Text qualified as Text (unpack)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
-import Data.Text.Prettyprint.Doc (Pretty (..), viaShow)
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
 import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
+import Prettyprinter
 
 --------------------------------------------------------------------------------
 
 import Ledger qualified
-import Ledger.Crypto qualified as Crypto
 import Playground.Contract (FormSchema, FunctionSchema)
 import Plutus.Contract (ContractError, ContractInstanceId, EmptySchema)
 import Plutus.PAB.Core qualified as PAB
@@ -52,7 +51,7 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Wallet.Emulator.Types (Wallet (..))
-import Wallet.Emulator.Wallet (knownWallet, walletPubKey)
+import Wallet.Emulator.Wallet (knownWallet)
 import Wallet.Emulator.Wallet qualified as Wallet
 
 --------------------------------------------------------------------------------
@@ -171,7 +170,7 @@ pabSimulation = do
       TreasurySpendEndpointParams
         { treasurySpendEndpoint'value = Value.assetClassValue dUSDAsset 10
         , treasurySpendEndpoint'costCenter = "TestCostCenter1"
-        , treasurySpendEndpoint'pubKey = Just . Crypto.pubKeyHash . walletPubKey $ knownWallet 1
+        , treasurySpendEndpoint'pubKey = Just . Wallet.walletPubKeyHash $ knownWallet 1
         , treasurySpendEndpoint'validator = Nothing :: Maybe (Ledger.ValidatorHash, ())
         }
   _ <- Simulator.waitNSlots 10
