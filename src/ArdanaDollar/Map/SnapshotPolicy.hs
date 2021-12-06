@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Map.SnapshotPolicy (
   mkSnapshotPolicy,
@@ -101,11 +102,11 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
             && Ledger.txOutValue outputMapSnapshot' == Value.assetClassValue assetClass1 1
         )
     ----
-    InitiateSnapshot last -> fromMaybe False $ do
+    InitiateSnapshot last' -> fromMaybe False $ do
       (inputMap', inputMap) <- mapInput
       (outputMap', outputMap) <- mapOutput
 
-      (lastInput', lastInput) <- nodeInputByRef last
+      (lastInput', lastInput) <- nodeInputByRef last'
       (lastOutput', lastOutput) <- nodeOutputByKey (T.node'key lastInput)
 
       start' <- T.map'head inputMap
@@ -291,7 +292,7 @@ mkSnapshotPolicy inst pointerCS redeemer ctx =
     expectOwnCS :: Value.Value -> (Value.TokenName, Integer) -> Bool
     expectOwnCS value (tokenName, amount) =
       let cs = Ledger.ownCurrencySymbol ctx
-          tokens = maybe [] M.toList (M.lookup cs (Value.getValue value))
+          tokens = foldMap M.toList (M.lookup cs (Value.getValue value))
        in case tokens of
             [(tn, amt)] -> tn == tokenName && amt == amount
             _ -> False

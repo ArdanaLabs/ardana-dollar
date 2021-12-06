@@ -40,7 +40,7 @@ import Data.Kind (Type)
 import Data.List (find, foldl', partition)
 import Data.Map qualified as M
 import Data.Map.Strict qualified as SM
-import Data.Maybe (fromJust, isNothing, maybeToList)
+import Data.Maybe (maybeToList)
 import Data.Row (Row)
 import Data.Sequence qualified as S
 import Data.Text (Text)
@@ -146,11 +146,12 @@ createSnapshot mapInstance = do
   logInfo @String $ "Map: creating snapshot"
 
   lkp <- mkMapLookup @t mapInstance
-  if isNothing $ T.map'head $ snd $ mapLookup'map lkp
-    then createSnapshotOfEmptyMap @t mapInstance (mapLookup'map lkp)
-    else do
-      createSnapshotOfNonEmptyMap @t mapInstance lkp (mapLookup'map lkp) (last $ mapLookup'nodes lkp)
+  case (T.map'head $ snd $ mapLookup'map lkp, reverse $ mapLookup'nodes lkp) of
+    (Nothing, _) -> createSnapshotOfEmptyMap @t mapInstance (mapLookup'map lkp)
+    (_, last' : _) -> do
+      createSnapshotOfNonEmptyMap @t mapInstance lkp (mapLookup'map lkp) last'
       unlockWholeMap @t mapInstance
+    _ -> throwError "Map: creating snapshot: unexpected"
 
 unlockWholeMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -285,11 +286,14 @@ initiateSnapshot (inputMap', inputMap) (inputLast', inputLast) = do
       inputLastValue = snd inputLast' ^. Ledger.ciTxOutValue
       assetClass1Token = Value.assetClassValue (assetClass1 @t mapInstance) 1
 
-      mapSnapshot = MapSnapshot inputMapValue (repackage @t mapInstance <$> T.map'head inputMap) version
+  headPointer <- raiseEnh @t $ fromJust' "Cannot find left Pointer" $ T.map'head inputMap
+  lastPointer <- raiseEnh @t $ fromJust' "Cannot find left Pointer" $ findPointer @t mapInstance inputLast'
+
+  let mapSnapshot = MapSnapshot inputMapValue (repackage @t mapInstance <$> T.map'head inputMap) version
       snapshotPerm =
         SnapshotPerm
-          (fromJust $ T.map'head inputMap)
-          (fromJust $ findPointer @t mapInstance inputLast')
+          headPointer
+          lastPointer
           version
 
   let toSpend = M.fromList [inputMap', inputLast']
@@ -443,16 +447,19 @@ split' mapInstance (FeeSource sourceTpl) a1 a2 a3 = do
       (leftNodeInput', leftNodeInput) = a2
       (rightNodeInput', rightNodeInput) = a3
 
-      snapshotPermToken = Value.assetClassValue (assetClass1 @t mapInstance) 1
+  leftPointer <- fromJust' "Cannot find left Pointer" $ findPointer @t mapInstance leftNodeInput'
+  rightPointer <- fromJust' "Cannot find left Pointer" $ findPointer @t mapInstance rightNodeInput'
+
+  let snapshotPermToken = Value.assetClassValue (assetClass1 @t mapInstance) 1
       version = T.snapshotPerm'version snapshotPermInput
       snapshotPermLeftOutput =
         SnapshotPerm
           (T.snapshotPerm'start snapshotPermInput)
-          (fromJust $ findPointer @t mapInstance leftNodeInput')
+          leftPointer
           version
       snapshotPermRightOutput =
         SnapshotPerm
-          (fromJust $ findPointer @t mapInstance rightNodeInput')
+          rightPointer
           (T.snapshotPerm'end snapshotPermInput)
           version
       leftNodeOutput = leftNodeInput {T.node'lockState = LockedFor version}

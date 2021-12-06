@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Map.NodeValidPolicy (
   mkNodeValidPolicy,
@@ -347,7 +348,7 @@ mkNodeValidPolicy inst redeemer ctx =
     expectMinting expected =
       let cs = Ledger.ownCurrencySymbol ctx
           minted = Ledger.txInfoMint info
-          tokens = maybe [] M.toList (M.lookup cs (Value.getValue minted))
+          tokens = foldMap M.toList (M.lookup cs (Value.getValue minted))
        in case tokens of
             [(_, amt)] -> amt == expected
             _ -> False

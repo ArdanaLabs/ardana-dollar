@@ -157,7 +157,7 @@ mkUnlockPolicy mapInstance pointerCS redeemer ctx =
     expectOwnCS :: Value.Value -> (Value.TokenName, Integer) -> Bool
     expectOwnCS value (tokenName, amount) =
       let cs = Ledger.ownCurrencySymbol ctx
-          tokens = maybe [] M.toList (M.lookup cs (Value.getValue value))
+          tokens = foldMap M.toList (M.lookup cs (Value.getValue value))
        in case tokens of
             [(tn, amt)] -> tn == tokenName && amt == amount
             _ -> False
