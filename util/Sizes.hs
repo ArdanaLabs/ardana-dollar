@@ -99,13 +99,65 @@ emptyValidator' =
   where
     wrap = myWrapValidator @EmptyDatum @EmptyRedeemer @MyScriptContext
 
+newtype Spooky a = Spooky BuiltinData
+  deriving newtype (FromData, UnsafeFromData, ToData)
+
+unSpooky :: UnsafeFromData a => Spooky a -> a
+unSpooky = unsafeFromBuiltinData . toBuiltinData
+
+data SpookyTxOutRef' = SpookyTxOutRef
+  { spookyTxOutRefId :: Spooky () -- placeholder
+  , spookyTxOutRefIdx :: Spooky Integer
+  }
+
+type SpookyTxOutRef = Spooky SpookyTxOutRef'
+
+PlutusTx.makeIsDataIndexed ''SpookyTxOutRef' [('SpookyTxOutRef,0)]
+
+data SpookyScriptPurpose' = SpookyMinting (Spooky ()) | SpookySpending (Spooky TxOutRef) | SpookyRewarding (Spooky ()) | SpookyCertifying (Spooky ())
+
+type SpookyScriptPurpose = Spooky SpookyScriptPurpose'
+
+PlutusTx.makeIsDataIndexed ''SpookyScriptPurpose' [('SpookyMinting,0), ('SpookySpending,1), ('SpookyRewarding,2), ('SpookyCertifying,3)]
+
+data SpookyScriptContext' = SpookyScriptContext
+  { spookyScriptContextTxInfo :: Spooky (), spookyScriptContextPurpose :: SpookyScriptPurpose }
+
+type SpookyScriptContext = Spooky SpookyScriptContext'
+
+PlutusTx.makeIsDataIndexed ''SpookyScriptContext' [('SpookyScriptContext,0)]
+
+mkSpookyValidator ::
+  EmptyDatum ->
+  EmptyRedeemer ->
+  SpookyScriptContext ->
+  Bool
+mkSpookyValidator _ _ ctx =
+  case (unSpooky . spookyScriptContextPurpose . unSpooky) ctx of
+    SpookySpending _ -> True
+    _ -> False
+
+spookyValidator :: Validator
+spookyValidator = mkValidatorScript $
+  PlutusTx.applyCode
+    $$(PlutusTx.compile [||wrap||] )
+    $$(PlutusTx.compile [||mkSpookyValidator||] )
+  where
+    wrap = myWrapValidator @EmptyDatum @EmptyRedeemer @SpookyScriptContext
+
+getSize :: Serialise a => a -> Int
+getSize x =
+  let
+    bs = B.toStrict . serialise $ x
+    -- HACK FIXME: this needs to be PlutusScriptV2, but we need a newer cardano-node source for that.
+    script = fromJust $ C.deserialiseFromRawBytes (C.proxyToAsType undefined) bs :: C.PlutusScript C.PlutusScriptV1
+  in
+  SB.length . CBOR.serialize' $ script
+
 main :: IO ()
 main = do
-  let (Validator vs) = vaultValidator dummyPubKeyHash
-  let (MintingPolicy ns) = nodeValidPolicy (MapInstance dummyAssetClass)
-  let (Validator es) = emptyValidator
-  let (Validator es') = emptyValidator'
-  putStrLn $ "vaultValidator: " <> (show . B.length . serialise $ vs)
-  putStrLn $ "nodeValidPolicy: " <> (show . B.length . serialise $ ns)
-  putStrLn $ "emptyValidator: " <> (show . B.length . serialise $ es)
-  putStrLn $ "emptyValidator': " <> (show . B.length . serialise $ es')
+  putStrLn $ "vaultValidator: " <> (show . getSize $ vaultValidator dummyPubKeyHash)
+  putStrLn $ "nodeValidPolicy: " <> (show . getSize $ nodeValidPolicy (MapInstance dummyAssetClass))
+  putStrLn $ "emptyValidator: " <> (show . getSize $ emptyValidator)
+  putStrLn $ "emptyValidator': " <> (show . getSize $ emptyValidator')
+  putStrLn $ "spookyValidator: " <> (show . getSize $ spookyValidator)

@@ -36,11 +36,11 @@ import Ledger (
   TxOutRef (..),
   UpperBound (..),
   Value,
-  knownPrivateKeys,
   pubKeyHash,
   pubKeyHashAddress,
   scriptHashAddress,
  )
+import Ledger.CardanoWallet qualified as CW
 import Ledger.Oracle (
   signMessage,
  )
@@ -70,10 +70,6 @@ import PlutusTx.UniqueMap qualified as UniqueMap
 import Proper.Plutus
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (fromGroup)
-import Wallet.Emulator.Wallet (
-  knownWallet,
-  walletPubKey,
- )
 import Prelude (
   Applicative (..),
   Bool (..),
@@ -90,12 +86,10 @@ import Prelude (
   elem,
   filter,
   flip,
-  fromInteger,
   fst,
   pure,
   snd,
   uncurry,
-  (!!),
   ($),
   (&&),
   (+),
@@ -246,7 +240,7 @@ instance Proper PriceOracleModel where
   script PriceOracleStateMachineModel {..} = Just $ CompiledValidator $ oracleValidator params
     where
       ownerPubKey :: PubKey
-      ownerPubKey = walletPubKey (knownWallet ownerWallet)
+      ownerPubKey = CW.pubKey (CW.knownWallet ownerWallet)
       ownerPubKeyHash :: PubKeyHash
       ownerPubKeyHash = pubKeyHash ownerPubKey
       params :: OracleValidatorParams
@@ -270,7 +264,7 @@ instance Proper PriceOracleModel where
       JustSignedBy signer -> [go signer]
       SignedByWithValue signer _ -> [go signer]
     where
-      go = pubKeyHash . walletPubKey . knownWallet
+      go = CW.pubKeyHash . CW.knownWallet
 
   modelInputData PriceOracleStateMachineModel {..} =
     ( stateTokenValue inputParams
@@ -309,7 +303,7 @@ modelDatum' (Just TestDatumParameters {..}) =
     signedByPrivK :: PrivateKey
     signedByPrivK = lookupPrivateKey signedByWallet
     lookupPrivateKey :: Integer -> PrivateKey
-    lookupPrivateKey i = knownPrivateKeys !! fromInteger (i - 1)
+    lookupPrivateKey i = CW.privateKey (CW.knownWallet i)
 
 --helpers
 --
@@ -318,7 +312,7 @@ oracleMintingParams :: Integer -> OracleMintingParams
 oracleMintingParams walletIdx = OracleMintingParams ownerPubKey ownerPubKeyHash
   where
     ownerPubKey :: PubKey
-    ownerPubKey = walletPubKey $ knownWallet walletIdx
+    ownerPubKey = CW.pubKey $ CW.knownWallet walletIdx
     ownerPubKeyHash :: PubKeyHash
     ownerPubKeyHash = pubKeyHash ownerPubKey
 

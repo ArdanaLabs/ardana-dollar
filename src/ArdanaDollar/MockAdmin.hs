@@ -60,7 +60,7 @@ startAdmin :: forall (w :: Type) (e :: Type). (AsContractError e) => Integer -> 
 startAdmin i = do
   let tx = Constraints.mustPayToTheScript () mempty
   ledgerTx <- submitTxConstraints (adminInst i) tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 findAdmin ::
   forall (w :: Type) (s :: Row Type) (e :: Type).

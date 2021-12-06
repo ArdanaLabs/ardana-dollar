@@ -261,7 +261,7 @@ findUtxo addr = do
 
 initializeVault :: forall (s :: Row Type). Contract (Last VaultDatum) s Text ()
 initializeVault = do
-  pkh <- Ledger.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   let tok = vaultTokenName pkh
   cs <-
     fmap Currency.currencySymbol $
@@ -275,7 +275,7 @@ initializeVault = do
           initialDatum
           (Value.assetClassValue (Value.AssetClass (cs, tok)) 1)
   ledgerTx <- submitTxConstraintsWith lookups tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
   logInfo @Haskell.String $
     printf
       "started vault for user %s at address %s"
@@ -285,7 +285,7 @@ initializeVault = do
 
 depositCollateral :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 depositCollateral amount = do
-  pkh <- Ledger.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
@@ -306,7 +306,7 @@ depositCollateral amount = do
                 oref
                 (Ledger.Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer)
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @Haskell.String $
         printf
           "user %s deposited %s collateral"
@@ -316,7 +316,7 @@ depositCollateral amount = do
 
 withdrawCollateral :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 withdrawCollateral amount = do
-  pkh <- Ledger.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
@@ -339,7 +339,7 @@ withdrawCollateral amount = do
                 (Ledger.Redeemer $ PlutusTx.toBuiltinData CollateralRedeemer)
               Haskell.<> Constraints.mustPayToPubKey pkh collateralValue
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @Haskell.String $
         printf
           "user %s withdrew %s collateral"
@@ -349,7 +349,7 @@ withdrawCollateral amount = do
 
 mintDUSD :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 mintDUSD amount = do
-  pkh <- Ledger.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
@@ -372,7 +372,7 @@ mintDUSD amount = do
               Haskell.<> Constraints.mustMintValue dusdValue
               Haskell.<> Constraints.mustPayToPubKey pkh dusdValue
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @Haskell.String $
         printf
           "user %s minted %s dUSD"
@@ -382,7 +382,7 @@ mintDUSD amount = do
 
 repayDUSD :: forall (s :: Row Type). Integer -> Contract (Last VaultDatum) s Text ()
 repayDUSD amount = do
-  pkh <- Ledger.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   let addr = vaultAddress pkh
   utxoWithDatum <- findUtxo addr
   case utxoWithDatum of
@@ -404,7 +404,7 @@ repayDUSD amount = do
                 (Ledger.Redeemer $ PlutusTx.toBuiltinData DebtRedeemer)
               Haskell.<> Constraints.mustMintValue (negate dusdValue)
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @Haskell.String $
         printf
           "user %s repaid %s dUSD"

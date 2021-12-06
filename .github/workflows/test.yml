@@ -40,12 +40,12 @@ jobs:
 
       - if: ${{ github.ref == 'refs/heads/main' }}
         name: Build the full CI on main
-        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 250 -I nixpkgs=channel:nixos-21.05
+        run: nix build .#check.x86_64-linux
 
       - if: ${{ github.ref == 'refs/heads/staging' }}
         name: Build the full CI on staging
-        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 100 -I nixpkgs=channel:nixos-21.05
+        run: nix build .#check.x86_64-linux
 
       - if: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
         name: Build the full CI on PR
-        run: nix-build ./nix/ci.nix --argstr contractMaxSuccess 50 -I nixpkgs=channel:nixos-21.05
+        run: nix build .#check.x86_64-linux

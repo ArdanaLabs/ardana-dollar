@@ -22,7 +22,7 @@ import Plutus.Contract (
   awaitTxConfirmed,
   logInfo,
   mapError,
-  ownPubKey,
+  ownPubKeyHash,
   submitTxConstraintsWith,
   tell,
   throwError,
@@ -72,7 +72,7 @@ mintNFT ::
   forall (s :: Row Type) (w :: Type).
   Contract w s Text Ledger.AssetClass
 mintNFT = do
-  self <- Ledger.pubKeyHash <$> ownPubKey
+  self <- ownPubKeyHash
   let nftTokenName = Value.TokenName PlutusTx.Prelude.emptyByteString
   x <-
     mapError
@@ -111,7 +111,7 @@ create' ac = do
       tx = Constraints.mustPayToTheScript (MapDatum $ Map Nothing Unlocked (SnapshotVersion 0)) nftValue
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
   tell $ Last $ Just mapInstance
 
@@ -169,6 +169,50 @@ remove mapInstance key = do
     at :: Node (K' t) (V' t) -> Bool
     at node = key == T.node'key node
 
+use ::
+  forall (t :: Type) (s :: Row Type) (w :: Type).
+  MapTerms t =>
+  MapInstance ->
+  K' t ->
+  (V' t -> V' t) ->
+  Contract w s Text ()
+use mapInstance key update = do
+  lkp <- mkMapLookup @t mapInstance
+  case findKey @t lkp key of
+    Just (tpl, node) ->
+      do
+        let toSpend = M.fromList [tpl]
+            lookups = lookups' @t mapInstance toSpend
+            updated = node {T.node'value = update (T.node'value node)}
+            tx =
+              Constraints.mustPayToTheScript (NodeDatum updated) (snd tpl ^. Ledger.ciTxOutValue)
+                <> Constraints.mustSpendScriptOutput
+                  (fst tpl)
+                  (Ledger.Redeemer $ Ledger.toBuiltinData Use)
+
+        logInfo @String $ "Map: use entry"
+
+        ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
+        void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
+    _ -> return ()
+
+lookups' ::
+  forall (t :: Type).
+  MapTerms t =>
+  MapInstance ->
+  M.Map Ledger.TxOutRef Ledger.ChainIndexTxOut ->
+  Constraints.ScriptLookups (ValidatorTypes' t)
+lookups' mapInstance toSpend =
+  Constraints.typedValidatorLookups (inst' @t mapInstance)
+    <> Constraints.otherScript (validator @t mapInstance)
+    <> Constraints.mintingPolicy (nodeValidPolicy' @t mapInstance)
+    <> Constraints.unspentOutputs toSpend
+
+fromJust' :: forall (a :: Type) (s :: Row Type) (w :: Type). Maybe a -> Contract w s Text a
+fromJust' maybe' = case maybe' of
+  Just v -> return v
+  _ -> throwError "Empty maybe"
+
 removeFromOneElementMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
@@ -207,7 +251,7 @@ removeFromOneElementMap mapInstance map' node' =
     logInfo @String $ "Map: remove from one element map"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -254,7 +298,7 @@ removeSmallest mapInstance map' node' next' =
     logInfo @String $ "Map: remove smallest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -293,7 +337,7 @@ removeGreatest mapInstance node' next' =
     logInfo @String $ "Map: remove greatest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 removeInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -337,7 +381,7 @@ removeInTheMiddle mapInstance (prev, mid, next) =
     logInfo @String $ "Map: remove in the middle"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addToEmptyMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -377,7 +421,7 @@ addToEmptyMap mapInstance map' (key, value) =
     logInfo @String $ "Map: add to empty map"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -426,7 +470,7 @@ addSmallest mapInstance map' node' (key, value) =
     logInfo @String $ "Map: add smallest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -465,7 +509,7 @@ addGreatest mapInstance node' (key, value) =
     logInfo @String $ "Map: add greatest"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 addInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -510,7 +554,7 @@ addInTheMiddle mapInstance (before, after) (key, value) =
     logInfo @String $ "Map: add in the middle"
 
     ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-    void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+    void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 findPlaceInTheMiddle ::
   forall t.

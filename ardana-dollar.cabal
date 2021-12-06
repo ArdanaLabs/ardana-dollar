@@ -217,3 +217,5 @@ executable ardana-dollar-sizes
   build-depends:
     , ardana-dollar
     , serialise
+    , cardano-binary
+    , cardano-api
