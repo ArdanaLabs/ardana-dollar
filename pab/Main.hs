@@ -26,9 +26,9 @@ import Data.Text.Encoding (decodeUtf8')
 import Data.Text.Encoding.Error (UnicodeException)
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
+import Prettyprinter
 import System.IO (hSetEncoding, stderr, stdout, utf8)
 import Prelude
-import Prettyprinter
 
 --------------------------------------------------------------------------------
 
