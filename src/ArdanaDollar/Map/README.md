@@ -14,7 +14,7 @@ When snapshot is in progress a map cannot be modified.
 
 As for now the main validator is ~10kB and minting policies ~12kB.
 
-Each transaction requires the main validator and one of the minting to be included, thus ~22kB
+Each transaction requires the main validator and one of the minting policies to be included, thus ~22kB
 
 ## Testing
 
@@ -22,7 +22,7 @@ There are a few sunny day scenario tests implemented with EmulatorTrace. The imp
 
 ## Missing features / bugs
 
-Snapshot making for a map consiting of $N$ entries requires $N$ transaction to be executed in parallel. The first issue is that in real blockchain it's not possible to execute arbitrarily number of transactions in one block. The other issue is that the user submitting those transaction has provide $N$ own utxos that provide fee. In other words the user has prepare for snapshot making by ensuring that there are sufficient utxos to power parallel transactions.
+Snapshot making for a map consisting of $N$ entries requires $N$ transactions to be executed in parallel. The first issue is that in real blockchain it's not possible to execute arbitrarily number of transactions in one block. The other issue is that the user submitting those transaction has provide $N$ own utxos for fees. In other words the user has prepare for snapshot making by ensuring that there are sufficient utxos to power parallel transactions.
 
 Off-chain code cannot resume snapshot that has been interrupted. On-chain accounts for this.
 
@@ -32,7 +32,7 @@ The distributed map should be parametrizable by an application token. Map valida
 
 Folowing operations can be optimized by consuming/producing more utxos (>2) in one transaction:
 - snapshot permission splitting - split snapshot permission into many snapshot permissions in one transaction  
-- snapshot making - make snpashot of many map entries in one transaction
+- snapshot making - make snapshot of many map entries in one transaction
 - unlock permision merging - merge many unlock permissions in one transaction
 
 Split minting policies into smaller minting policies. E.g. *NodeValidPolicy* validates many insertion/deletion scenarios. Is it possible to have more fine-grained validation?
