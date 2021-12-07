@@ -58,12 +58,12 @@ common lang
 
   ghc-options:
     -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
-    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas
-    -Wincomplete-record-updates -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -fobject-code -fno-strictness
-    -fplugin=RecordDotPreprocessor -fwarn-redundant-constraints
-    -fwarn-incomplete-uni-patterns -fwarn-tabs
-    -fwarn-incomplete-record-updates -fwarn-identities
+    -Wmissing-export-lists -Werror -Wwarn=unrecognised-pragmas -Wincomplete-record-updates
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fobject-code -fno-strictness -fplugin=RecordDotPreprocessor
+    -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
+    -fwarn-tabs -fwarn-incomplete-record-updates -fwarn-identities
+    -Wwarn=unrecognised-pragmas
 
 common deps
   build-depends:

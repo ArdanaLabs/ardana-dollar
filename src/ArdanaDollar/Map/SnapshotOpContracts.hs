@@ -19,7 +19,7 @@ import Ledger.Scripts qualified as Scripts
 import Plutus.Contract (
   Contract (..),
   logInfo,
-  ownPubKey,
+  ownPubKeyHash,
   submitTx,
   submitTxConstraintsWith,
   throwError,
@@ -107,8 +107,7 @@ splitFunds ::
 splitFunds = do
   printNumberOfSelfUtxos
 
-  pubKey <- ownPubKey
-  let key = Ledger.pubKeyHash pubKey
+  key <- ownPubKeyHash
   let tt = mconcat $ replicate 10 (Constraints.mustPayToPubKey key (Ada.lovelaceValueOf 100_000_000))
 
   ownUtxos <- getOwnUtxos
@@ -117,7 +116,7 @@ splitFunds = do
     then return ()
     else do
       ledgerTx <- submitTx tt
-      void $ awaitTxConfirmed' $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed' $ Ledger.getCardanoTxId ledgerTx
 
   printNumberOfSelfUtxos
 
@@ -125,8 +124,8 @@ getOwnUtxos ::
   forall (s :: Row Type) (w :: Type).
   Contract w s Text (M.Map Ledger.TxOutRef Ledger.ChainIndexTxOut)
 getOwnUtxos = do
-  pubKey <- ownPubKey
-  utxosAt (Ledger.pubKeyAddress pubKey)
+  pubKey <- ownPubKeyHash
+  utxosAt (Ledger.pubKeyHashAddress pubKey)
 
 printNumberOfSelfUtxos ::
   forall (s :: Row Type) (w :: Type).
@@ -222,7 +221,7 @@ createSnapshotOfEmptyMap mapInstance (inputMap', inputMap) = do
 
   logInfo @String $ "Map: make snapshot of empty map"
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-  void $ awaitTxConfirmed' $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed' $ Ledger.getCardanoTxId ledgerTx
 
 createSnapshotOfNonEmptyMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
@@ -319,9 +318,9 @@ initiateSnapshot (inputMap', inputMap) (inputLast', inputLast) = do
             (Ledger.Redeemer $ Ledger.toBuiltinData SnapshotOp)
 
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-  let txId = Ledger.txId ledgerTx
+  let txId = Ledger.getCardanoTxId ledgerTx
 
-  raiseEnh @t $ awaitTxConfirmed' $ Ledger.txId ledgerTx
+  raiseEnh @t $ awaitTxConfirmed' $ Ledger.getCardanoTxId ledgerTx
 
   updateMapLookup txId
 
@@ -497,7 +496,7 @@ split' mapInstance (FeeSource sourceTpl) a1 a2 a3 = do
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
   return
-    ( Ledger.txId ledgerTx
+    ( Ledger.getCardanoTxId ledgerTx
     ,
       ( snapshotPermLeftOutput
       , snapshotPermRightOutput
@@ -639,7 +638,7 @@ makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = 
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
   return $ do
-    let txId = Ledger.txId ledgerTx
+    let txId = Ledger.getCardanoTxId ledgerTx
 
     raiseEnh @t $ awaitTxConfirmed' txId
 
@@ -707,7 +706,7 @@ initializeUnlockPerm' (FeeSource sourceTpl, (tpl, nodeSnapshot)) = do
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
   return $ do
-    let txId = Ledger.txId ledgerTx
+    let txId = Ledger.getCardanoTxId ledgerTx
 
     raiseEnh @t $ awaitTxConfirmed' txId
 
@@ -800,7 +799,7 @@ mergeUnlockPerms' (FeeSource sourceTpl, (leftUnlockPermInfo, rightUnlockPermInfo
     ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
     return $ do
-      let txId = Ledger.txId ledgerTx
+      let txId = Ledger.getCardanoTxId ledgerTx
 
       raiseEnh @t $ awaitTxConfirmed' txId
 
@@ -872,7 +871,7 @@ makeUnlockPerm (tpl, _) = do
 
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
-  let txId = Ledger.txId ledgerTx
+  let txId = Ledger.getCardanoTxId ledgerTx
 
   raiseEnh @t $ awaitTxConfirmed' txId
 
@@ -904,7 +903,7 @@ generateUnlock mapInstance (mapInput', mapInput) snapshotVersion = do
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
-  let txId = Ledger.txId ledgerTx
+  let txId = Ledger.getCardanoTxId ledgerTx
 
   awaitTxConfirmed' txId
 
@@ -938,7 +937,7 @@ cloneUnlock mapInstance (tpl, unlock) number = do
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
-  let txId = Ledger.txId ledgerTx
+  let txId = Ledger.getCardanoTxId ledgerTx
 
   awaitTxConfirmed' txId
 
@@ -989,6 +988,6 @@ doUnlock mapInstance (FeeSource feeTpl, ((unlockTpl, unlock), (tpl, node))) = do
       ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
       return $ do
-        let txId = Ledger.txId ledgerTx
+        let txId = Ledger.getCardanoTxId ledgerTx
 
         awaitTxConfirmed' txId

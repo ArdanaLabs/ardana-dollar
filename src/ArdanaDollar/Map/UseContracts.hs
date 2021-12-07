@@ -65,5 +65,5 @@ use mapInstance key update = do
         logInfo @String $ "Map: use entry"
 
         ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
-        void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+        void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
     _ -> return ()
