@@ -37,6 +37,8 @@ class
       (Scripts.RedeemerType (ValidatorTypes' t))
   , Api.FromData
       (Scripts.DatumType (ValidatorTypes' t))
+  , Api.FromData
+      (Scripts.RedeemerType (ValidatorTypes' t))
   , Scripts.DatumType (ValidatorTypes' t) ~ Datum (K' t) (V' t)
   ) =>
   MapTerms t

@@ -31,6 +31,7 @@ import Plutus.Trace.Emulator as Emulator
 
 import Data.Coerce
 import Data.Default (Default (..))
+import Data.Foldable
 import Data.Kind (Type)
 import Data.List (sortOn)
 import Data.Map qualified as Map
@@ -129,8 +130,8 @@ toSortedList utxos pointer =
 
 toSortedListMap :: [(Types.Datum Key Value, Value.Value)] -> Maybe [(Types.Node Key Value, Value.Value)]
 toSortedListMap utxos =
-  let f = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asMap d)
-      nodes = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asNode d)
+  let f = mapMaybe (\(d, v) -> (,v) <$> asMap d) utxos
+      nodes = mapMaybe (\(d, v) -> (,v) <$> asNode d) utxos
    in case f of
         [(d, _)] -> case map'head d of
           Just pointer -> toSortedList nodes pointer
@@ -139,8 +140,8 @@ toSortedListMap utxos =
 
 toSortedListSnapshot :: SnapshotVersion -> [(Types.Datum Key Value, Value.Value)] -> Maybe [(Types.NodeSnapshot Key Value, Value.Value)]
 toSortedListSnapshot snapshotVersion utxos =
-  let f = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asMapSnapshot d)
-      nodes = utxos >>= (\(d, v) -> maybeToList $ (,v) <$> asNodeSnapshot d)
+  let f = mapMaybe (\(d, v) -> (,v) <$> asMapSnapshot d) utxos
+      nodes = mapMaybe (\(d, v) -> (,v) <$> asNodeSnapshot d) utxos
       head' = (\(s, _) -> mapSnapshot'version s == snapshotVersion) `filter` f
       nodes' = (\(s, _) -> nodeSnapshot'version s == snapshotVersion) `filter` nodes
    in case head' of
@@ -296,12 +297,12 @@ testSnapshot = do
 
   h1 <- activateContractWallet (knownWallet 1) (endpoints mapInstance)
 
-  sequence_ $
+  traverse_
     ( \pair -> do
         void $ Emulator.waitNSlots 1
         callEndpoint @"insert" h1 pair
     )
-      <$> bigMap
+    bigMap
 
   void $ Emulator.waitNSlots 30
 
@@ -314,12 +315,12 @@ testSnapshot1 :: EmulatorTrace ContractHandleT
 testSnapshot1 = do
   h1 <- testSnapshot
 
-  sequence_ $
+  traverse_
     ( \(key, _) -> do
         void $ Emulator.waitNSlots 1
         callEndpoint @"increment" h1 key
     )
-      <$> bigMap
+    bigMap
 
   void $ Emulator.waitNSlots 30
 

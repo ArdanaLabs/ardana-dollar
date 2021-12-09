@@ -54,7 +54,7 @@ import Data.OpenUnion
 
 import ArdanaDollar.Map.ContractUtils (
   MapLookup (..),
-  Tpl,
+  TxOutEntry,
   fromJust',
   lookups',
   mkMapLookup,
@@ -95,8 +95,8 @@ import ArdanaDollar.Map.Types qualified as T
 import PlutusTx.Builtins (emptyByteString)
 
 data MapLookupSeq k v = MapLookupSeq
-  { mapLookupSeq'map :: (Tpl, Map)
-  , mapLookupSeq'nodes :: S.Seq (Tpl, Node k v)
+  { mapLookupSeq'map :: (TxOutEntry, Map)
+  , mapLookupSeq'nodes :: S.Seq (TxOutEntry, Node k v)
   }
 
 type EffC t w a = Eff ('[Reader MapInstance, State (MapLookupSeq (K' t) (V' t))] :++: ContractEffs w Text) a
@@ -194,7 +194,7 @@ createSnapshotOfEmptyMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
+  (TxOutEntry, Map) ->
   Contract w s Text ()
 createSnapshotOfEmptyMap mapInstance (inputMap', inputMap) = do
   let inputMapValue = snd inputMap' ^. Ledger.ciTxOutValue
@@ -228,8 +228,8 @@ createSnapshotOfNonEmptyMap ::
   MapTerms t =>
   MapInstance ->
   MapLookup (K' t) (V' t) ->
-  (Tpl, Map) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Map) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   Contract w s Text ()
 createSnapshotOfNonEmptyMap mapInstance lkp inputMap inputLast =
   Contract $
@@ -261,7 +261,7 @@ findPointer' mapInstance value =
       (Ledger.scriptCurrencySymbol $ nodeValidPolicy' @t mapInstance)
       value
 
-findPointer :: forall (t :: Type). MapTerms t => MapInstance -> Tpl -> Maybe Pointer
+findPointer :: forall (t :: Type). MapTerms t => MapInstance -> TxOutEntry -> Maybe Pointer
 findPointer mapInstance (_, chainIndexTxOut) = findPointer' @t mapInstance (chainIndexTxOut ^. Ledger.ciTxOutValue)
 
 repackage ::
@@ -276,8 +276,8 @@ repackage mapInstance (Pointer (Value.AssetClass (_, tn))) =
 initiateSnapshot ::
   forall (t :: Type) (w :: Type).
   MapTerms t =>
-  (Tpl, Map) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Map) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   EffC t w SnapshotPermInfo
 initiateSnapshot (inputMap', inputMap) (inputLast', inputLast) = do
   mapInstance <- ask
@@ -324,7 +324,7 @@ initiateSnapshot (inputMap', inputMap) (inputLast', inputLast) = do
 
   updateMapLookup txId
 
-  tpl <- raiseEnh @t $ toTpl' @t txId (SnapshotPermDatum snapshotPerm)
+  tpl <- raiseEnh @t $ toTxOutEntry' @t txId (SnapshotPermDatum snapshotPerm)
 
   lkp :: MapLookupSeq (K' t) (V' t) <- get
   let lastId = toInteger (length $ mapLookupSeq'nodes lkp) - 1
@@ -344,12 +344,12 @@ initiateSnapshot (inputMap', inputMap) (inputLast', inputLast) = do
     updateMapLookup txId = do
       lkp :: MapLookupSeq (K' t) (V' t) <- get
       let lastId = toInteger (length $ mapLookupSeq'nodes lkp) - 1
-      lastNodeTpl <- raiseEnh @t $ toTpl' @t txId (NodeDatum outputLast)
-      mapTpl <- raiseEnh @t $ toTpl' @t txId (MapDatum outputMap)
+      lastNodeTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (NodeDatum outputLast)
+      mapTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (MapDatum outputMap)
       put
         ( MapLookupSeq
-            (mapTpl, outputMap)
-            (S.update (fromInteger lastId) (lastNodeTpl, outputLast) (mapLookupSeq'nodes lkp))
+            (mapTxOutEntry, outputMap)
+            (S.update (fromInteger lastId) (lastNodeTxOutEntry, outputLast) (mapLookupSeq'nodes lkp))
         )
 
 type Range = (Integer, Integer)
@@ -359,7 +359,7 @@ data SnapshotPermEx = SnapshotPermEx
   }
   deriving stock (Show)
 
-type SnapshotPermInfo = (Tpl, SnapshotPermEx)
+type SnapshotPermInfo = (TxOutEntry, SnapshotPermEx)
 
 newtype FeeSource = FeeSource {unFeeSource :: (Ledger.TxOutRef, Ledger.ChainIndexTxOut)}
 
@@ -372,19 +372,17 @@ awaitTxConfirmed' txId = do
       void $ waitNSlots 1
       awaitTxConfirmed' txId
 
-toTplList ::
+toTxOutEntryList ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   Ledger.TxId ->
   Datum (K' t) (V' t) ->
-  Contract w s Text [Tpl]
-toTplList txId datum = do
+  Contract w s Text [TxOutEntry]
+toTxOutEntryList txId datum = do
   chainTx <- txFromTxId txId >>= ("No such transaction" `fromJust'`)
   utxos <- utxosTxOutTxFromTx chainTx
 
-  return $
-    (\(txOutRef, (chainIndexTxOut, _)) -> (txOutRef, chainIndexTxOut))
-      <$> ((\(_, (chainIndexTxOut, _)) -> isOk chainIndexTxOut) `filter` utxos)
+  return $ [(txOutRef, chainIndexTxOut) | (txOutRef, (chainIndexTxOut, _)) <- utxos, isOk chainIndexTxOut]
   where
     dh :: Ledger.DatumHash
     dh = Scripts.datumHash $ Scripts.Datum $ toBuiltinData datum
@@ -395,26 +393,26 @@ toTplList txId datum = do
       Ledger.ScriptChainIndexTxOut _ _ (Right datum') _ -> Scripts.Datum (toBuiltinData datum) == datum'
       _ -> False
 
-toTpl ::
+toTxOutEntry ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   Ledger.TxId ->
   Datum (K' t) (V' t) ->
-  Contract w s Text (Maybe Tpl)
-toTpl txId datum = toUnique <$> toTplList @t txId datum
+  Contract w s Text (Maybe TxOutEntry)
+toTxOutEntry txId datum = toUnique <$> toTxOutEntryList @t txId datum
   where
-    toUnique :: [Tpl] -> Maybe Tpl
+    toUnique :: [TxOutEntry] -> Maybe TxOutEntry
     toUnique l = case l of
       [tpl] -> Just tpl
       _ -> Nothing
 
-toTpl' ::
+toTxOutEntry' ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   Ledger.TxId ->
   Datum (K' t) (V' t) ->
-  Contract w s Text Tpl
-toTpl' txId datum = toTpl @t txId datum >>= fromJust' "Cannot find by datum and TxId"
+  Contract w s Text TxOutEntry
+toTxOutEntry' txId datum = toTxOutEntry @t txId datum >>= fromJust' "Cannot find by datum and TxId"
 
 raiseEnh ::
   forall (t :: Type) (s :: Row Type) (w :: Type) (a :: Type).
@@ -437,11 +435,11 @@ split' ::
   MapTerms t =>
   MapInstance ->
   FeeSource ->
-  (Tpl, SnapshotPerm) ->
-  (Tpl, Node (K' t) (V' t)) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, SnapshotPerm) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   Contract w s Text (Ledger.TxId, (SnapshotPerm, SnapshotPerm))
-split' mapInstance (FeeSource sourceTpl) a1 a2 a3 = do
+split' mapInstance (FeeSource sourceTxOutEntry) a1 a2 a3 = do
   let (snapshotPermInput', snapshotPermInput) = a1
       (leftNodeInput', leftNodeInput) = a2
       (rightNodeInput', rightNodeInput) = a3
@@ -464,7 +462,7 @@ split' mapInstance (FeeSource sourceTpl) a1 a2 a3 = do
       leftNodeOutput = leftNodeInput {T.node'lockState = LockedFor version}
       rightNodeOutput = rightNodeInput {T.node'lockState = LockedFor version}
 
-  let toSpend = M.fromList [snapshotPermInput', leftNodeInput', rightNodeInput', sourceTpl]
+  let toSpend = M.fromList [snapshotPermInput', leftNodeInput', rightNodeInput', sourceTxOutEntry]
       lookups =
         lookups' @t mapInstance toSpend
           <> Constraints.mintingPolicy (snapshotPolicy' @t mapInstance)
@@ -491,7 +489,7 @@ split' mapInstance (FeeSource sourceTpl) a1 a2 a3 = do
           <> Constraints.mustSpendScriptOutput
             (fst rightNodeInput')
             (Ledger.Redeemer $ Ledger.toBuiltinData SnapshotOp)
-          <> Constraints.mustSpendPubKeyOutput (fst sourceTpl)
+          <> Constraints.mustSpendPubKeyOutput (fst sourceTxOutEntry)
 
   ledgerTx <- submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
@@ -522,8 +520,8 @@ splitSnapshotPerm' (feeSource, (tpl, SnapshotPermEx snapshotPerm (startId, endId
 
     updateMapLookup txId left right
 
-    leftTpl <- raiseEnh @t $ toTpl' @t txId (SnapshotPermDatum leftPerm)
-    rightTpl <- raiseEnh @t $ toTpl' @t txId (SnapshotPermDatum rightPerm)
+    leftTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (SnapshotPermDatum leftPerm)
+    rightTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (SnapshotPermDatum rightPerm)
 
     raiseEnh @t $
       logInfo @String $
@@ -535,8 +533,8 @@ splitSnapshotPerm' (feeSource, (tpl, SnapshotPermEx snapshotPerm (startId, endId
           <> show rightPerm
 
     return
-      [ (leftTpl, SnapshotPermEx leftPerm (startId, leftId))
-      , (rightTpl, SnapshotPermEx rightPerm (rightId, endId))
+      [ (leftTxOutEntry, SnapshotPermEx leftPerm (startId, leftId))
+      , (rightTxOutEntry, SnapshotPermEx rightPerm (rightId, endId))
       ]
   where
     leftId :: Integer
@@ -545,7 +543,7 @@ splitSnapshotPerm' (feeSource, (tpl, SnapshotPermEx snapshotPerm (startId, endId
     rightId :: Integer
     rightId = leftId + 1
 
-    updateMapLookup :: Ledger.TxId -> (Tpl, Node (K' t) (V' t)) -> (Tpl, Node (K' t) (V' t)) -> EffC t w ()
+    updateMapLookup :: Ledger.TxId -> (TxOutEntry, Node (K' t) (V' t)) -> (TxOutEntry, Node (K' t) (V' t)) -> EffC t w ()
     updateMapLookup txId left right = do
       lkp :: MapLookupSeq (K' t) (V' t) <- get
       let nodes' = mapLookupSeq'nodes lkp
@@ -553,11 +551,11 @@ splitSnapshotPerm' (feeSource, (tpl, SnapshotPermEx snapshotPerm (startId, endId
           outputLeft = (snd left){node'lockState = LockedFor version}
           outputRight = (snd right) {node'lockState = LockedFor version}
 
-      leftNodeTpl <- raiseEnh @t $ toTpl' @t txId (NodeDatum outputLeft)
-      rightNodeTpl <- raiseEnh @t $ toTpl' @t txId (NodeDatum outputRight)
+      leftNodeTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (NodeDatum outputLeft)
+      rightNodeTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (NodeDatum outputRight)
       let newNodes =
-            S.update (fromInteger leftId) (leftNodeTpl, outputLeft) $
-              S.update (fromInteger rightId) (rightNodeTpl, outputRight) nodes'
+            S.update (fromInteger leftId) (leftNodeTxOutEntry, outputLeft) $
+              S.update (fromInteger rightId) (rightNodeTxOutEntry, outputRight) nodes'
 
       put (lkp {mapLookupSeq'nodes = newNodes})
 
@@ -568,8 +566,8 @@ splitSnapshotPerm ::
   EffC t w [SnapshotPermInfo]
 splitSnapshotPerm snapshotPerms = do
   let (points, intervals) = partition isPoint snapshotPerms
-  return (points ++)
-    <*> if null intervals
+  fmap (points ++) $
+    if null intervals
       then return []
       else do
         bundled <- raiseEnh @t $ bundleWithFeeSource intervals
@@ -582,18 +580,18 @@ splitSnapshotPerm snapshotPerms = do
     isPoint :: SnapshotPermInfo -> Bool
     isPoint (_, SnapshotPermEx (SnapshotPerm start end _) _) = start == end
 
-type NodeSnapshotInfo t = (Tpl, NodeSnapshot (K' t) (V' t))
+type NodeSnapshotInfo t = (TxOutEntry, NodeSnapshot (K' t) (V' t))
 
-type UnlockPermInfo = (Tpl, UnlockPerm)
+type UnlockPermInfo = (TxOutEntry, UnlockPerm)
 
-type UnlockInfo = (Tpl, Unlock)
+type UnlockInfo = (TxOutEntry, Unlock)
 
 makeSnapshot' ::
   forall (t :: Type) (w :: Type).
   MapTerms t =>
   (FeeSource, SnapshotPermInfo) ->
   EffC t w (EffC t w (NodeSnapshotInfo t))
-makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = do
+makeSnapshot' (FeeSource sourceTxOutEntry, (tpl, SnapshotPermEx snapshotPerm range)) = do
   mapInstance <- ask
   lkp :: MapLookupSeq (K' t) (V' t) <- get
 
@@ -604,7 +602,7 @@ makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = 
       fromJust' "Cannot find pointer" $
         repackage @t mapInstance <$> findPointer @t mapInstance nodeInput'
 
-  let toSpend = M.fromList [tpl, nodeInput', sourceTpl]
+  let toSpend = M.fromList [tpl, nodeInput', sourceTxOutEntry]
       lookups =
         lookups' @t mapInstance toSpend
           <> Constraints.mintingPolicy (snapshotPolicy' @t mapInstance)
@@ -633,7 +631,7 @@ makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = 
           <> Constraints.mustSpendScriptOutput
             (fst tpl)
             (Ledger.Redeemer $ Ledger.toBuiltinData SnapshotOp)
-          <> Constraints.mustSpendPubKeyOutput (fst sourceTpl)
+          <> Constraints.mustSpendPubKeyOutput (fst sourceTxOutEntry)
 
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
@@ -644,7 +642,7 @@ makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = 
 
     updateMapLookup txId nodeOutput
 
-    tpl' <- raiseEnh @t $ toTpl' @t txId (NodeSnapshotDatum nodeSnapshot)
+    tpl' <- raiseEnh @t $ toTxOutEntry' @t txId (NodeSnapshotDatum nodeSnapshot)
 
     return (tpl', nodeSnapshot)
   where
@@ -653,9 +651,9 @@ makeSnapshot' (FeeSource sourceTpl, (tpl, SnapshotPermEx snapshotPerm range)) = 
       lkp :: MapLookupSeq (K' t) (V' t) <- get
       let nodes' = mapLookupSeq'nodes lkp
 
-      nodeTpl <- raiseEnh @t $ toTpl' @t txId (NodeDatum node)
+      nodeTxOutEntry <- raiseEnh @t $ toTxOutEntry' @t txId (NodeDatum node)
       let newNodes =
-            S.update (fromInteger $ fst range) (nodeTpl, node) nodes'
+            S.update (fromInteger $ fst range) (nodeTxOutEntry, node) nodes'
 
       put (lkp {mapLookupSeq'nodes = newNodes})
 
@@ -674,12 +672,12 @@ initializeUnlockPerm' ::
   MapTerms t =>
   (FeeSource, NodeSnapshotInfo t) ->
   EffC t w (EffC t w UnlockPermInfo)
-initializeUnlockPerm' (FeeSource sourceTpl, (tpl, nodeSnapshot)) = do
+initializeUnlockPerm' (FeeSource sourceTxOutEntry, (tpl, nodeSnapshot)) = do
   mapInstance <- ask
 
   pointer <- raiseEnh @t $ ("No pointer" `fromJust'`) $ findPointer' @t mapInstance $ nodeSnapshot'assets nodeSnapshot
 
-  let toSpend = M.fromList [tpl, sourceTpl]
+  let toSpend = M.fromList [tpl, sourceTxOutEntry]
       lookups =
         lookups' @t mapInstance toSpend
           <> Constraints.mintingPolicy (unlockPermPolicy' @t mapInstance)
@@ -701,7 +699,7 @@ initializeUnlockPerm' (FeeSource sourceTpl, (tpl, nodeSnapshot)) = do
           <> Constraints.mustSpendScriptOutput
             (fst tpl)
             (Ledger.Redeemer $ Ledger.toBuiltinData UnlockPermOp)
-          <> Constraints.mustSpendPubKeyOutput (fst sourceTpl)
+          <> Constraints.mustSpendPubKeyOutput (fst sourceTxOutEntry)
 
   ledgerTx <- raiseEnh @t $ submitTxConstraintsWith @(ValidatorTypes' t) lookups tx
 
@@ -710,7 +708,7 @@ initializeUnlockPerm' (FeeSource sourceTpl, (tpl, nodeSnapshot)) = do
 
     raiseEnh @t $ awaitTxConfirmed' txId
 
-    tpl' <- raiseEnh @t $ toTpl' @t txId (UnlockPermDatum unlockPerm)
+    tpl' <- raiseEnh @t $ toTxOutEntry' @t txId (UnlockPermDatum unlockPerm)
     return (tpl', unlockPerm)
 
 initializeUnlockPerm ::
@@ -759,11 +757,11 @@ mergeUnlockPerms' ::
   MapTerms t =>
   (FeeSource, (UnlockPermInfo, UnlockPermInfo)) ->
   EffC t w (EffC t w UnlockPermInfo)
-mergeUnlockPerms' (FeeSource sourceTpl, (leftUnlockPermInfo, rightUnlockPermInfo)) =
+mergeUnlockPerms' (FeeSource sourceTxOutEntry, (leftUnlockPermInfo, rightUnlockPermInfo)) =
   do
     mapInstance <- ask
 
-    let toSpend = M.fromList [sourceTpl, fst leftUnlockPermInfo, fst rightUnlockPermInfo]
+    let toSpend = M.fromList [sourceTxOutEntry, fst leftUnlockPermInfo, fst rightUnlockPermInfo]
         lookups =
           lookups' @t mapInstance toSpend
             <> Constraints.mintingPolicy (unlockPermPolicy' @t mapInstance)
@@ -787,7 +785,7 @@ mergeUnlockPerms' (FeeSource sourceTpl, (leftUnlockPermInfo, rightUnlockPermInfo
             <> Constraints.mustSpendScriptOutput
               (fst $ fst rightUnlockPermInfo)
               (Ledger.Redeemer $ Ledger.toBuiltinData UnlockPermOp)
-            <> Constraints.mustSpendPubKeyOutput (fst sourceTpl)
+            <> Constraints.mustSpendPubKeyOutput (fst sourceTxOutEntry)
 
     raiseEnh @t $
       logInfo @String $
@@ -803,7 +801,7 @@ mergeUnlockPerms' (FeeSource sourceTpl, (leftUnlockPermInfo, rightUnlockPermInfo
 
       raiseEnh @t $ awaitTxConfirmed' txId
 
-      tpl' <- raiseEnh @t $ toTpl' @t txId (UnlockPermDatum unlockPerm)
+      tpl' <- raiseEnh @t $ toTxOutEntry' @t txId (UnlockPermDatum unlockPerm)
       return (tpl', unlockPerm)
 
 pairing :: forall (a :: Type). [a] -> ([(a, a)], Maybe a)
@@ -825,7 +823,7 @@ mergeUnlockPerms unlockPermInfos = do
       do
         let (paired, maybeLast') = pairing unlockPermInfos
         bundled <- raiseEnh @t $ bundleWithFeeSource paired
-        conts <- sequence (mergeUnlockPerms' @t <$> bundled)
+        conts <- traverse (mergeUnlockPerms' @t) bundled
         merged <- sequence conts
         mergeUnlockPerms @t (merged <> maybeToList maybeLast')
     [x] -> return x
@@ -879,7 +877,7 @@ generateUnlock ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
+  (TxOutEntry, Map) ->
   SnapshotVersion ->
   Contract w s Text UnlockInfo
 generateUnlock mapInstance (mapInput', mapInput) snapshotVersion = do
@@ -907,7 +905,7 @@ generateUnlock mapInstance (mapInput', mapInput) snapshotVersion = do
 
   awaitTxConfirmed' txId
 
-  tpl' <- toTpl' @t txId (UnlockDatum unlock)
+  tpl' <- toTxOutEntry' @t txId (UnlockDatum unlock)
 
   return (tpl', unlock)
 
@@ -941,7 +939,7 @@ cloneUnlock mapInstance (tpl, unlock) number = do
 
   awaitTxConfirmed' txId
 
-  tpls <- toTplList @t txId (UnlockDatum unlock)
+  tpls <- toTxOutEntryList @t txId (UnlockDatum unlock)
 
   return ((,unlock) <$> tpls)
 
@@ -951,16 +949,16 @@ doUnlock ::
   MapInstance ->
   ( FeeSource
   , ( UnlockInfo
-    , (Tpl, Node (K' t) (V' t))
+    , (TxOutEntry, Node (K' t) (V' t))
     )
   ) ->
   Contract w s Text (Contract w s Text ())
-doUnlock mapInstance (FeeSource feeTpl, ((unlockTpl, unlock), (tpl, node))) = do
-  let toSpend = M.fromList [feeTpl, tpl, unlockTpl]
+doUnlock mapInstance (FeeSource feeTxOutEntry, ((unlockTxOutEntry, unlock), (tpl, node))) = do
+  let toSpend = M.fromList [feeTxOutEntry, tpl, unlockTxOutEntry]
       lookups =
         lookups' @t mapInstance toSpend
           <> Constraints.mintingPolicy (unlockPolicy' @t mapInstance)
-      tokenRedeemer = DoUnlock (fst unlockTpl) (fst tpl)
+      tokenRedeemer = DoUnlock (fst unlockTxOutEntry) (fst tpl)
       assetClass3Token = Value.assetClassValue (assetClass3 @t mapInstance) (-1)
   let tx =
         Constraints.mustMintValueWithRedeemer
@@ -971,9 +969,9 @@ doUnlock mapInstance (FeeSource feeTpl, ((unlockTpl, unlock), (tpl, node))) = do
             (fst tpl)
             (Ledger.Redeemer $ Ledger.toBuiltinData UnlockOp)
           <> Constraints.mustSpendScriptOutput
-            (fst unlockTpl)
+            (fst unlockTxOutEntry)
             (Ledger.Redeemer $ Ledger.toBuiltinData UnlockOp)
-          <> Constraints.mustSpendPubKeyOutput (fst feeTpl)
+          <> Constraints.mustSpendPubKeyOutput (fst feeTxOutEntry)
 
   logInfo @String $
     "Map: do unlock: "

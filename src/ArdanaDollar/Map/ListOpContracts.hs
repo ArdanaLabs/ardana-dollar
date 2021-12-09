@@ -8,7 +8,6 @@ module ArdanaDollar.Map.ListOpContracts (
   createTest,
   insert,
   remove,
-  address,
 ) where
 
 import Prelude
@@ -43,12 +42,10 @@ import Data.Text (Text, pack)
 
 import ArdanaDollar.Map.ContractUtils (
   MapLookup (mapLookup'map, mapLookup'nodes),
-  Tpl,
-  address,
+  TxOutEntry,
   fromJust',
   lookups',
   mkMapLookup,
-  nodeValidPolicySymbol,
  )
 import ArdanaDollar.Map.MapTerms (
   MapTerms,
@@ -67,6 +64,9 @@ import ArdanaDollar.Map.Types (
  )
 import ArdanaDollar.Map.Types qualified as T
 import ArdanaDollar.Map.Validator qualified as V
+
+nodeValidPolicySymbol :: forall (t :: Type). MapTerms t => MapInstance -> Value.CurrencySymbol
+nodeValidPolicySymbol = Ledger.scriptCurrencySymbol . nodeValidPolicy' @t
 
 mintNFT ::
   forall (s :: Row Type) (w :: Type).
@@ -173,8 +173,8 @@ removeFromOneElementMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Map) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   Contract w s Text ()
 removeFromOneElementMap mapInstance map' node' =
   do
@@ -213,9 +213,9 @@ removeSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
-  (Tpl, Node (K' t) (V' t)) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Map) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   Contract w s Text ()
 removeSmallest mapInstance map' node' next' =
   do
@@ -260,8 +260,8 @@ removeGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Node (K' t) (V' t)) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   Contract w s Text ()
 removeGreatest mapInstance node' next' =
   do
@@ -299,7 +299,7 @@ removeInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t))) ->
+  ((TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t))) ->
   Contract w s Text ()
 removeInTheMiddle mapInstance (prev, mid, next) =
   do
@@ -343,7 +343,7 @@ addToEmptyMap ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
+  (TxOutEntry, Map) ->
   (K' t, V' t) ->
   Contract w s Text ()
 addToEmptyMap mapInstance map' (key, value) =
@@ -383,8 +383,8 @@ addSmallest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Map) ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Map) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   (K' t, V' t) ->
   Contract w s Text ()
 addSmallest mapInstance map' node' (key, value) =
@@ -432,7 +432,7 @@ addGreatest ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  (Tpl, Node (K' t) (V' t)) ->
+  (TxOutEntry, Node (K' t) (V' t)) ->
   (K' t, V' t) ->
   Contract w s Text ()
 addGreatest mapInstance node' (key, value) =
@@ -471,7 +471,7 @@ addInTheMiddle ::
   forall (t :: Type) (s :: Row Type) (w :: Type).
   MapTerms t =>
   MapInstance ->
-  ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t))) ->
+  ((TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t))) ->
   (K' t, V' t) ->
   Contract w s Text ()
 addInTheMiddle mapInstance (before, after) (key, value) =
@@ -517,7 +517,7 @@ findPlaceInTheMiddle ::
   MapTerms t =>
   MapLookup (K' t) (V' t) ->
   K' t ->
-  Maybe ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)))
+  Maybe ((TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t)))
 findPlaceInTheMiddle lkp key =
   case nodes of
     _ : tail' ->
@@ -533,7 +533,7 @@ findKeyInTheMiddle ::
   MapTerms t =>
   MapLookup (K' t) (V' t) ->
   K' t ->
-  Maybe ((Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)), (Tpl, Node (K' t) (V' t)))
+  Maybe ((TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t)), (TxOutEntry, Node (K' t) (V' t)))
 findKeyInTheMiddle lkp key =
   case nodes of
     _ : tail'@(_ : tail'') ->

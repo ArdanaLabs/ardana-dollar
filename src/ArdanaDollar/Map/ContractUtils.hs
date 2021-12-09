@@ -4,9 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module ArdanaDollar.Map.ContractUtils (
-  Tpl,
-  nodeValidPolicySymbol,
-  validator,
+  TxOutEntry,
   address,
   MapLookup (..),
   mkMapLookup,
@@ -19,7 +17,6 @@ import Prelude
 
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
-import Plutus.V1.Ledger.Value qualified as Value
 
 import Plutus.Contract (
   Contract,
@@ -28,11 +25,10 @@ import Plutus.Contract (
  )
 
 import Control.Lens ((^.))
-import Control.Monad (join)
 import Data.Kind (Type)
 import Data.List (sortOn)
 import Data.Map qualified as M
-import Data.Maybe (isJust, listToMaybe, maybeToList)
+import Data.Maybe (isJust, listToMaybe, mapMaybe, maybeToList)
 import Data.Row (Row)
 import Data.Text (Text)
 
@@ -52,20 +48,17 @@ import ArdanaDollar.Map.Validator qualified as V
 import ArdanaDollar.Utils qualified as Utils
 import Ledger.Typed.Scripts qualified as Scripts
 
-nodeValidPolicySymbol :: forall (t :: Type). MapTerms t => MapInstance -> Value.CurrencySymbol
-nodeValidPolicySymbol = Ledger.scriptCurrencySymbol . nodeValidPolicy' @t
-
 validator :: forall (t :: Type). MapTerms t => MapInstance -> Ledger.Validator
 validator mapInstance = Scripts.validatorScript $ inst' @t mapInstance
 
 address :: forall (t :: Type). MapTerms t => MapInstance -> Ledger.Address
 address mapInstance = Ledger.scriptAddress $ validator @t mapInstance
 
-type Tpl = (Ledger.TxOutRef, Ledger.ChainIndexTxOut)
+type TxOutEntry = (Ledger.TxOutRef, Ledger.ChainIndexTxOut)
 
 data MapLookup k v = MapLookup
-  { mapLookup'map :: (Tpl, Map)
-  , mapLookup'nodes :: [(Tpl, Node k v)]
+  { mapLookup'map :: (TxOutEntry, Map)
+  , mapLookup'nodes :: [(TxOutEntry, Node k v)]
   }
 
 mkMapLookup' ::
@@ -75,9 +68,9 @@ mkMapLookup' ::
   Contract w s Text (Maybe (MapLookup (K' t) (V' t)))
 mkMapLookup' mapInstance = do
   utxos <- M.toList <$> utxosAt (address @t mapInstance)
-  list <- join <$> sequence (own <$> utxos)
-  let maps = list >>= (maybeToList . mapF)
-  let nodes = list >>= (maybeToList . nodeF)
+  list <- concat <$> traverse own utxos
+  let maps = mapMaybe mapF list
+  let nodes = mapMaybe nodeF list
   let sortedNodes = sortOn (\(_, node) -> T.node'key node) nodes
   case maps of
     [head'] -> return $ Just $ MapLookup head' sortedNodes
@@ -86,16 +79,16 @@ mkMapLookup' mapInstance = do
     token :: Ledger.CurrencySymbol
     token = Ledger.scriptCurrencySymbol $ nodeValidPolicy' @t mapInstance
 
-    own :: Tpl -> Contract w s Text [(Tpl, Datum (K' t) (V' t))]
+    own :: TxOutEntry -> Contract w s Text [(TxOutEntry, Datum (K' t) (V' t))]
     own t@(_, chainIndexTxOut) =
       (\m -> maybeToList $ (t,) <$> m) <$> Utils.datumForOffchain chainIndexTxOut
 
-    mapF :: (Tpl, Datum k v) -> Maybe (Tpl, Map)
+    mapF :: (TxOutEntry, Datum k v) -> Maybe (TxOutEntry, Map)
     mapF (tpl, datum) = case datum of
       MapDatum m | V.hasOne' (T.unMapInstance mapInstance) (snd tpl ^. Ledger.ciTxOutValue) -> Just (tpl, m)
       _ -> Nothing
 
-    nodeF :: (Tpl, Datum k v) -> Maybe (Tpl, Node k v)
+    nodeF :: (TxOutEntry, Datum k v) -> Maybe (TxOutEntry, Node k v)
     nodeF (tpl, datum) = case datum of
       NodeDatum m | isJust (V.lookupToken' token (snd tpl ^. Ledger.ciTxOutValue)) -> Just (tpl, m)
       _ -> Nothing
@@ -116,7 +109,7 @@ findKey ::
   MapTerms t =>
   MapLookup (K' t) (V' t) ->
   K' t ->
-  Maybe (Tpl, Node (K' t) (V' t))
+  Maybe (TxOutEntry, Node (K' t) (V' t))
 findKey lkp key =
   let nodes = mapLookup'nodes lkp
       places = (\(_, node) -> T.node'key node == key) `filter` nodes

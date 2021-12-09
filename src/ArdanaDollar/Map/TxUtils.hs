@@ -150,9 +150,8 @@ mapInput' ::
   [Ledger.TxInInfo] ->
   Maybe (Ledger.TxInInfo, Map)
 mapInput' info mapInstance inputs =
-  case (hasOne (unMapInstance mapInstance) . Ledger.txInInfoResolved) `filter` inputs of
-    fst' : _ -> (fst',) <$> mapDatum @k @v info (Ledger.txInInfoResolved fst')
-    _ -> Nothing
+  let filtered = (hasOne (unMapInstance mapInstance) . Ledger.txInInfoResolved) `filter` inputs
+   in listToMaybe filtered >>= (\fst' -> (fst',) <$> mapDatum @k @v info (Ledger.txInInfoResolved fst'))
 
 {-# INLINEABLE mapOutput' #-}
 mapOutput' ::
@@ -163,9 +162,8 @@ mapOutput' ::
   [Ledger.TxOut] ->
   Maybe (Ledger.TxOut, Map)
 mapOutput' info mapInstance outputs =
-  case hasOne (unMapInstance mapInstance) `filter` outputs of
-    fst' : _ -> (fst',) <$> mapDatum @k @v info fst'
-    _ -> Nothing
+  let filtered = hasOne (unMapInstance mapInstance) `filter` outputs
+   in listToMaybe filtered >>= (\fst' -> (fst',) <$> mapDatum @k @v info fst')
 
 {-# INLINEABLE mapSnapshotOutput' #-}
 mapSnapshotOutput' ::
@@ -177,9 +175,8 @@ mapSnapshotOutput' ::
   MapSnapshot ->
   Maybe Ledger.TxOut
 mapSnapshotOutput' info snapshotAC outputs mapSnapshot =
-  case (\txOut -> hasOne snapshotAC txOut && mapSnapshotDatum @k @v info txOut == Just mapSnapshot) `filter` outputs of
-    fst' : _ -> Just fst'
-    _ -> Nothing
+  let filtered = (\txOut -> hasOne snapshotAC txOut && mapSnapshotDatum @k @v info txOut == Just mapSnapshot) `filter` outputs
+   in listToMaybe filtered
 
 {-# INLINEABLE snapshotPermOutput' #-}
 snapshotPermOutput' ::
@@ -191,9 +188,8 @@ snapshotPermOutput' ::
   SnapshotPerm ->
   Maybe Ledger.TxOut
 snapshotPermOutput' info snapshotAC outputs snapshotPerm =
-  case (\txOut -> hasOne snapshotAC txOut && snapshotPermDatum @k @v info txOut == Just snapshotPerm) `filter` outputs of
-    fst' : _ -> Just fst'
-    [] -> Nothing
+  let filtered = (\txOut -> hasOne snapshotAC txOut && snapshotPermDatum @k @v info txOut == Just snapshotPerm) `filter` outputs
+   in listToMaybe filtered
 
 {-# INLINEABLE nodeSnapshotOutput' #-}
 nodeSnapshotOutput' ::
@@ -205,9 +201,8 @@ nodeSnapshotOutput' ::
   NodeSnapshot k v ->
   Maybe Ledger.TxOut
 nodeSnapshotOutput' info outputs snapshotCS nodeSnapshot =
-  case (\txOut -> (isJust . lookupToken (unSnapshotCS snapshotCS)) txOut && nodeSnapshotDatum @k @v info txOut == Just nodeSnapshot) `filter` outputs of
-    fst' : _ -> Just fst'
-    [] -> Nothing
+  let filtered = (\txOut -> (isJust . lookupToken (unSnapshotCS snapshotCS)) txOut && nodeSnapshotDatum @k @v info txOut == Just nodeSnapshot) `filter` outputs
+   in listToMaybe filtered
 
 {-# INLINEABLE unlockPermOutput' #-}
 unlockPermOutput' ::
@@ -219,9 +214,8 @@ unlockPermOutput' ::
   UnlockPerm ->
   Maybe Ledger.TxOut
 unlockPermOutput' info outputs unlockPermCS unlockPerm =
-  case (\txOut -> (isJust . lookupToken (unUnlockPermCS unlockPermCS)) txOut && unlockPermDatum @k @v info txOut == Just unlockPerm) `filter` outputs of
-    fst' : _ -> Just fst'
-    [] -> Nothing
+  let filtered = (\txOut -> (isJust . lookupToken (unUnlockPermCS unlockPermCS)) txOut && unlockPermDatum @k @v info txOut == Just unlockPerm) `filter` outputs
+   in listToMaybe filtered
 
 {-# INLINEABLE unlockOutputs' #-}
 unlockOutputs' ::
@@ -245,9 +239,8 @@ unlockOutput' ::
   Unlock ->
   Maybe Ledger.TxOut
 unlockOutput' info outputs unlockCS unlock =
-  case (\txOut -> (isJust . lookupToken (unUnlockCS unlockCS)) txOut && unlockDatum @k @v info txOut == Just unlock) `filter` outputs of
-    fst' : _ -> Just fst'
-    [] -> Nothing
+  let filtered = (\txOut -> (isJust . lookupToken (unUnlockCS unlockCS)) txOut && unlockDatum @k @v info txOut == Just unlock) `filter` outputs
+   in listToMaybe filtered
 
 {-# INLINEABLE nodeBy' #-}
 nodeBy' ::
@@ -258,9 +251,12 @@ nodeBy' ::
   ((Ledger.TxOut, Node k v) -> Bool) ->
   Maybe (Ledger.TxOut, Node k v)
 nodeBy' info lookupSet pred' =
-  let l = lookupSet >>= \txOut -> maybeToList ((txOut,) <$> mapNode info txOut)
-      ll = pred' `filter` l
-   in listToMaybe ll
+  listToMaybe
+    [ x
+    | txOut <- lookupSet
+    , x <- maybeToList $ (txOut,) <$> mapNode @k @v info txOut
+    , pred' x
+    ]
 
 {-# INLINEABLE nodeByKey' #-}
 nodeByKey' ::
@@ -304,9 +300,8 @@ nodeInputRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, Node k v)
 nodeInputRef' info pointerCS inputs ref =
-  case (\txOutRef -> (isJust . lookupToken (unPointerCS pointerCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> mapNode info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (isJust . lookupToken (unPointerCS pointerCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> mapNode info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
@@ -321,9 +316,8 @@ snapshotPermInputByRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, SnapshotPerm)
 snapshotPermInputByRef' info snapshotAC inputs ref =
-  case (\txOutRef -> (hasOne snapshotAC . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> snapshotPermDatum @k @v info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (hasOne snapshotAC . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> snapshotPermDatum @k @v info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
@@ -338,9 +332,8 @@ nodeSnapshotInputByRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, NodeSnapshot k v)
 nodeSnapshotInputByRef' info snapshotCS inputs ref =
-  case (\txOutRef -> (isJust . lookupToken (unSnapshotCS snapshotCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> nodeSnapshotDatum @k @v info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (isJust . lookupToken (unSnapshotCS snapshotCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> nodeSnapshotDatum @k @v info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
@@ -355,9 +348,8 @@ unlockInputByRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, Unlock)
 unlockInputByRef' info unlockCS inputs ref =
-  case (\txOutRef -> (isJust . lookupToken (unUnlockCS unlockCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> unlockDatum @k @v info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (isJust . lookupToken (unUnlockCS unlockCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> unlockDatum @k @v info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
@@ -372,9 +364,8 @@ unlockPermInputByRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, UnlockPerm)
 unlockPermInputByRef' info unlockPermCS inputs ref =
-  case (\txOutRef -> (isJust . lookupToken (unUnlockPermCS unlockPermCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> unlockPermDatum @k @v info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (isJust . lookupToken (unUnlockPermCS unlockPermCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> unlockPermDatum @k @v info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
@@ -389,9 +380,8 @@ mapSnapshotInputByRef' ::
   Ledger.TxOutRef ->
   Maybe (Ledger.TxInInfo, MapSnapshot)
 mapSnapshotInputByRef' info snapshotCS inputs ref =
-  case (\txOutRef -> (isJust . lookupToken (unSnapshotCS snapshotCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs of
-    txInInfo : _ -> (txInInfo,) <$> mapSnapshotDatum @k @v info (Ledger.txInInfoResolved txInInfo)
-    _ -> Nothing
+  let filtered = (\txOutRef -> (isJust . lookupToken (unSnapshotCS snapshotCS) . Ledger.txInInfoResolved) txOutRef && matchesRef txOutRef) `filter` inputs
+   in listToMaybe filtered >>= (\txInInfo -> (txInInfo,) <$> mapSnapshotDatum @k @v info (Ledger.txInInfoResolved txInInfo))
   where
     matchesRef :: Ledger.TxInInfo -> Bool
     matchesRef txInInfo = Ledger.txInInfoOutRef txInInfo == ref
