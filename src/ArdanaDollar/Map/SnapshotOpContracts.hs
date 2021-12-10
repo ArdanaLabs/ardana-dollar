@@ -747,10 +747,10 @@ sortUnlockPermInfo infos =
     go :: Pointer -> Maybe [UnlockPermInfo]
     go pointer = do
       info <- pointer `M.lookup` pointer2Info
-      let cons = case pointer `M.lookup` prev2next of
-            Just next -> go next
-            Nothing -> Just []
-      (info :) <$> cons
+      cons <- case pointer `M.lookup` prev2next of
+        Just next -> go next
+        Nothing -> Just []
+      return (info : cons)
 
 mergeUnlockPerms' ::
   forall (t :: Type) (w :: Type).

@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-specialise #-}
 
 module ArdanaDollar.Map.Validator (
   mkValidator,
@@ -155,7 +156,4 @@ mkValidator inst pointerCS snapshotCS unlockPermCS unlockCS datum redeemer ctx =
 
     mintingPolicyFires :: Value.CurrencySymbol -> Bool
     mintingPolicyFires expected =
-      let flattened = Value.flattenValue (Ledger.txInfoMint info)
-       in case (\(cs, _, _) -> cs == expected) `filter` flattened of
-            _ : _ -> True
-            [] -> False
+      expected `elem` Value.symbols (Ledger.txInfoMint info)
