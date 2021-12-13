@@ -78,6 +78,7 @@ common deps
     , mtl
     , openapi3
     , playground-common
+    , pluto
     , plutus-contract
     , plutus-core
     , plutus-extra
@@ -103,7 +104,6 @@ common test-deps
     , pretty
     , pretty-show
     , QuickCheck
-    , pluto
     , safe
     , silently
     , streaming
