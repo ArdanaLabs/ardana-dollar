@@ -29,7 +29,7 @@ source-repository-package
     prettyprinter-configurable
     stubs/plutus-ghc-stub
   -- Update plutus revision here! Make sure this matches `cat ./nix/sources.json | jq '.plutus.rev'`
-  tag: 3f089ccf0ca746b399c99afe51e063b0640af547
+  tag: 0836d25ecc469d8a3494bf6db10fc8404da522ec
 
 source-repository-package
   type: git
