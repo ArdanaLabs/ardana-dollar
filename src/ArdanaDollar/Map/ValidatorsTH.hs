@@ -31,10 +31,14 @@ import ArdanaDollar.Map.Types (
  )
 import ArdanaDollar.Map.Validators qualified as V
 
+import PlutusCore.Assembler.Shrink ( shrinkCompiled )
+
+
+
 {-# INLINEABLE nodeValidPolicy #-}
 nodeValidPolicy :: MapInstance -> Scripts.MintingPolicy
 nodeValidPolicy mapInstance =
-  Ledger.mkMintingPolicyScript $
+  Ledger.mkMintingPolicyScript $ shrinkCompiled $
     $$(TH.compile [||Scripts.wrapMintingPolicy . V.mkNodeValidPolicy @Integer @Integer||])
       `PlutusTx.applyCode` PlutusTx.liftCode mapInstance
 
