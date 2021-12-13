@@ -103,6 +103,7 @@ common test-deps
     , pretty
     , pretty-show
     , QuickCheck
+    , pluto
     , safe
     , silently
     , streaming

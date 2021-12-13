@@ -79,6 +79,8 @@
               = "z9ut0y6umDIjJIRjz9KSvKgotuw06/S8QDwOtVdGiJ0=";
             "https://github.com/Liqwid-Labs/plutus-extra.git"."658b5ea8a5d58cb15a670dd9709e47d6029a6acb"
               = "9vrcwZrcfRQX2LylrlwgpYOkyS7bD529jVLZesBIlKA=";
+            "https://github.com/Geometer1729/pluto.git"."c0a07136be1e6d49eff6d5067a3bc8a674201dcb"
+              = "Pd+sry5EDFh8bXXw0f+ksEz4c9lAqBgb69rEYsipJqo=";
           };
         };
     in
