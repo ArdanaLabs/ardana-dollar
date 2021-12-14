@@ -501,6 +501,10 @@ split' mapInstance (FeeSource sourceTxOutEntry) a1 a2 a3 = do
       )
     )
 
+{-# HLINT ignore divBy2 #-}
+divBy2 :: forall a. Integral a => a -> a
+divBy2 x = x `div` 2
+
 splitSnapshotPerm' ::
   forall (t :: Type) (w :: Type).
   MapTerms t =>
@@ -538,7 +542,7 @@ splitSnapshotPerm' (feeSource, (tpl, SnapshotPermEx snapshotPerm (startId, endId
       ]
   where
     leftId :: Integer
-    leftId = (startId + endId) `div` 2
+    leftId = divBy2 (startId + endId)
 
     rightId :: Integer
     rightId = leftId + 1
