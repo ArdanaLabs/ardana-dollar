@@ -131,7 +131,6 @@ library
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
     ArdanaDollar.Map.ContractUtils
-    ArdanaDollar.Map.Endpoints
     ArdanaDollar.Map.ListOpContracts
     ArdanaDollar.Map.MapTerms
     ArdanaDollar.Map.NodeValidPolicy
@@ -144,7 +143,6 @@ library
     ArdanaDollar.Map.UnlockPolicy
     ArdanaDollar.Map.UseContracts
     ArdanaDollar.Map.Validator
-    ArdanaDollar.Map.ValidatorsTH
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
@@ -174,6 +172,8 @@ test-suite ardana-dollar-test
     Proper.Plutus
     TastyDefaultMain
     Test.ArdanaDollar.BufferAuctionTraceTest
+    Test.ArdanaDollar.Endpoints
+    Test.ArdanaDollar.ValidatorsTH
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper

@@ -3,8 +3,6 @@
 
 {-# HLINT ignore #-}
 
-import ArdanaDollar.Map.Types (MapInstance (MapInstance))
-import ArdanaDollar.Map.ValidatorsTH (nodeValidPolicy)
 import ArdanaDollar.Vault (vaultValidator)
 import Cardano.Api qualified as C
 import Cardano.Binary qualified as CBOR
@@ -161,7 +159,6 @@ getSize x =
 main :: IO ()
 main = do
   putStrLn $ "vaultValidator: " <> (show . getSize $ vaultValidator dummyPubKeyHash)
-  putStrLn $ "nodeValidPolicy: " <> (show . getSize $ nodeValidPolicy (MapInstance dummyAssetClass))
   putStrLn $ "emptyValidator: " <> (show . getSize $ emptyValidator)
   putStrLn $ "emptyValidator': " <> (show . getSize $ emptyValidator')
   putStrLn $ "spookyValidator: " <> (show . getSize $ spookyValidator)

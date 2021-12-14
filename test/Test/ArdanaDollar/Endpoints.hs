@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module ArdanaDollar.Map.Endpoints (
+module Test.ArdanaDollar.Endpoints (
   endpoints,
   createEndpoint,
   Schema,
@@ -30,7 +30,7 @@ import ArdanaDollar.Map.ListOpContracts qualified as Contracts
 import ArdanaDollar.Map.SnapshotOpContracts qualified as Contracts
 import ArdanaDollar.Map.Types (MapInstance)
 import ArdanaDollar.Map.UseContracts qualified as Contracts
-import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
+import Test.ArdanaDollar.ValidatorsTH (Integer2IntegerMap)
 
 type Key = Integer
 type Value = Integer

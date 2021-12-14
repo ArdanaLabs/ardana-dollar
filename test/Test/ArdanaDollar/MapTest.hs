@@ -43,11 +43,11 @@ import Control.Lens
 import Control.Monad (void)
 
 import ArdanaDollar.Map.ContractUtils (address)
-import ArdanaDollar.Map.Endpoints
 import ArdanaDollar.Map.TestUtils
 import ArdanaDollar.Map.TxUtils (isUnlocked)
 import ArdanaDollar.Map.Types as Types
-import ArdanaDollar.Map.ValidatorsTH (Integer2IntegerMap)
+import Test.ArdanaDollar.Endpoints
+import Test.ArdanaDollar.ValidatorsTH (Integer2IntegerMap)
 
 import Test.Tasty
 

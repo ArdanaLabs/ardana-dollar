@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module ArdanaDollar.Map.ValidatorsTH (
+module Test.ArdanaDollar.ValidatorsTH (
   inst,
   nodeValidPolicy,
   snapshotPolicy,
