@@ -74,6 +74,7 @@ common deps
     , data-default
     , foldl
     , freer-extras
+    , freer-simple
     , lens
     , mtl
     , openapi3
@@ -129,13 +130,19 @@ library
     ArdanaDollar.DanaStakePool.Utils
     ArdanaDollar.DanaStakePool.Validators
     ArdanaDollar.DanaStakePool.ValidatorsTH
-    ArdanaDollar.Map.Contracts
-    ArdanaDollar.Map.Endpoints
+    ArdanaDollar.Map.ContractUtils
+    ArdanaDollar.Map.ListOpContracts
     ArdanaDollar.Map.MapTerms
+    ArdanaDollar.Map.NodeValidPolicy
+    ArdanaDollar.Map.SnapshotOpContracts
+    ArdanaDollar.Map.SnapshotPolicy
+    ArdanaDollar.Map.TestUtils
+    ArdanaDollar.Map.TxUtils
     ArdanaDollar.Map.Types
-    ArdanaDollar.Map.Utils
-    ArdanaDollar.Map.Validators
-    ArdanaDollar.Map.ValidatorsTH
+    ArdanaDollar.Map.UnlockPermPolicy
+    ArdanaDollar.Map.UnlockPolicy
+    ArdanaDollar.Map.UseContracts
+    ArdanaDollar.Map.Validator
     ArdanaDollar.MockAdmin
     ArdanaDollar.PriceOracle.OnChain
     ArdanaDollar.Trace
@@ -165,6 +172,8 @@ test-suite ardana-dollar-test
     Proper.Plutus
     TastyDefaultMain
     Test.ArdanaDollar.BufferAuctionTraceTest
+    Test.ArdanaDollar.Endpoints
+    Test.ArdanaDollar.ValidatorsTH
     Test.ArdanaDollar.DanaStakePoolTest
     Test.ArdanaDollar.MapTest
     Test.ArdanaDollar.PriceOracle.OnChain.Model.Proper
