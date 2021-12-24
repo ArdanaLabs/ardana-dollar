@@ -102,9 +102,8 @@ startTreasury ::
   BuiltinByteString ->
   Contract w EmptySchema ContractError (Maybe Treasury)
 startTreasury vh peggedCurrency = do
-  pk <- ownPubKey
-  let pka = Ledger.pubKeyAddress pk
-      pkh = Ledger.pubKeyHash pk
+  pkh <- ownPubKeyHash
+  let pka = Ledger.pubKeyHashAddress pkh
   utxos <- Map.toList <$> utxosAt pka
   case utxos of
     [] -> logError @String "No UTXO found at public address" >> return Nothing
@@ -151,7 +150,7 @@ startTreasury vh peggedCurrency = do
               <> Constraints.mustSpendPubKeyOutput oref
 
       ledgerTx <- submitTxConstraintsWith lookups tx
-      void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @String $ printf "initialized Treasury %s" (show td)
       return $ Just treasury
 
@@ -163,7 +162,7 @@ depositFundsWithCostCenter ::
   TreasuryDepositParams ->
   Contract w s e ()
 depositFundsWithCostCenter treasury params = do
-  pkh <- Crypto.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   logInfo ("called depositFundsWithCostCenter with params: " <> show params)
   let centerName = treasuryDeposit'costCenter params
       depositValue = treasuryDeposit'value params
@@ -182,7 +181,7 @@ depositFundsWithCostCenter treasury params = do
                 oref
                 (toRedeemer @Treasuring $ DepositFundsWithCostCenter params)
       ledgerTx <- submitTxConstraintsWith lookups tx
-      awaitTxConfirmed $ Ledger.txId ledgerTx
+      awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
       logInfo @String $ printf "User %s has deposited:\n%s" (show pkh) (show depositValue)
 
 spendFromCostCenter ::
@@ -196,7 +195,7 @@ spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
   Right (tsp, beneficiaryTxCont) -> do
     logInfo @String ("called spendFromCostCenter: " <> show tsp)
     -- TODO: Debug ad-hoc mint of CanSpend
-    pkh <- Crypto.pubKeyHash <$> ownPubKey
+    pkh <- ownPubKeyHash
     canSpendValue <- debugMintCanSpend pkh treasury
     let centerName = treasurySpend'costCenter tsp
         spendValue = treasurySpend'value tsp
@@ -225,7 +224,7 @@ spendFromCostCenter treasury params = case prepareTreasurySpendParams params of
                 <> Constraints.mustPayToPubKey pkh canSpendValue
                 <> beneficiaryTxCont spendValue
         ledgerTx <- submitTxConstraintsWith lookups tx
-        awaitTxConfirmed $ Ledger.txId ledgerTx
+        awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
         logInfo @String $
           printf
             "Spent %s from %s, sent it to %s"
@@ -257,7 +256,7 @@ debugMintCanSpend pkh treasury =
                 oref
                 (toRedeemer @Treasuring $ AllowMint (canSpendTokenAssetClass treasury))
       mintLedgerTx <- submitTxConstraintsWith mintLookups mintTx
-      void $ awaitTxConfirmed $ Ledger.txId mintLedgerTx
+      void $ awaitTxConfirmed $ Ledger.getCardanoTxId mintLedgerTx
       return canSpendValue
 
 queryCostCenters ::
@@ -307,7 +306,7 @@ initiateUpgrade treasury nc@(NewContract newContract) = do
                   <> Constraints.mustSpendScriptOutput oref (toRedeemer @Treasuring $ InitiateUpgrade nc)
                   <> Constraints.mustSpendScriptOutput oldRef (Ledger.Redeemer $ PlutusTx.toBuiltinData ())
           ledgerTx <- submitTxConstraintsWith lookups tx
-          awaitTxConfirmed $ Ledger.txId ledgerTx
+          awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
           logInfo @String $
             printf
               "Treasury updated, contract changed from %s to %s"

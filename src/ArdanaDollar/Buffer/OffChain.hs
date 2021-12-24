@@ -23,7 +23,6 @@ import Prelude (String, mconcat, show)
 import Ledger qualified
 import Ledger.Constraints qualified as Constraints
 import Ledger.Contexts qualified as Contexts
-import Ledger.Crypto qualified as Crypto
 import Ledger.Typed.Scripts qualified as Scripts
 import Ledger.Value qualified as Value
 import Plutus.Contract
@@ -84,7 +83,7 @@ startBuffer treasury (initialDebt, initialSurplus) = do
           }
       tx = Constraints.mustPayToTheScript bd mempty
   ledgerTx <- submitTxConstraints (bufferInst treasury danaAssetClass) tx
-  void $ awaitTxConfirmed $ Ledger.txId ledgerTx
+  void $ awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
 
 -- Auction usage contract
 data BufferTreasuryAuctionArgs = BufferTreasuryAuctionArgs
@@ -109,7 +108,7 @@ debtAuction ::
   Integer ->
   Contract w s e ()
 debtAuction treasury danaAmount = do
-  pkh <- Crypto.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   logInfo @String $ printf "User %s has called debtAuction" (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
   flip (maybe $ return ()) maybeArgs $ \args -> do
@@ -127,7 +126,7 @@ debtAuction treasury danaAmount = do
           txConstraintsCtr args td treasuryValue bd bufferValue (MkDebtBid danaAmount)
             <> Constraints.mustPayToPubKey pkh danaValue
     ledgerTx <- submitTxConstraintsWith (txLookups args) tx
-    awaitTxConfirmed $ Ledger.txId ledgerTx
+    awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
     logInfo @String $
       printf "User %s has paid %s dUSD for %s DANA" (show pkh) (show dusdPrice) (show danaAmount)
 
@@ -138,7 +137,7 @@ surplusAuction ::
   Integer ->
   Contract w s e ()
 surplusAuction treasury dusdAmount = do
-  pkh <- Crypto.pubKeyHash <$> ownPubKey
+  pkh <- ownPubKeyHash
   logInfo @String $ printf "User %s has called surplusAuction " (show pkh)
   maybeArgs <- bufferTreasuryAuction treasury
   flip (maybe $ return ()) maybeArgs $ \args -> do
@@ -163,7 +162,7 @@ surplusAuction treasury dusdAmount = do
                   printf "Cannot buy %s dUSD, it will require paying non-integer amount of DANA" (show dusdAmount)
               else do
                 ledgerTx <- submitTxConstraintsWith (txLookups args) tx
-                awaitTxConfirmed $ Ledger.txId ledgerTx
+                awaitTxConfirmed $ Ledger.getCardanoTxId ledgerTx
                 logInfo @String $
                   printf "User %s has paid %s DANA for %s dUSD" (show pkh) (show danaPrice) (show dusdAmount)
 
