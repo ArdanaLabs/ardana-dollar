@@ -1,5 +1,7 @@
 # Ardana Dollar Stablecoin
 
+Responsible: Nick Van den Broeck (vandenbroeck@cs-vdb.com).
+
 ## Build and development environment setup instructions
 
 The build requires installed `nix`. Also to avoid building
