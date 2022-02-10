@@ -5,8 +5,15 @@
   inputs.nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
   inputs.haskell-nix.inputs.nixpkgs.follows = "haskell-nix/nixpkgs-2105";
   inputs.plutus.url = "github:input-output-hk/plutus"; # used for libsodium-vrf
+  inputs = {
+    flake-compat-ci.url = "github:hercules-ci/flake-compat-ci";
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
+  };
 
-  outputs = { self, nixpkgs, haskell-nix, plutus }:
+  outputs = { self, nixpkgs, haskell-nix, plutus,  flake-compat, flake-compat-ci  }:
     let
       supportedSystems = [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
 
@@ -85,7 +92,10 @@
     {
       project = perSystem projectFor;
       flake = perSystem (system: (projectFor system).flake {});
-
+      ciNix = flake-compat-ci.lib.recurseIntoFlakeWith {
+        flake = self;
+        systems = [ "x86_64-linux" ];
+      };
       # this could be done automatically, but would reduce readability
       packages = perSystem (system: self.flake.${system}.packages);
       checks = perSystem (system: self.flake.${system}.checks);
