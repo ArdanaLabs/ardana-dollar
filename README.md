@@ -12,32 +12,11 @@ https://github.com/input-output-hk/plutus/tree/4551bba244a2f3ff890c4d2fd12a10569
 Nix-based build: run
 
 ```
-nix-build -A ardana-dollar.components.exes.ardana-pab
+nix build .#ardana-dollar:exe:ardana-pab
 ```
 
 in the repository root directory. You should obtain an executable
 under `./result/bin/ardana-pab`
-
-The project can also be built inside a nix shell with cabal:
-
-```
-nix-shell
-cabal build
-```
-
-## Code coverage report
-
-Code coverage report can be produced with
-
-```
-make coverage
-```
-
-or
-
-```
-nix-build --arg doCoverage true -A projectCoverageReport
-```
 
 ## Core git branches
 
