@@ -16,8 +16,8 @@ data AdminState = AdminState
   { active :: Bool
   , collateralCurrency :: AssetClass
   , interestRate :: Rational
-  , liquidationBenefitCap :: Rational
-  , liquidationBenefitFloor :: Rational
+  , liquidationRate :: Rational
+  , liquidationTarget :: Rational
   , minCollateralRatio :: Rational
   , oracleToken :: AssetClass,
   , certTokenStart :: Natural
@@ -70,6 +70,8 @@ treasuryStateHash :: TokenName
   token for `treasuryStateToken` with the name `treasuryStateHash`.
 - `ivTo (txInfoValidRange _) < treasuryState.certTokenExpiration + treasuryState.timestamp`.
 - `treasuryState.ownerAuthToken` must be minted or burned.
+- `new.liquidationRate > 0`
+- `new.liquidationTarget >= 0`
 
 ### RefreshAct
 
