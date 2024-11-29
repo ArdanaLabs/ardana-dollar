@@ -28,6 +28,7 @@ import PlutusTx qualified
 import PlutusTx.Prelude
 import PlutusTx.UniqueMap qualified as UniqueMap
 import Prelude qualified as Haskell
+import PlutusCore.Assembler.Shrink ( shrinkCompiled )
 
 data OracleValidatorParams = OracleValidatorParams
   { oracleValidatorParams'oracleMintingCurrencySymbol :: !Value.CurrencySymbol
@@ -216,7 +217,7 @@ oracleCompiledTypedValidator params =
 oracleInst :: OracleValidatorParams -> Scripts.TypedValidator PriceOracling
 oracleInst params =
   Scripts.mkTypedValidator @PriceOracling
-    (oracleCompiledTypedValidator params)
+    (shrinkCompiled (oracleCompiledTypedValidator params))
     $$(PlutusTx.compile [||wrap||])
   where
     wrap = Scripts.wrapValidator @(Oracle.SignedMessage PriceTracking) @()

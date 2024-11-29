@@ -79,6 +79,7 @@ common deps
     , mtl
     , openapi3
     , playground-common
+    , pluto
     , plutus-contract
     , plutus-core
     , plutus-extra

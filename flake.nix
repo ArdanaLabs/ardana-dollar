@@ -43,8 +43,8 @@
             nativeBuildInputs = [ pkgs.cabal-install pkgs.hlint pkgs.haskellPackages.fourmolu ];
           };
           sha256map = {
-            "https://github.com/input-output-hk/plutus.git"."3f089ccf0ca746b399c99afe51e063b0640af547"
-              = "BhGQPiCv4UxVs0XEdMMddaNWiztmkoeJotpW/lrtqNs=";
+            "https://github.com/input-output-hk/plutus.git"."0836d25ecc469d8a3494bf6db10fc8404da522ec"
+              = "rsoceqekF81SB2De9VVV77TQyzZW5mi3Xw1OZwFXKK4=";
             "https://github.com/input-output-hk/plutus-apps.git"."404af7ac3e27ebcb218c05f79d9a70ca966407c9"
               = "+T9TGzHEzyfixBysxLwy5VWVrL5xqKF5pcbRlHQr+wI=";
             "https://github.com/Quid2/flat.git"."ee59880f47ab835dbd73bea0847dab7869fc20d8"
@@ -79,6 +79,8 @@
               = "z9ut0y6umDIjJIRjz9KSvKgotuw06/S8QDwOtVdGiJ0=";
             "https://github.com/Liqwid-Labs/plutus-extra.git"."658b5ea8a5d58cb15a670dd9709e47d6029a6acb"
               = "9vrcwZrcfRQX2LylrlwgpYOkyS7bD529jVLZesBIlKA=";
+            "https://github.com/Geometer1729/pluto.git"."c0a07136be1e6d49eff6d5067a3bc8a674201dcb"
+              = "Pd+sry5EDFh8bXXw0f+ksEz4c9lAqBgb69rEYsipJqo=";
           };
         };
     in
